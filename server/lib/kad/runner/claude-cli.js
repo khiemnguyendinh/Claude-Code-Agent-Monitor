@@ -13,13 +13,33 @@ const RUN_TIMEOUT_MS = Number(process.env.KAD_RUN_TIMEOUT_MS || 15 * 60 * 1000);
 
 /**
  * Strip host-managed auth vars so the child authenticates from filesystem/keychain
- * OAuth or ANTHROPIC_API_KEY — same intent as run-spawner's cleanSpawnEnv. Without
- * a standalone-usable credential the child 401s (documented Phase 1 auth blocker).
+ * OAuth (`claude login`) or ANTHROPIC_API_KEY — same intent as run-spawner's
+ * cleanSpawnEnv. Without a standalone-usable credential the child 401s (documented
+ * Phase 1 auth blocker).
+ *
+ * When launched INSIDE a host-brokered launcher (Cowork/desktop app — detected via
+ * its marker vars), that launcher's OAuth is refreshed by the host and only valid
+ * against its proxy (ANTHROPIC_BASE_URL); a standalone subprocess can't refresh it
+ * and 401s. So in that case we also drop the proxy + brokered-OAuth vars, letting
+ * the child fall back to the user's own `claude login` credentials against the real
+ * API. Standalone servers (markers absent) keep any legitimately-set base URL.
+ * Override the heuristic with KAD_CLAUDE_KEEP_ENV=1.
  */
 function spawnEnv(extra) {
   const env = { ...process.env, ...(extra || {}) };
   delete env.CLAUDECODE;
   delete env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST;
+  const hostBrokered =
+    process.env.CLAUDE_CODE_SDK_HAS_HOST_AUTH_REFRESH ||
+    process.env.CLAUDE_CODE_PROVIDER_MANAGED_BY_HOST ||
+    process.env.CLAUDE_CODE_ENTRYPOINT === "claude-desktop";
+  if (hostBrokered && process.env.KAD_CLAUDE_KEEP_ENV !== "1" && !process.env.ANTHROPIC_API_KEY) {
+    for (const k of Object.keys(env)) {
+      if (k.startsWith("CLAUDE_CODE") || k === "ANTHROPIC_BASE_URL" || k === "CLAUDE_AGENT_SDK_VERSION") {
+        delete env[k];
+      }
+    }
+  }
   return env;
 }
 
