@@ -265,10 +265,12 @@ async function main() {
       await api("POST", `/api/kad/approvals/${planRow.id}/decide`, { decision: "approved" });
       const w0 = Date.now();
       let searched = false;
-      while (Date.now() - w0 < 240000) {
-        await worker.sweep(); // manually advance the durable job queue one step
-        await sleep(3000);
-        if (one("SELECT COUNT(*) n FROM audit_log WHERE task_id=? AND action='web_search'", engId).n >= 1) { searched = true; break; }
+      // Chain: resume main → kad_create_delegation → researcher turn → kad_web_search
+      // → kad_save_artifact. Each sweep() drives one job (a real turn) to completion.
+      while (Date.now() - w0 < 360000) {
+        await worker.sweep(); // advance the durable job queue by one real turn
+        if (repo.listAudit({ task_id: engId }).some((r) => r.action === "web_search")) { searched = true; break; }
+        await sleep(2000);
       }
       check("S1.E2 Researcher real turn called kad_web_search ≥1", searched);
       check("S1.E2b research_report artifact produced by researcher", one("SELECT COUNT(*) n FROM artifacts WHERE task_id=? AND artifact_type='research_report'", engId).n >= 1);
