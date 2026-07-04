@@ -33,6 +33,22 @@ function initWebSocket(server) {
         console.warn("[WS] client error:", err.code || err.message);
       }
     });
+    // KAD scoped subscriptions (additive; monitor's global broadcast unaffected).
+    // Client sends {subscribe:'kad:task:<id>'} / {unsubscribe:'...'} to opt into a
+    // scope; kadBroadcast(scope,...) then delivers only to subscribed clients.
+    ws.on("message", (raw) => {
+      let msg;
+      try {
+        msg = JSON.parse(raw.toString());
+      } catch {
+        return; // non-JSON frames are ignored (monitor never sends client→server)
+      }
+      if (msg && typeof msg.subscribe === "string" && msg.subscribe.startsWith("kad:")) {
+        (ws._kadScopes || (ws._kadScopes = new Set())).add(msg.subscribe);
+      } else if (msg && typeof msg.unsubscribe === "string" && ws._kadScopes) {
+        ws._kadScopes.delete(msg.unsubscribe);
+      }
+    });
   });
 
   // Heartbeat every 30s to detect dead connections
@@ -73,6 +89,30 @@ function broadcast(type, data) {
   });
 }
 
+/**
+ * Deliver a KAD event to clients subscribed to `scope` (e.g. 'kad:task:<id>' or
+ * 'kad:department:<id>'). Server-side scoping per spec 03 §2 — clients that did
+ * not subscribe to the scope receive nothing. Message shape mirrors broadcast()
+ * so the client parser is uniform: {type, data:{scope, ...payload}, timestamp}.
+ */
+function kadBroadcast(scope, type, payload) {
+  if (!wss || !scope) return;
+  const message = JSON.stringify({
+    type,
+    data: { scope, ...(payload && typeof payload === "object" ? payload : { value: payload }) },
+    timestamp: new Date().toISOString(),
+  });
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1 && client._kadScopes && client._kadScopes.has(scope)) {
+      try {
+        client.send(message);
+      } catch {
+        /* client closed mid-send — ignore */
+      }
+    }
+  });
+}
+
 function getConnectionCount() {
   if (!wss) return 0;
   let count = 0;
@@ -106,4 +146,4 @@ function closeWebSocket() {
   wss = null;
 }
 
-module.exports = { initWebSocket, broadcast, getConnectionCount, closeWebSocket };
+module.exports = { initWebSocket, broadcast, kadBroadcast, getConnectionCount, closeWebSocket };

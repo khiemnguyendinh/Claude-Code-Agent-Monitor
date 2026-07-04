@@ -1,0 +1,149 @@
+/**
+ * @file server/lib/kad/repo/tasks.js — tasks, task_messages, unified timeline.
+ */
+const { db, parseJson, audit, newId, nowIso } = require("./db");
+
+const TASK_COLS = ["blocked", "inbox", "triaged", "doing", "waiting_human", "review", "needs_changes", "done", "failed", "archived"];
+
+function hydrateTask(row) {
+  if (!row) return null;
+  return { ...row, brief: parseJson(row.brief, null) };
+}
+
+function createTask({ department_id, title, description, priority, channel, channel_actor_ref, working_dir, workflow_id, activation }) {
+  const id = newId("task");
+  const now = nowIso();
+  db.prepare(
+    `INSERT INTO tasks (id, department_id, workflow_id, title, description, status, working_dir, activation, automation_depth, priority, created_at, updated_at)
+     VALUES (@id,@department_id,@workflow_id,@title,@description,'inbox',@working_dir,@activation,0,@priority,@now,@now)`
+  ).run({
+    id,
+    department_id: department_id ?? null,
+    workflow_id: workflow_id ?? null,
+    title,
+    description: description ?? null,
+    working_dir: working_dir ?? null,
+    activation: activation ?? "manual",
+    priority: priority ?? "normal",
+    now,
+  });
+  audit({
+    department_id,
+    task_id: id,
+    action: "task_created",
+    actor_type: "human", // task creation is always a human action, whatever the channel
+    actor_id: "human",
+    channel: channel ?? "web",
+    target_type: "task",
+    target_id: id,
+    details: { title, channel_actor_ref: channel_actor_ref ?? null },
+  });
+  return getTask(id);
+}
+
+function getTask(id) {
+  return hydrateTask(db.prepare("SELECT * FROM tasks WHERE id=?").get(id));
+}
+
+function getTaskCounts(id) {
+  const g = (sql, ...a) => db.prepare(sql).get(id, ...a).n;
+  return {
+    messages: g("SELECT COUNT(*) n FROM task_messages WHERE task_id=?"),
+    runs: g("SELECT COUNT(*) n FROM task_runs WHERE task_id=?"),
+    artifacts: g("SELECT COUNT(*) n FROM artifacts WHERE task_id=?"),
+    approvals: g("SELECT COUNT(*) n FROM approvals WHERE task_id=?"),
+    delegations: g("SELECT COUNT(*) n FROM task_delegations WHERE task_id=?"),
+  };
+}
+
+function listTasks({ status, department_id, limit = 100 } = {}) {
+  const where = [];
+  const args = [];
+  if (status) (where.push("status=?"), args.push(status));
+  if (department_id) (where.push("department_id=?"), args.push(department_id));
+  args.push(Math.min(Number(limit) || 100, 500));
+  const sql = "SELECT * FROM tasks" + (where.length ? " WHERE " + where.join(" AND ") : "") + " ORDER BY created_at DESC LIMIT ?";
+  return db.prepare(sql).all(...args).map(hydrateTask);
+}
+
+/** Update task status + optional fields; audits nothing by itself (callers audit the business action). */
+function updateTask(id, patch = {}) {
+  const allowed = ["status", "priority", "due_date", "assigned_agent_id", "workflow_id", "workflow_step", "brief", "org_context_version_id", "blueprint_version_id", "activation"];
+  const sets = [];
+  const params = { id, now: nowIso() };
+  for (const k of allowed) {
+    if (patch[k] !== undefined) {
+      sets.push(`${k}=@${k}`);
+      params[k] = k === "brief" && patch[k] != null ? JSON.stringify(patch[k]) : patch[k];
+    }
+  }
+  if (patch.status === "done") sets.push("completed_at=@now");
+  sets.push("updated_at=@now");
+  db.prepare(`UPDATE tasks SET ${sets.join(", ")} WHERE id=@id`).run(params);
+  return getTask(id);
+}
+
+// ---- messages ----
+function hydrateMsg(row) {
+  return row ? { ...row, metadata: parseJson(row.metadata, null) } : null;
+}
+
+function addMessage({ task_id, sender_type, sender_id, content, message_type, channel, channel_actor_ref, metadata }) {
+  const id = newId("msg");
+  db.prepare(
+    `INSERT INTO task_messages (id, task_id, sender_type, sender_id, channel, channel_actor_ref, content, message_type, metadata, created_at)
+     VALUES (@id,@task_id,@sender_type,@sender_id,@channel,@channel_actor_ref,@content,@message_type,@metadata,@now)`
+  ).run({
+    id,
+    task_id,
+    sender_type,
+    sender_id: sender_id ?? null,
+    channel: channel ?? "web",
+    channel_actor_ref: channel_actor_ref ?? null,
+    content,
+    message_type: message_type ?? "chat",
+    metadata: metadata != null ? JSON.stringify(metadata) : null,
+    now: nowIso(),
+  });
+  return getMessage(id);
+}
+
+function getMessage(id) {
+  return hydrateMsg(db.prepare("SELECT * FROM task_messages WHERE id=?").get(id));
+}
+
+function listMessages(task_id, { after } = {}) {
+  const rows = after
+    ? db.prepare("SELECT * FROM task_messages WHERE task_id=? AND created_at>? ORDER BY created_at ASC").all(task_id, after)
+    : db.prepare("SELECT * FROM task_messages WHERE task_id=? ORDER BY created_at ASC").all(task_id);
+  return rows.map(hydrateMsg);
+}
+
+/** Unified, time-sorted timeline: messages + delegations + runs + approvals + artifacts. */
+function getTimeline(task_id) {
+  const items = [];
+  for (const m of listMessages(task_id)) items.push({ kind: "message", at: m.created_at, data: m });
+  for (const r of db.prepare("SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at ASC").all(task_id))
+    items.push({ kind: "run", at: r.started_at || r.completed_at, data: r });
+  for (const d of db.prepare("SELECT * FROM task_delegations WHERE task_id=? ORDER BY created_at ASC").all(task_id))
+    items.push({ kind: "delegation", at: d.created_at, data: d });
+  for (const a of db.prepare("SELECT * FROM approvals WHERE task_id=? ORDER BY created_at ASC").all(task_id))
+    items.push({ kind: "approval", at: a.created_at, data: a });
+  for (const af of db.prepare("SELECT * FROM artifacts WHERE task_id=? ORDER BY created_at ASC").all(task_id))
+    items.push({ kind: "artifact", at: af.created_at, data: af });
+  items.sort((x, y) => String(x.at || "").localeCompare(String(y.at || "")));
+  return items;
+}
+
+module.exports = {
+  TASK_COLS,
+  createTask,
+  getTask,
+  getTaskCounts,
+  listTasks,
+  updateTask,
+  addMessage,
+  getMessage,
+  listMessages,
+  getTimeline,
+};
