@@ -57,7 +57,7 @@ const TYPE_STYLES: Partial<Record<WebhookType, string>> = {
   opsgenie: "text-[#2684FF] bg-[#2684FF]/10 border-[#2684FF]/20",
   splunk_oncall: "text-[#F99D1C] bg-[#F99D1C]/10 border-[#F99D1C]/20",
 };
-const NEUTRAL_STYLE = "text-gray-300 bg-surface-2 border-border";
+const NEUTRAL_STYLE = "text-kad-text-muted bg-surface-2 border-border";
 
 interface HeaderRow {
   key: string;
@@ -337,7 +337,7 @@ export function WebhookSettings() {
   return (
     <div className="card p-5 space-y-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-xs text-gray-500">
+        <div className="flex items-center gap-2 text-xs text-kad-text-muted">
           <Webhook className="w-3.5 h-3.5" />
           {t("webhooks.count", { count: targets.length })}
         </div>
@@ -355,9 +355,9 @@ export function WebhookSettings() {
 
       {/* Target list */}
       {loading ? (
-        <p className="text-xs text-gray-500">{t("webhooks.loading")}</p>
+        <p className="text-xs text-kad-text-muted">{t("webhooks.loading")}</p>
       ) : targets.length === 0 && !formOpen ? (
-        <div className="flex items-center gap-2 text-xs text-gray-500 py-2">
+        <div className="flex items-center gap-2 text-xs text-kad-text-muted py-2">
           <Webhook className="w-3.5 h-3.5" />
           {t("webhooks.empty")}
         </div>
@@ -378,8 +378,8 @@ export function WebhookSettings() {
                   >
                     {labelOf(target.type)}
                   </span>
-                  <span className="text-sm text-gray-200 font-medium">{target.name}</span>
-                  <code className="text-[11px] text-gray-500 font-mono truncate max-w-[220px]">
+                  <span className="text-sm text-kad-text font-medium">{target.name}</span>
+                  <code className="text-[11px] text-kad-text-muted font-mono truncate max-w-[220px]">
                     {target.url_preview}
                   </code>
                   {target.rule_ids && target.rule_ids.length > 0 && (
@@ -417,7 +417,7 @@ export function WebhookSettings() {
                   <button
                     onClick={() => onTest(target.id)}
                     disabled={testing === target.id}
-                    className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md text-gray-400 hover:text-gray-200 hover:bg-surface-4 border border-border transition-colors disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md text-kad-text-muted hover:text-kad-text hover:bg-surface-4 border border-border transition-colors disabled:opacity-50"
                   >
                     {testing === target.id ? (
                       <Loader2 className="w-3 h-3 animate-spin" />
@@ -428,14 +428,14 @@ export function WebhookSettings() {
                   </button>
                   <button
                     onClick={() => openEdit(target)}
-                    className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md text-gray-400 hover:text-gray-200 hover:bg-surface-4 border border-border transition-colors"
+                    className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md text-kad-text-muted hover:text-kad-text hover:bg-surface-4 border border-border transition-colors"
                   >
                     <Pencil className="w-3 h-3" />
                     {t("webhooks.edit")}
                   </button>
                   <button
                     onClick={() => setConfirmDelete(target.id)}
-                    className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md text-gray-500 hover:text-red-400 hover:bg-red-500/10 border border-border transition-colors"
+                    className="inline-flex items-center gap-1.5 text-[11px] px-2.5 py-1 rounded-md text-kad-text-muted hover:text-red-400 hover:bg-red-500/10 border border-border transition-colors"
                   >
                     <Trash2 className="w-3 h-3" />
                     {t("webhooks.delete")}
@@ -469,17 +469,17 @@ export function WebhookSettings() {
       {formOpen && form && provider && (
         <div className="border border-border rounded-lg p-4 space-y-3 bg-surface-1">
           <div className="flex items-center justify-between">
-            <h4 className="text-xs font-semibold text-gray-300 uppercase tracking-wide">
+            <h4 className="text-xs font-semibold text-kad-text-muted uppercase tracking-wide">
               {isEdit ? t("webhooks.editTitle") : t("webhooks.addTitle")}
             </h4>
-            <button onClick={closeForm} className="text-gray-500 hover:text-gray-300">
+            <button onClick={closeForm} className="text-kad-text-muted hover:text-kad-text">
               <X className="w-4 h-4" />
             </button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <label className="block">
-              <span className="text-[11px] text-gray-500">{t("webhooks.fieldName")}</span>
+              <span className="text-[11px] text-kad-text-muted">{t("webhooks.fieldName")}</span>
               <input
                 value={form.name}
                 onChange={(e) => set({ name: e.target.value })}
@@ -488,7 +488,7 @@ export function WebhookSettings() {
               />
             </label>
             <label className="block">
-              <span className="text-[11px] text-gray-500">{t("webhooks.fieldType")}</span>
+              <span className="text-[11px] text-kad-text-muted">{t("webhooks.fieldType")}</span>
               <div className="mt-1">
                 <Select<WebhookType>
                   value={form.type}
@@ -511,12 +511,12 @@ export function WebhookSettings() {
           {/* URL (hidden for providers that derive their own URL) */}
           {showUrl && (
             <label className="block">
-              <span className="text-[11px] text-gray-500">
+              <span className="text-[11px] text-kad-text-muted">
                 {t("webhooks.fieldUrl")}
                 {isEdit ? (
-                  <span className="text-gray-600"> - {t("webhooks.urlKeepHint")}</span>
+                  <span className="text-kad-text-muted"> - {t("webhooks.urlKeepHint")}</span>
                 ) : urlOptional ? (
-                  <span className="text-gray-600"> - {t("webhooks.urlOptional")}</span>
+                  <span className="text-kad-text-muted"> - {t("webhooks.urlOptional")}</span>
                 ) : null}
               </span>
               <input
@@ -530,7 +530,7 @@ export function WebhookSettings() {
             </label>
           )}
           {!showUrl && (
-            <p className="text-[11px] text-gray-600 flex items-center gap-1.5">
+            <p className="text-[11px] text-kad-text-muted flex items-center gap-1.5">
               <Webhook className="w-3 h-3" />
               {t("webhooks.urlAuto")}
             </p>
@@ -541,19 +541,19 @@ export function WebhookSettings() {
             <button
               type="button"
               onClick={() => setGuideOpen((o) => !o)}
-              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-gray-300 hover:bg-surface-3 transition-colors"
+              className="w-full flex items-center justify-between gap-2 px-3 py-2 text-[11px] text-kad-text-muted hover:bg-surface-3 transition-colors"
             >
               <span className="inline-flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5 text-gray-500" />
+                <BookOpen className="w-3.5 h-3.5 text-kad-text-muted" />
                 {t("webhooks.guideToggle", { provider: provider.label })}
               </span>
               <ChevronDown
-                className={`w-3.5 h-3.5 text-gray-500 transition-transform ${guideOpen ? "rotate-180" : ""}`}
+                className={`w-3.5 h-3.5 text-kad-text-muted transition-transform ${guideOpen ? "rotate-180" : ""}`}
               />
             </button>
             {guideOpen && (
               <div className="px-3 pb-3 pt-2 space-y-2.5 border-t border-border">
-                <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed text-gray-400 marker:text-gray-600">
+                <ol className="list-decimal list-inside space-y-1 text-[11px] leading-relaxed text-kad-text-muted marker:text-kad-text-muted">
                   {(t(`webhookGuides.${form.type}.steps`, { returnObjects: true }) as string[]).map(
                     (s, i) => (
                       <li key={i}>{s}</li>
@@ -571,7 +571,7 @@ export function WebhookSettings() {
                     {t("webhooks.guideDocs", { provider: provider.label })}
                   </a>
                 )}
-                <p className="flex items-start gap-1.5 text-[10px] text-gray-500 leading-relaxed pt-2 border-t border-border">
+                <p className="flex items-start gap-1.5 text-[10px] text-kad-text-muted leading-relaxed pt-2 border-t border-border">
                   <Info className="w-3 h-3 mt-0.5 flex-shrink-0" />
                   {t("webhooks.guideStaleNote")}
                 </p>
@@ -584,7 +584,7 @@ export function WebhookSettings() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 border-t border-border">
               {provider.fields.map((f) => (
                 <label key={f.key} className="block">
-                  <span className="text-[11px] text-gray-500">
+                  <span className="text-[11px] text-kad-text-muted">
                     {f.label}
                     {f.required && <span className="text-red-400"> *</span>}
                   </span>
@@ -614,7 +614,7 @@ export function WebhookSettings() {
           {provider.supports_secret && (
             <div className="space-y-3 pt-1 border-t border-border">
               <label className="block">
-                <span className="text-[11px] text-gray-500">{t("webhooks.fieldSecret")}</span>
+                <span className="text-[11px] text-kad-text-muted">{t("webhooks.fieldSecret")}</span>
                 <input
                   type="password"
                   value={form.secret}
@@ -624,18 +624,18 @@ export function WebhookSettings() {
                   }
                   className="input w-full mt-1 py-1.5 text-[11px] leading-normal font-mono"
                 />
-                <span className="text-[10px] text-gray-600">{t("webhooks.secretHint")}</span>
+                <span className="text-[10px] text-kad-text-muted">{t("webhooks.secretHint")}</span>
               </label>
 
               <div>
                 <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-gray-500">{t("webhooks.fieldHeaders")}</span>
+                  <span className="text-[11px] text-kad-text-muted">{t("webhooks.fieldHeaders")}</span>
                   {isEdit && (
                     <Checkbox
                       checked={form.replaceHeaders}
                       onChange={(v) => set({ replaceHeaders: v })}
                       label={t("webhooks.replaceHeaders")}
-                      labelClassName="text-[10px] text-gray-500 group-hover:text-gray-400"
+                      labelClassName="text-[10px] text-kad-text-muted group-hover:text-kad-text-muted"
                     />
                   )}
                 </div>
@@ -671,7 +671,7 @@ export function WebhookSettings() {
                           onClick={() =>
                             set({ headerRows: form.headerRows.filter((_, j) => j !== i) })
                           }
-                          className="text-gray-600 hover:text-red-400 p-1"
+                          className="text-kad-text-muted hover:text-red-400 p-1"
                         >
                           <X className="w-3.5 h-3.5" />
                         </button>
@@ -681,7 +681,7 @@ export function WebhookSettings() {
                       onClick={() =>
                         set({ headerRows: [...form.headerRows, { key: "", value: "" }] })
                       }
-                      className="inline-flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300"
+                      className="inline-flex items-center gap-1 text-[10px] text-kad-text-muted hover:text-kad-text-muted"
                     >
                       <Plus className="w-3 h-3" />
                       {t("webhooks.addHeader")}
@@ -699,7 +699,7 @@ export function WebhookSettings() {
                 checked={form.scopeAll}
                 onChange={(v) => set({ scopeAll: v })}
                 label={t("webhooks.scopeAll")}
-                labelClassName="text-[11px] text-gray-400 group-hover:text-gray-300"
+                labelClassName="text-[11px] text-kad-text-muted group-hover:text-kad-text-muted"
               />
               {!form.scopeAll && (
                 <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-1">
@@ -715,7 +715,7 @@ export function WebhookSettings() {
                         })
                       }
                       label={rule.name}
-                      labelClassName="text-[11px] text-gray-400 group-hover:text-gray-300 truncate"
+                      labelClassName="text-[11px] text-kad-text-muted group-hover:text-kad-text-muted truncate"
                     />
                   ))}
                 </div>
@@ -724,7 +724,7 @@ export function WebhookSettings() {
           )}
 
           <div className="flex items-center gap-3 pt-1">
-            <label className="inline-flex items-center gap-2 text-[11px] text-gray-400 cursor-pointer">
+            <label className="inline-flex items-center gap-2 text-[11px] text-kad-text-muted cursor-pointer">
               <Toggle checked={form.enabled} onChange={(v) => set({ enabled: v })} />
               {t("webhooks.enabledOnSave")}
             </label>

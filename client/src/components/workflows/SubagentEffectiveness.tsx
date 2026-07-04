@@ -10,14 +10,14 @@ import { useTranslation } from "react-i18next";
 import type { SubagentEffectivenessItem } from "../../lib/types";
 
 const COLORS = [
-  "#10b981",
-  "#3b82f6",
-  "#a855f7",
-  "#f59e0b",
-  "#f43f5e",
-  "#06b6d4",
-  "#f97316",
-  "#6366f1",
+  "var(--kad-accent)",
+  "var(--kad-primary)",
+  "var(--kad-info)",
+  "var(--kad-text-muted)",
+  "#8a5fb0",
+  "#c2578a",
+  "#4a9d7f",
+  "#a68a3c",
 ] as const;
 
 const RING_RADIUS = 28;
@@ -63,7 +63,7 @@ function SuccessRing({ rate, color }: SuccessRingProps) {
           cy={center}
           r={RING_RADIUS}
           fill="none"
-          stroke="#2a2a3d"
+          stroke="var(--kad-border-strong)"
           strokeWidth={RING_STROKE}
         />
         {/* Arc */}
@@ -85,7 +85,7 @@ function SuccessRing({ rate, color }: SuccessRingProps) {
           y={center}
           textAnchor="middle"
           dominantBaseline="central"
-          fill="#e4e4ed"
+          fill="var(--kad-text-strong)"
           fontSize="13"
           fontWeight="600"
           fontFamily="Inter, sans-serif"
@@ -93,7 +93,7 @@ function SuccessRing({ rate, color }: SuccessRingProps) {
           {clampedRate.toFixed(0)}%
         </text>
       </svg>
-      <span className="text-[10px] font-medium text-gray-500 uppercase tracking-wider">
+      <span className="text-[10px] font-medium text-kad-text-muted uppercase tracking-wider">
         {t("effectiveness.success")}
       </span>
     </div>
@@ -147,8 +147,8 @@ function Sparkline({ data, color }: SparklineProps) {
                 className="absolute bottom-0 left-0 right-0 rounded-sm transition-all duration-300"
                 style={{
                   height: `${heightPct}%`,
-                  backgroundColor: value > 0 ? color : "#2a2a3d",
-                  opacity: tip?.index === i ? 1 : value > 0 ? 0.85 : 0.4,
+                  backgroundColor: value > 0 ? color : "var(--kad-border-strong)",
+                  opacity: tip?.index === i ? 1 : value > 0 ? 0.85 : 0.6,
                 }}
               />
             </div>
@@ -160,7 +160,7 @@ function Sparkline({ data, color }: SparklineProps) {
         {bars.map((_, i) => (
           <span
             key={i}
-            className="flex-1 text-center text-[8px] text-gray-600 leading-none select-none"
+            className="flex-1 text-center text-[8px] text-kad-text-faint leading-none select-none"
           >
             {dayLabels[i % dayLabels.length] ?? ""}
           </span>
@@ -228,11 +228,20 @@ function SparklineTooltip({
     <div
       ref={ref}
       role="tooltip"
-      className="fixed z-[60] px-2 py-1 bg-[#12121f] border border-[#2a2a4a] rounded-md shadow-xl text-[10px] text-gray-200 whitespace-nowrap pointer-events-none"
-      style={{ left: pos.left, top: pos.top }}
+      className="fixed z-[60] px-2 py-1 rounded-md text-[10px] whitespace-nowrap pointer-events-none"
+      style={{
+        left: pos.left,
+        top: pos.top,
+        backgroundColor: "var(--kad-surface)",
+        border: "1px solid var(--kad-border-strong)",
+        boxShadow: "var(--kad-shadow-1)",
+        color: "var(--kad-text)",
+      }}
     >
       <span className="font-medium">{label}</span>
-      <span className="text-gray-400 mx-1">·</span>
+      <span style={{ color: "var(--kad-text-muted)" }} className="mx-1">
+        ·
+      </span>
       <span className="tabular-nums" style={{ color }}>
         {t("effectiveness.sessionCount", { count: value })}
       </span>
@@ -249,10 +258,10 @@ interface MetricBoxProps {
 function MetricBox({ label, value }: MetricBoxProps) {
   return (
     <div className="flex flex-col items-center gap-0.5 bg-surface-3 rounded-lg px-2 py-2 flex-1 min-w-0 overflow-hidden">
-      <span className="text-xs font-semibold text-gray-200 tabular-nums truncate w-full text-center">
+      <span className="text-xs font-semibold text-kad-text-strong tabular-nums truncate w-full text-center">
         {value}
       </span>
-      <span className="text-[9px] text-gray-500 uppercase tracking-wider truncate w-full text-center">
+      <span className="text-[9px] text-kad-text-muted uppercase tracking-wider truncate w-full text-center">
         {label}
       </span>
     </div>
@@ -274,7 +283,7 @@ function ScoreCard({ item, colorIndex }: ScoreCardProps) {
         bg-surface-2 border border-border rounded-xl p-4
         flex flex-col gap-4 min-w-0 overflow-hidden
         transition-all duration-200
-        hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 hover:border-border-light
+        hover:-translate-y-0.5 hover:border-border-light
       "
     >
       {/* Header */}
@@ -284,7 +293,7 @@ function ScoreCard({ item, colorIndex }: ScoreCardProps) {
           style={{ backgroundColor: color }}
           aria-hidden="true"
         />
-        <span className="text-sm font-medium text-gray-200 truncate" title={item.subagent_type}>
+        <span className="text-sm font-medium text-kad-text-strong truncate" title={item.subagent_type}>
           {item.subagent_type}
         </span>
       </div>
@@ -305,7 +314,7 @@ function ScoreCard({ item, colorIndex }: ScoreCardProps) {
 
       {/* Sparkline */}
       <div className="flex flex-col gap-1">
-        <span className="text-[10px] text-gray-500 uppercase tracking-wider">
+        <span className="text-[10px] text-kad-text-muted uppercase tracking-wider">
           {t("effectiveness.weeklyActivity")}
         </span>
         <Sparkline data={item.trend} color={color} />
@@ -322,7 +331,7 @@ export function SubagentEffectiveness({ data }: SubagentEffectivenessProps) {
   const { t } = useTranslation("workflows");
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center py-16 text-gray-500 text-sm">
+      <div className="flex items-center justify-center py-16 text-kad-text-muted text-sm">
         {t("effectiveness.noData")}
       </div>
     );

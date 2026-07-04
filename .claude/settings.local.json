@@ -36,7 +36,10 @@
       "Bash(node -e ':*)",
       "Bash(node -e \"require\\('./server/lib/transcript-cache'\\); require\\('./scripts/import-history'\\); console.log\\('All modules load OK'\\)\")",
       "Bash(claude --version)",
-      "Bash(gh pr *)"
+      "Bash(gh pr *)",
+      "Read(//Users/macintoshhd/AI Agent/AI Agent Workspace/**)",
+      "Bash(ls -la plans/260703-2330-kad-v2-build/)",
+      "Bash(ls -la plans/260703-2330-kad-v2-build/spec/)"
     ]
   }
 }

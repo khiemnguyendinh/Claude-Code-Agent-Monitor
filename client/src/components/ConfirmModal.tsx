@@ -50,7 +50,8 @@ export function ConfirmModal({
       aria-modal="true"
     >
       <div
-        className="relative w-full max-w-md rounded-xl border border-border bg-surface-1 shadow-xl shadow-black/40"
+        className="relative w-full max-w-md rounded-xl border border-border bg-surface-1"
+        style={{ boxShadow: "var(--kad-shadow-1)" }}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-start gap-3 p-5">
@@ -60,12 +61,14 @@ export function ConfirmModal({
             </div>
           )}
           <div className="min-w-0 flex-1">
-            <h3 className="text-sm font-semibold text-gray-100">{title}</h3>
-            {message && <p className="text-xs text-gray-400 mt-1 leading-relaxed">{message}</p>}
+            <h3 className="text-sm font-semibold text-kad-text-strong">{title}</h3>
+            {message && (
+              <p className="text-xs text-kad-text-muted mt-1 leading-relaxed">{message}</p>
+            )}
           </div>
           <button
             onClick={onCancel}
-            className="text-gray-500 hover:text-gray-300 p-1 -mt-1 -mr-1"
+            className="text-kad-text-muted hover:text-kad-text p-1 -mt-1 -mr-1"
             aria-label={cancelLabel}
           >
             <X className="w-4 h-4" />

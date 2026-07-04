@@ -48,35 +48,35 @@ function StatTile({
   tone?: "default" | "violet" | "emerald" | "amber" | "rose" | "cyan" | "blue";
 }) {
   const palette = {
-    default: "border-surface-3 bg-surface-2 text-gray-200",
-    violet: "border-violet-500/20 bg-violet-500/5 text-violet-200",
-    emerald: "border-emerald-500/20 bg-emerald-500/5 text-emerald-200",
-    amber: "border-amber-500/20 bg-amber-500/5 text-amber-200",
-    rose: "border-rose-500/20 bg-rose-500/5 text-rose-200",
-    cyan: "border-cyan-500/20 bg-cyan-500/5 text-cyan-200",
-    blue: "border-blue-500/20 bg-blue-500/5 text-blue-200",
+    default: "border-surface-3 bg-surface-2 text-kad-text",
+    violet: "border-violet-500/20 bg-violet-500/5 text-violet-700",
+    emerald: "border-emerald-500/20 bg-emerald-500/5 text-emerald-700",
+    amber: "border-amber-500/20 bg-amber-500/5 text-amber-700",
+    rose: "border-rose-500/20 bg-rose-500/5 text-rose-700",
+    cyan: "border-cyan-500/20 bg-cyan-500/5 text-cyan-700",
+    blue: "border-blue-500/20 bg-blue-500/5 text-blue-700",
   }[tone];
 
   const iconTone = {
-    default: "text-gray-500",
-    violet: "text-violet-400",
-    emerald: "text-emerald-400",
-    amber: "text-amber-400",
-    rose: "text-rose-400",
-    cyan: "text-cyan-400",
-    blue: "text-blue-400",
+    default: "text-kad-text-muted",
+    violet: "text-violet-600",
+    emerald: "text-emerald-600",
+    amber: "text-amber-600",
+    rose: "text-rose-600",
+    cyan: "text-cyan-600",
+    blue: "text-blue-600",
   }[tone];
 
   return (
     <div className={`rounded-lg border px-3 py-2.5 ${palette}`}>
-      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-gray-500">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-kad-text-muted">
         <span className={iconTone}>{icon}</span>
         {label}
       </div>
-      <div className="mt-1 font-mono text-lg font-semibold text-gray-100 leading-tight">
+      <div className="mt-1 font-mono text-lg font-semibold text-kad-text-strong leading-tight">
         {value}
       </div>
-      {hint && <div className="text-[10px] text-gray-500 mt-0.5">{hint}</div>}
+      {hint && <div className="text-[10px] text-kad-text-muted mt-0.5">{hint}</div>}
     </div>
   );
 }
@@ -104,7 +104,7 @@ function ToolUsageRow({ toolName, count, max }: { toolName: string; count: numbe
           style={{ width: `${pct}%` }}
         />
       </div>
-      <span className="font-mono text-xs text-gray-400 w-14 text-right flex-shrink-0">
+      <span className="font-mono text-xs text-kad-text-muted w-14 text-right flex-shrink-0">
         {count.toLocaleString()}
       </span>
     </div>
@@ -236,13 +236,16 @@ export function SessionOverview({ session, agents }: SessionOverviewProps) {
             {activeAgent.name || "Agent"}
           </span>
           {activeAgent.current_tool && (
-            <span className="text-[11px] text-gray-400 font-mono inline-flex items-center gap-1">
-              <span className="text-gray-600">running</span>
-              <span className="text-emerald-300">{activeAgent.current_tool}</span>
+            <span className="text-[11px] text-kad-text-muted font-mono inline-flex items-center gap-1">
+              <span className="text-kad-text-muted">running</span>
+              <span className="text-emerald-700">{activeAgent.current_tool}</span>
             </span>
           )}
           {activeAgent.task && (
-            <span className="text-[11px] text-gray-400 truncate min-w-0" title={activeAgent.task}>
+            <span
+              className="text-[11px] text-kad-text-muted truncate min-w-0"
+              title={activeAgent.task}
+            >
               · {activeAgent.task}
             </span>
           )}
@@ -301,16 +304,16 @@ export function SessionOverview({ session, agents }: SessionOverviewProps) {
         {/* Tool usage */}
         <div className="lg:col-span-2 rounded-lg border border-surface-3 bg-surface-2/60 p-3.5">
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Wrench className="w-3.5 h-3.5 text-violet-400" />
+            <h3 className="text-xs font-semibold text-kad-text uppercase tracking-wider flex items-center gap-1.5">
+              <Wrench className="w-3.5 h-3.5 text-violet-600" />
               Top tools
             </h3>
-            <span className="text-[10px] text-gray-500 font-mono">
+            <span className="text-[10px] text-kad-text-muted font-mono">
               {stats.tools_used.length} total
             </span>
           </div>
           {stats.tools_used.length === 0 ? (
-            <div className="text-center py-6 text-xs text-gray-500">No tool calls yet.</div>
+            <div className="text-center py-6 text-xs text-kad-text-muted">No tool calls yet.</div>
           ) : (
             <div className="space-y-1.5">
               {stats.tools_used.slice(0, 8).map((t) => (
@@ -360,14 +363,16 @@ export function SessionOverview({ session, agents }: SessionOverviewProps) {
             return (
               <>
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-                    <GitBranch className="w-3.5 h-3.5 text-cyan-400" />
+                  <h3 className="text-xs font-semibold text-kad-text uppercase tracking-wider flex items-center gap-1.5">
+                    <GitBranch className="w-3.5 h-3.5 text-cyan-600" />
                     Subagents
                   </h3>
-                  <span className="text-[10px] text-gray-500 font-mono">{totalRuns} runs</span>
+                  <span className="text-[10px] text-kad-text-muted font-mono">
+                    {totalRuns} runs
+                  </span>
                 </div>
                 {rows.length === 0 ? (
-                  <div className="text-center py-6 text-xs text-gray-500">
+                  <div className="text-center py-6 text-xs text-kad-text-muted">
                     No subagents in this session.
                   </div>
                 ) : (
@@ -379,7 +384,7 @@ export function SessionOverview({ session, agents }: SessionOverviewProps) {
                         <div key={r.key} className="flex items-center gap-2">
                           <span
                             className={`font-mono text-xs truncate flex-1 min-w-0 ${
-                              r.isCompaction ? "text-amber-300" : "text-gray-300"
+                              r.isCompaction ? "text-amber-700" : "text-kad-text"
                             }`}
                             title={r.label}
                           >
@@ -391,7 +396,7 @@ export function SessionOverview({ session, agents }: SessionOverviewProps) {
                               style={{ width: `${pct}%` }}
                             />
                           </div>
-                          <span className="font-mono text-xs text-gray-400 w-8 text-right flex-shrink-0">
+                          <span className="font-mono text-xs text-kad-text-muted w-8 text-right flex-shrink-0">
                             {r.count}
                           </span>
                         </div>
@@ -409,11 +414,13 @@ export function SessionOverview({ session, agents }: SessionOverviewProps) {
       {totalTokens > 0 && (
         <div className="rounded-lg border border-surface-3 bg-surface-2/60 p-3.5">
           <div className="flex items-center justify-between mb-2.5">
-            <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider flex items-center gap-1.5">
-              <Coins className="w-3.5 h-3.5 text-amber-400" />
+            <h3 className="text-xs font-semibold text-kad-text uppercase tracking-wider flex items-center gap-1.5">
+              <Coins className="w-3.5 h-3.5 text-amber-600" />
               Token flow
             </h3>
-            <span className="text-[10px] text-gray-500 font-mono">{fmt(totalTokens)} total</span>
+            <span className="text-[10px] text-kad-text-muted font-mono">
+              {fmt(totalTokens)} total
+            </span>
           </div>
           <TokenFlowBar tokens={tokens} total={totalTokens} />
         </div>
@@ -422,8 +429,8 @@ export function SessionOverview({ session, agents }: SessionOverviewProps) {
       {/* Event-type breakdown - secondary, only top 6 */}
       {stats.events_by_type.length > 0 && (
         <div className="rounded-lg border border-surface-3 bg-surface-2/60 p-3.5">
-          <h3 className="text-xs font-semibold text-gray-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-            <Activity className="w-3.5 h-3.5 text-gray-400" />
+          <h3 className="text-xs font-semibold text-kad-text uppercase tracking-wider mb-3 flex items-center gap-1.5">
+            <Activity className="w-3.5 h-3.5 text-kad-text-muted" />
             Event mix
           </h3>
           <div className="flex flex-wrap gap-1.5">
@@ -432,9 +439,9 @@ export function SessionOverview({ session, agents }: SessionOverviewProps) {
                 key={e.event_type}
                 className="inline-flex items-center gap-1.5 text-[11px] font-mono bg-surface-3/60 border border-surface-3 rounded-md px-2 py-0.5"
               >
-                <span className="text-gray-400">{e.event_type}</span>
-                <span className="text-gray-500">·</span>
-                <span className="text-gray-200">{e.count.toLocaleString()}</span>
+                <span className="text-kad-text-muted">{e.event_type}</span>
+                <span className="text-kad-text-muted">·</span>
+                <span className="text-kad-text">{e.count.toLocaleString()}</span>
               </span>
             ))}
           </div>
@@ -451,28 +458,28 @@ function TokenFlowBar({ tokens, total }: { tokens: SessionStats["tokens"]; total
       label: "Cache read",
       value: tokens.cache_read_tokens,
       cls: "bg-sky-500",
-      text: "text-sky-300",
+      text: "text-sky-700",
     },
     {
       key: "cache_write",
       label: "Cache write",
       value: tokens.cache_write_tokens,
       cls: "bg-violet-500",
-      text: "text-violet-300",
+      text: "text-violet-700",
     },
     {
       key: "input",
       label: "Input",
       value: tokens.input_tokens,
       cls: "bg-emerald-500",
-      text: "text-emerald-300",
+      text: "text-emerald-700",
     },
     {
       key: "output",
       label: "Output",
       value: tokens.output_tokens,
       cls: "bg-orange-500",
-      text: "text-orange-300",
+      text: "text-orange-700",
     },
   ];
 
@@ -498,11 +505,11 @@ function TokenFlowBar({ tokens, total }: { tokens: SessionStats["tokens"]; total
           return (
             <div key={s.key} className="flex items-center gap-2">
               <span className={`block w-2 h-2 rounded-full ${s.cls}`} />
-              <span className="text-gray-500 text-[11px]">{s.label}</span>
+              <span className="text-kad-text-muted text-[11px]">{s.label}</span>
               <span className={`font-mono ml-auto ${s.text}`}>
                 {fmt(s.value)}
                 {pct > 0 && (
-                  <span className="text-gray-600 text-[10px] ml-1">
+                  <span className="text-kad-text-muted text-[10px] ml-1">
                     {pct >= 1 ? Math.round(pct) : pct.toFixed(1)}%
                   </span>
                 )}

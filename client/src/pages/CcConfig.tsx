@@ -460,12 +460,12 @@ export function CcConfig() {
       <div className="rounded-xl border border-border bg-surface-1">
         {tab !== "overview" && (
           <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-            <Search className="w-4 h-4 text-gray-500" />
+            <Search className="w-4 h-4 text-kad-text-muted" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("common.search")}
-              className="bg-transparent text-sm text-gray-100 placeholder:text-gray-500 focus:outline-none flex-1"
+              className="bg-transparent text-sm text-kad-text-strong placeholder:text-kad-text-muted focus:outline-none flex-1"
             />
             {isMutable(tab) && tab !== "memory" && (
               <button
@@ -547,20 +547,20 @@ function Header({
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-gray-100">{t("title")}</h1>
+            <h1 className="text-lg font-semibold text-kad-text-strong">{t("title")}</h1>
             {wsConnected ? (
               <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
                 {tCommon("live")}
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-500/10 border border-gray-500/20 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+              <span className="flex items-center gap-1.5 text-[11px] text-kad-text-muted bg-kad-surface-2 border border-kad-border px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-kad-text-faint" />
                 {tCommon("offline")}
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 max-w-2xl">{t("subtitle")}</p>
+          <p className="text-xs text-kad-text-muted max-w-2xl">{t("subtitle")}</p>
         </div>
       </div>
       <div className="flex flex-col items-stretch lg:items-end gap-2 flex-shrink-0">
@@ -568,7 +568,7 @@ function Header({
           <ScopeToggle value={scope} onChange={onScopeChange} />
           <button
             onClick={onOpenBackups}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-gray-200 hover:bg-surface-3 transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-kad-text hover:bg-surface-3 transition-colors"
           >
             <History className="w-3.5 h-3.5" />
             {t("backups.openButton")}
@@ -576,14 +576,14 @@ function Header({
           <button
             onClick={onRefresh}
             disabled={loading}
-            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-gray-200 hover:bg-surface-3 disabled:opacity-60 transition-colors"
+            className="inline-flex items-center gap-2 rounded-lg border border-border bg-surface-2 px-3 py-1.5 text-xs font-medium text-kad-text hover:bg-surface-3 disabled:opacity-60 transition-colors"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
             {loading ? t("refreshing") : t("refresh")}
           </button>
         </div>
         {lastUpdated && (
-          <span className="text-[11px] text-gray-500 self-end">
+          <span className="text-[11px] text-kad-text-muted self-end">
             {t("lastUpdated", { time: formatted })}
           </span>
         )}
@@ -608,7 +608,7 @@ function ScopeToggle({ value, onChange }: { value: CcScope; onChange: (s: CcScop
           className={`px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors ${
             value === o.v
               ? "bg-accent/20 text-accent border border-accent/30"
-              : "text-gray-400 hover:text-gray-200"
+              : "text-kad-text-muted hover:text-kad-text"
           }`}
         >
           {o.label}
@@ -706,17 +706,12 @@ function Tabs({ current, onSelect, counts }: TabsProps) {
   };
   return (
     <div className="relative rounded-xl border border-border bg-surface-1">
-      {/* Left edge gradient + chevron */}
-      <div
-        className={`pointer-events-none absolute left-0 top-0 bottom-0 w-12 rounded-l-xl bg-gradient-to-r from-surface-1 to-transparent transition-opacity z-10 ${
-          canScrollLeft ? "opacity-100" : "opacity-0"
-        }`}
-      />
+      {/* Left edge scroll affordance (chevron only - flat design, no fade) */}
       {canScrollLeft && (
         <button
           onClick={() => scrollByButton(-1)}
           aria-label="scroll tabs left"
-          className="absolute left-1 top-1/2 -translate-y-1/2 z-20 rounded-md w-7 h-7 flex items-center justify-center bg-surface-2 border border-border text-gray-300 hover:text-gray-100 hover:bg-surface-3"
+          className="absolute left-1 top-1/2 -translate-y-1/2 z-20 rounded-md w-7 h-7 flex items-center justify-center bg-surface-2 border border-border text-kad-text hover:text-kad-text-strong hover:bg-surface-3"
         >
           <ChevronLeft className="w-4 h-4" />
         </button>
@@ -738,7 +733,7 @@ function Tabs({ current, onSelect, counts }: TabsProps) {
               className={`flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors flex-shrink-0 whitespace-nowrap ${
                 active
                   ? "bg-accent/15 text-accent border border-accent/30"
-                  : "text-gray-400 hover:text-gray-200 hover:bg-surface-3 border border-transparent"
+                  : "text-kad-text-muted hover:text-kad-text hover:bg-surface-3 border border-transparent"
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -746,7 +741,7 @@ function Tabs({ current, onSelect, counts }: TabsProps) {
               {c !== null && (
                 <span
                   className={`text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${
-                    active ? "bg-accent/20 text-accent" : "bg-surface-3 text-gray-400"
+                    active ? "bg-accent/20 text-accent" : "bg-surface-3 text-kad-text-muted"
                   }`}
                 >
                   {c}
@@ -757,17 +752,12 @@ function Tabs({ current, onSelect, counts }: TabsProps) {
         })}
       </div>
 
-      {/* Right edge gradient + chevron */}
-      <div
-        className={`pointer-events-none absolute right-0 top-0 bottom-0 w-12 rounded-r-xl bg-gradient-to-l from-surface-1 to-transparent transition-opacity z-10 ${
-          canScrollRight ? "opacity-100" : "opacity-0"
-        }`}
-      />
+      {/* Right edge scroll affordance (chevron only - flat design, no fade) */}
       {canScrollRight && (
         <button
           onClick={() => scrollByButton(1)}
           aria-label="scroll tabs right"
-          className="absolute right-1 top-1/2 -translate-y-1/2 z-20 rounded-md w-7 h-7 flex items-center justify-center bg-surface-2 border border-border text-gray-300 hover:text-gray-100 hover:bg-surface-3"
+          className="absolute right-1 top-1/2 -translate-y-1/2 z-20 rounded-md w-7 h-7 flex items-center justify-center bg-surface-2 border border-border text-kad-text hover:text-kad-text-strong hover:bg-surface-3"
         >
           <ChevronRight className="w-4 h-4" />
         </button>
@@ -997,7 +987,7 @@ function OverviewPanel({ overview }: { overview: CcOverview | null }) {
   return (
     <div className="space-y-5">
       <section>
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-2">
           {t("overview.rootsTitle")}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -1029,7 +1019,7 @@ function OverviewPanel({ overview }: { overview: CcOverview | null }) {
       </section>
 
       <section>
-        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-2">
           {t("overview.summary")}
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
@@ -1131,14 +1121,14 @@ function SummaryStat({ tone, icon: Icon, label, value, user, project }: SummaryS
           >
             <Icon className={`w-3.5 h-3.5 ${T.iconText}`} />
           </span>
-          <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 truncate">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-kad-text-muted truncate">
             {label}
           </span>
         </div>
         <div className="mt-1.5 flex items-baseline gap-2">
-          <span className="text-xl font-semibold text-gray-100 tabular-nums">{total}</span>
+          <span className="text-xl font-semibold text-kad-text-strong tabular-nums">{total}</span>
           {showBreakdown && (
-            <span className="text-[10px] text-gray-500 truncate">
+            <span className="text-[10px] text-kad-text-muted truncate">
               {user} {t("overview.user")} · {project} {t("overview.project")}
             </span>
           )}
@@ -1169,10 +1159,10 @@ function RootRow({
         <Icon className={`w-3.5 h-3.5 ${T.iconText}`} />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-kad-text-muted">
           {label}
         </div>
-        <div className="font-mono text-[11px] text-gray-200 truncate">{value}</div>
+        <div className="font-mono text-[11px] text-kad-text truncate">{value}</div>
       </div>
       <CopyButton value={value} />
     </div>
@@ -1263,7 +1253,7 @@ function MdItemCard({ item, onOpen, onEdit, onDelete, kind }: MdItemCardProps) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-mono text-sm text-gray-100 truncate">{item.name}</span>
+            <span className="font-mono text-sm text-kad-text-strong truncate">{item.name}</span>
             <ScopeBadge scope={item.scope} />
             {item.frontmatter.model && (
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-accent/10 text-accent border border-accent/20">
@@ -1272,29 +1262,29 @@ function MdItemCard({ item, onOpen, onEdit, onDelete, kind }: MdItemCardProps) {
             )}
           </div>
           {description && (
-            <p className="mt-1.5 text-xs text-gray-400 leading-relaxed line-clamp-2">
+            <p className="mt-1.5 text-xs text-kad-text-muted leading-relaxed line-clamp-2">
               {description}
             </p>
           )}
           {kind === "agents" && item.frontmatter.tools && (
-            <div className="mt-2 text-[11px] text-gray-500">
-              <span className="text-gray-500">{t("agents.tools")}:</span>{" "}
-              <span className="font-mono text-gray-400">{item.frontmatter.tools}</span>
+            <div className="mt-2 text-[11px] text-kad-text-muted">
+              <span className="text-kad-text-muted">{t("agents.tools")}:</span>{" "}
+              <span className="font-mono text-kad-text-muted">{item.frontmatter.tools}</span>
             </div>
           )}
-          <div className="mt-2 font-mono text-[10px] text-gray-600 truncate">{filePath}</div>
+          <div className="mt-2 font-mono text-[10px] text-kad-text-muted truncate">{filePath}</div>
         </div>
         <div className="flex flex-col gap-1.5 flex-shrink-0">
           <button
             onClick={() => onOpen(filePath)}
-            className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100 inline-flex items-center gap-1.5"
+            className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong inline-flex items-center gap-1.5"
           >
             <ExternalLink className="w-3 h-3" />
             {t("common.viewSource")}
           </button>
           <button
             onClick={() => onEdit(artifactType, { scope: item.scope, name: item.name, filePath })}
-            className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100 inline-flex items-center gap-1.5"
+            className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong inline-flex items-center gap-1.5"
           >
             <Pencil className="w-3 h-3" />
             {t("edit.editButton")}
@@ -1329,7 +1319,7 @@ function PluginsPanel({ data, search }: { data: CcPluginsResponse | null; search
         howTo={t("explain.plugins.install")}
         commands={[{ cmd: t("explain.plugins.installCmd"), note: "" }]}
       />
-      <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 flex items-center gap-2 text-[11px] text-gray-500">
+      <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 flex items-center gap-2 text-[11px] text-kad-text-muted">
         <FileText className="w-3.5 h-3.5" />
         <span className="font-mono truncate">{data.manifestPath}</span>
         {!data.manifestExists && (
@@ -1389,9 +1379,9 @@ function PluginCard({ plugin: p }: { plugin: CcPlugin }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-mono text-sm text-gray-100">{p.name}</span>
+            <span className="font-mono text-sm text-kad-text-strong">{p.name}</span>
             {p.marketplace && (
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-gray-400 border border-border">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-kad-text-muted border border-border">
                 {p.marketplace}
               </span>
             )}
@@ -1408,7 +1398,7 @@ function PluginCard({ plugin: p }: { plugin: CcPlugin }) {
               </span>
             )}
             {p.enabled === false && (
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-500/10 text-gray-400 border border-gray-500/30 inline-flex items-center gap-1">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-kad-surface-2 text-kad-text-muted border border-kad-border inline-flex items-center gap-1">
                 <CircleSlash className="w-3 h-3" />
                 {t("plugins.disabled")}
               </span>
@@ -1421,18 +1411,18 @@ function PluginCard({ plugin: p }: { plugin: CcPlugin }) {
             )}
           </div>
           {description && (
-            <p className="mt-1.5 text-xs text-gray-400 leading-relaxed">{description}</p>
+            <p className="mt-1.5 text-xs text-kad-text-muted leading-relaxed">{description}</p>
           )}
           {contribCounts.length > 0 && (
             <div className="mt-2.5">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1">
                 {t("plugins.contributes")}
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {contribCounts.map((c) => (
                   <span
                     key={c.key}
-                    className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface-3 text-gray-300 border border-border"
+                    className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-surface-3 text-kad-text border border-border"
                   >
                     {c.label}
                   </span>
@@ -1440,38 +1430,38 @@ function PluginCard({ plugin: p }: { plugin: CcPlugin }) {
               </div>
             </div>
           )}
-          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500">
+          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-kad-text-muted">
             {meta?.author?.name && (
               <div>
-                <span className="text-gray-600">{t("plugins.author")}:</span> {meta.author.name}
+                <span className="text-kad-text-muted">{t("plugins.author")}:</span> {meta.author.name}
               </div>
             )}
             {meta?.license && (
               <div>
-                <span className="text-gray-600">{t("plugins.license")}:</span> {meta.license}
+                <span className="text-kad-text-muted">{t("plugins.license")}:</span> {meta.license}
               </div>
             )}
             {p.installedAt && (
               <div>
-                <span className="text-gray-600">{t("plugins.installedAt")}:</span>{" "}
+                <span className="text-kad-text-muted">{t("plugins.installedAt")}:</span>{" "}
                 {new Date(p.installedAt).toLocaleString()}
               </div>
             )}
             {p.lastUpdated && (
               <div>
-                <span className="text-gray-600">{t("plugins.lastUpdated")}:</span>{" "}
+                <span className="text-kad-text-muted">{t("plugins.lastUpdated")}:</span>{" "}
                 {new Date(p.lastUpdated).toLocaleString()}
               </div>
             )}
             {p.gitCommitSha && (
               <div className="col-span-2">
-                <span className="text-gray-600">SHA:</span>{" "}
+                <span className="text-kad-text-muted">SHA:</span>{" "}
                 <span className="font-mono">{p.gitCommitSha.slice(0, 12)}</span>
               </div>
             )}
             {meta?.homepage && (
               <div className="col-span-2 truncate">
-                <span className="text-gray-600">{t("plugins.homepage")}:</span>{" "}
+                <span className="text-kad-text-muted">{t("plugins.homepage")}:</span>{" "}
                 <a
                   href={meta.homepage}
                   target="_blank"
@@ -1485,7 +1475,7 @@ function PluginCard({ plugin: p }: { plugin: CcPlugin }) {
           </div>
           {p.installPath && (
             <div className="mt-2 flex items-center gap-2">
-              <span className="font-mono text-[10px] text-gray-600 truncate flex-1">
+              <span className="font-mono text-[10px] text-kad-text-muted truncate flex-1">
                 {p.installPath}
               </span>
               <CopyButton value={p.installPath} />
@@ -1523,13 +1513,13 @@ function McpPanel({ data, search }: { data: CcMcpResponse | null; search: string
         ]}
       />
       {all.length === 0 && (
-        <div className="rounded-lg border border-border bg-surface-2 px-4 py-6 text-center text-sm text-gray-500">
+        <div className="rounded-lg border border-border bg-surface-2 px-4 py-6 text-center text-sm text-kad-text-muted">
           {t("mcp.noServers")}
         </div>
       )}
       {data.user.length > 0 && (
         <div>
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-2">
             {t("mcp.userScope")}
           </h3>
           <div className="space-y-2">
@@ -1541,7 +1531,7 @@ function McpPanel({ data, search }: { data: CcMcpResponse | null; search: string
       )}
       {data.projectScoped.length > 0 && (
         <div>
-          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-2">
+          <h3 className="text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-2">
             {t("mcp.projectScope")}
           </h3>
           <div className="space-y-2">
@@ -1560,26 +1550,26 @@ function McpCard({ server }: { server: CcMcpServer }) {
   return (
     <div className="rounded-lg border border-border bg-surface-2 px-4 py-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <span className="font-mono text-sm text-gray-100">{server.name}</span>
-        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-gray-400 border border-border">
+        <span className="font-mono text-sm text-kad-text-strong">{server.name}</span>
+        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-kad-text-muted border border-border">
           {server.kind}
         </span>
-        <span className="text-[10px] text-gray-500 ml-auto truncate max-w-xs">{server.source}</span>
+        <span className="text-[10px] text-kad-text-muted ml-auto truncate max-w-xs">{server.source}</span>
       </div>
       <div className="mt-2 space-y-1 text-[11px]">
         {server.kind === "stdio" && (
           <>
             <Field label={t("mcp.command")}>
-              <span className="font-mono text-gray-300">{server.command}</span>
+              <span className="font-mono text-kad-text">{server.command}</span>
             </Field>
             {server.args && server.args.length > 0 && (
               <Field label={t("mcp.args")}>
-                <span className="font-mono text-gray-400">{server.args.join(" ")}</span>
+                <span className="font-mono text-kad-text-muted">{server.args.join(" ")}</span>
               </Field>
             )}
             {server.envNames && server.envNames.length > 0 && (
               <Field label={t("mcp.env")}>
-                <span className="font-mono text-gray-400">{server.envNames.join(", ")}</span>
+                <span className="font-mono text-kad-text-muted">{server.envNames.join(", ")}</span>
               </Field>
             )}
           </>
@@ -1587,11 +1577,11 @@ function McpCard({ server }: { server: CcMcpServer }) {
         {server.kind === "http" && (
           <>
             <Field label={t("mcp.url")}>
-              <span className="font-mono text-gray-300">{server.url}</span>
+              <span className="font-mono text-kad-text">{server.url}</span>
             </Field>
             {server.headers && server.headers.length > 0 && (
               <Field label={t("mcp.headers")}>
-                <span className="font-mono text-gray-400">{server.headers.join(", ")}</span>
+                <span className="font-mono text-kad-text-muted">{server.headers.join(", ")}</span>
               </Field>
             )}
           </>
@@ -1610,7 +1600,7 @@ function McpCard({ server }: { server: CcMcpServer }) {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="flex gap-2">
-      <span className="text-gray-600 min-w-20">{label}:</span>
+      <span className="text-kad-text-muted min-w-20">{label}:</span>
       <span className="min-w-0 flex-1 truncate">{children}</span>
     </div>
   );
@@ -1652,32 +1642,32 @@ function HooksPanel({
           <div key={src.scope} className="rounded-lg border border-border bg-surface-2">
             <div className="border-b border-border px-4 py-2.5 flex items-center gap-2">
               <ScopeBadge scope={src.scope} />
-              <span className="font-mono text-[11px] text-gray-500 truncate flex-1">
+              <span className="font-mono text-[11px] text-kad-text-muted truncate flex-1">
                 {src.file}
               </span>
               {src.exists ? (
                 <button
                   onClick={() => onOpen(src.file)}
-                  className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100 inline-flex items-center gap-1.5"
+                  className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong inline-flex items-center gap-1.5"
                 >
                   <ExternalLink className="w-3 h-3" />
                   {t("common.viewSource")}
                 </button>
               ) : (
-                <span className="text-[11px] text-gray-600">{t("hooks.fileMissing")}</span>
+                <span className="text-[11px] text-kad-text-muted">{t("hooks.fileMissing")}</span>
               )}
             </div>
             <div className="p-3">
               {filteredEvents.length === 0 ? (
-                <div className="text-xs text-gray-500 px-1 py-2">{t("hooks.noHooks")}</div>
+                <div className="text-xs text-kad-text-muted px-1 py-2">{t("hooks.noHooks")}</div>
               ) : (
                 <div className="space-y-3">
                   {filteredEvents.map(([event, entries]) => (
                     <div key={event}>
-                      <div className="text-[11px] font-semibold text-gray-300 mb-1.5 inline-flex items-center gap-2">
-                        <Wrench className="w-3 h-3 text-gray-500" />
+                      <div className="text-[11px] font-semibold text-kad-text mb-1.5 inline-flex items-center gap-2">
+                        <Wrench className="w-3 h-3 text-kad-text-muted" />
                         {event}
-                        <span className="text-[10px] text-gray-600">({entries.length})</span>
+                        <span className="text-[10px] text-kad-text-muted">({entries.length})</span>
                       </div>
                       <div className="space-y-1.5 pl-5">
                         {entries.map((h, idx) => (
@@ -1686,17 +1676,17 @@ function HooksPanel({
                             className="rounded-md border border-border bg-surface-1 px-2.5 py-1.5 text-[11px]"
                           >
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] text-gray-500">
+                              <span className="font-mono text-[10px] text-kad-text-muted">
                                 {t("hooks.matcher")}={h.matcher}
                               </span>
-                              <span className="text-[10px] text-gray-600">·</span>
-                              <span className="font-mono text-[10px] text-gray-500">{h.type}</span>
+                              <span className="text-[10px] text-kad-text-muted">·</span>
+                              <span className="font-mono text-[10px] text-kad-text-muted">{h.type}</span>
                               {h.timeout != null && (
-                                <span className="text-[10px] text-gray-600">{h.timeout}ms</span>
+                                <span className="text-[10px] text-kad-text-muted">{h.timeout}ms</span>
                               )}
                             </div>
                             {h.command && (
-                              <div className="mt-1 font-mono text-[11px] text-gray-300 break-all">
+                              <div className="mt-1 font-mono text-[11px] text-kad-text break-all">
                                 {h.command}
                               </div>
                             )}
@@ -1715,11 +1705,11 @@ function HooksPanel({
       {scripts && scripts.items.length > 0 && (
         <div className="rounded-lg border border-border bg-surface-2">
           <div className="border-b border-border px-4 py-2.5">
-            <div className="text-sm font-medium text-gray-100">{t("hookScripts.title")}</div>
-            <p className="mt-1 text-[11px] text-gray-500 leading-relaxed">
+            <div className="text-sm font-medium text-kad-text-strong">{t("hookScripts.title")}</div>
+            <p className="mt-1 text-[11px] text-kad-text-muted leading-relaxed">
               {t("hookScripts.subtitle")}
             </p>
-            <div className="mt-1 font-mono text-[10px] text-gray-600">{scripts.dir}</div>
+            <div className="mt-1 font-mono text-[10px] text-kad-text-muted">{scripts.dir}</div>
           </div>
           <div className="p-3 space-y-1.5">
             {scripts.items.map((s) => (
@@ -1728,12 +1718,12 @@ function HooksPanel({
                 onClick={() => onOpen(s.file)}
                 className="w-full text-left rounded-md border border-border bg-surface-1 hover:bg-surface-3 px-3 py-1.5 inline-flex items-center gap-2"
               >
-                <FileText className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                <span className="font-mono text-[11px] text-gray-200 flex-1 truncate">
+                <FileText className="w-3 h-3 text-kad-text-muted flex-shrink-0" />
+                <span className="font-mono text-[11px] text-kad-text flex-1 truncate">
                   {s.name}
                 </span>
-                <span className="text-[10px] text-gray-500">{formatBytes(s.size)}</span>
-                <span className="text-[10px] text-gray-600 hidden md:inline">
+                <span className="text-[10px] text-kad-text-muted">{formatBytes(s.size)}</span>
+                <span className="text-[10px] text-kad-text-muted hidden md:inline">
                   {new Date(s.mtime).toLocaleDateString()}
                 </span>
               </button>
@@ -1810,15 +1800,15 @@ function CurrentConfigPanel({ sources }: { sources: CcSettingsSource[] }) {
     <div className="rounded-lg border border-border bg-surface-2">
       <div className="border-b border-border px-4 py-2.5 flex items-center gap-2">
         <SettingsIcon className="w-3.5 h-3.5 text-violet-300/80" />
-        <span className="text-sm font-medium text-gray-100">Current configuration</span>
-        <span className="text-[11px] text-gray-500 ml-auto">
+        <span className="text-sm font-medium text-kad-text-strong">Current configuration</span>
+        <span className="text-[11px] text-kad-text-muted ml-auto">
           {setCount} option{setCount !== 1 ? "s" : ""} set · the rest use defaults
         </span>
       </div>
       <div className="p-3 space-y-3">
         {CONFIG_OPTION_GROUPS.map((group) => (
           <div key={group.title}>
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1.5">
               {group.title}
             </div>
             <div className="rounded-md border border-border bg-surface-1 divide-y divide-border">
@@ -1829,18 +1819,18 @@ function CurrentConfigPanel({ sources }: { sources: CcSettingsSource[] }) {
                     key={key}
                     className="px-3 py-1.5 grid grid-cols-[150px_1fr_auto] gap-3 items-center"
                   >
-                    <div className="text-[11px] text-gray-300 truncate">{label}</div>
+                    <div className="text-[11px] text-kad-text truncate">{label}</div>
                     <div className="min-w-0">
                       {hit ? (
                         <SettingsValue value={hit.value} />
                       ) : (
-                        <span className="text-[10px] text-gray-600 italic">default</span>
+                        <span className="text-[10px] text-kad-text-muted italic">default</span>
                       )}
                     </div>
                     {hit ? (
                       <ScopeBadge scope={hit.scope} />
                     ) : (
-                      <span className="text-[10px] text-gray-700">-</span>
+                      <span className="text-[10px] text-kad-text-faint">-</span>
                     )}
                   </div>
                 );
@@ -1896,30 +1886,30 @@ function StatuslineBlock({ data, onOpen }: { data: CcStatusline; onOpen: (p: str
   return (
     <div className="rounded-lg border border-border bg-surface-2">
       <div className="border-b border-border px-4 py-2.5">
-        <div className="text-sm font-medium text-gray-100">{t("statusline.title")}</div>
+        <div className="text-sm font-medium text-kad-text-strong">{t("statusline.title")}</div>
       </div>
       <div className="p-3 space-y-3">
         {data.config ? (
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1.5">
               {t("statusline.configured")}
             </div>
-            <div className="rounded-md border border-border bg-surface-1 px-3 py-2 text-[11px] font-mono text-gray-200">
-              <span className="text-gray-500">type:</span> {data.config.type ?? "-"}
+            <div className="rounded-md border border-border bg-surface-1 px-3 py-2 text-[11px] font-mono text-kad-text">
+              <span className="text-kad-text-muted">type:</span> {data.config.type ?? "-"}
               {data.config.command && (
                 <>
                   <br />
-                  <span className="text-gray-500">command:</span> {data.config.command}
+                  <span className="text-kad-text-muted">command:</span> {data.config.command}
                 </>
               )}
             </div>
           </div>
         ) : (
-          <div className="text-xs text-gray-500">{t("statusline.noStatusline")}</div>
+          <div className="text-xs text-kad-text-muted">{t("statusline.noStatusline")}</div>
         )}
         {data.scripts.length > 0 && (
           <div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1.5">
               {t("statusline.scripts")}
             </div>
             <div className="space-y-1.5">
@@ -1929,11 +1919,11 @@ function StatuslineBlock({ data, onOpen }: { data: CcStatusline; onOpen: (p: str
                   onClick={() => onOpen(s.file)}
                   className="w-full text-left rounded-md border border-border bg-surface-1 hover:bg-surface-3 px-3 py-1.5 inline-flex items-center gap-2"
                 >
-                  <FileText className="w-3 h-3 text-gray-500 flex-shrink-0" />
-                  <span className="font-mono text-[11px] text-gray-200 flex-1 truncate">
+                  <FileText className="w-3 h-3 text-kad-text-muted flex-shrink-0" />
+                  <span className="font-mono text-[11px] text-kad-text flex-1 truncate">
                     {s.file}
                   </span>
-                  <span className="text-[10px] text-gray-500">{formatBytes(s.size)}</span>
+                  <span className="text-[10px] text-kad-text-muted">{formatBytes(s.size)}</span>
                 </button>
               ))}
             </div>
@@ -1957,32 +1947,32 @@ function SettingsBlock({
     <div className="rounded-lg border border-border bg-surface-2">
       <div className="border-b border-border px-4 py-2.5 flex items-center gap-2 flex-wrap">
         <ScopeBadge scope={source.scope} />
-        <span className="font-mono text-[11px] text-gray-500 truncate flex-1 min-w-0">
+        <span className="font-mono text-[11px] text-kad-text-muted truncate flex-1 min-w-0">
           {source.file}
         </span>
         {source.exists ? (
           <>
             <button
               onClick={() => setShowRaw((v) => !v)}
-              className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100"
+              className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong"
             >
               {showRaw ? "Structured" : "Raw JSON"}
             </button>
             <button
               onClick={() => onOpen(source.file)}
-              className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100 inline-flex items-center gap-1.5"
+              className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong inline-flex items-center gap-1.5"
             >
               <ExternalLink className="w-3 h-3" />
               {t("common.viewSource")}
             </button>
           </>
         ) : (
-          <span className="text-[11px] text-gray-600">{t("settings.fileMissing")}</span>
+          <span className="text-[11px] text-kad-text-muted">{t("settings.fileMissing")}</span>
         )}
       </div>
       {source.exists &&
         (showRaw ? (
-          <pre className="p-3 text-[11px] font-mono text-gray-300 overflow-auto max-h-96">
+          <pre className="p-3 text-[11px] font-mono text-kad-text overflow-auto max-h-96">
             {JSON.stringify(source.data, null, 2)}
           </pre>
         ) : (
@@ -1994,11 +1984,11 @@ function SettingsBlock({
 
 function SettingsKeyValueList({ data }: { data: Record<string, unknown> | null | undefined }) {
   if (!data || typeof data !== "object") {
-    return <div className="p-3 text-xs text-gray-500">-</div>;
+    return <div className="p-3 text-xs text-kad-text-muted">-</div>;
   }
   const entries = Object.entries(data);
   if (entries.length === 0) {
-    return <div className="p-3 text-xs text-gray-500">{}</div>;
+    return <div className="p-3 text-xs text-kad-text-muted">{}</div>;
   }
   return (
     <div className="divide-y divide-border">
@@ -2007,7 +1997,7 @@ function SettingsKeyValueList({ data }: { data: Record<string, unknown> | null |
           key={k}
           className="px-3 py-2 grid grid-cols-1 md:grid-cols-[180px_1fr] gap-1 md:gap-3 items-start"
         >
-          <div className="font-mono text-[11px] text-gray-400 truncate">{k}</div>
+          <div className="font-mono text-[11px] text-kad-text-muted truncate">{k}</div>
           <div className="min-w-0">
             <SettingsValue value={v} />
           </div>
@@ -2019,14 +2009,14 @@ function SettingsKeyValueList({ data }: { data: Record<string, unknown> | null |
 
 function SettingsValue({ value }: { value: unknown }) {
   if (value === null || value === undefined)
-    return <span className="text-[11px] text-gray-600 italic">null</span>;
+    return <span className="text-[11px] text-kad-text-muted italic">null</span>;
   if (typeof value === "boolean") {
     return (
       <span
         className={`text-[10px] font-mono px-1.5 py-0.5 rounded border ${
           value
             ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
-            : "bg-gray-500/10 text-gray-400 border-gray-500/30"
+            : "bg-kad-surface-2 text-kad-text-muted border-kad-border"
         }`}
       >
         {value ? "true" : "false"}
@@ -2034,19 +2024,19 @@ function SettingsValue({ value }: { value: unknown }) {
     );
   }
   if (typeof value === "number") {
-    return <span className="font-mono text-[11px] text-gray-200">{value}</span>;
+    return <span className="font-mono text-[11px] text-kad-text">{value}</span>;
   }
   if (typeof value === "string") {
-    return <span className="font-mono text-[11px] text-gray-200 break-all">{value}</span>;
+    return <span className="font-mono text-[11px] text-kad-text break-all">{value}</span>;
   }
   if (Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-[11px] text-gray-600">[]</span>;
+    if (value.length === 0) return <span className="text-[11px] text-kad-text-muted">[]</span>;
     return (
       <div className="flex flex-wrap gap-1">
         {value.map((item, i) => (
           <span
             key={i}
-            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-gray-300 border border-border break-all"
+            className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-kad-text border border-border break-all"
           >
             {typeof item === "object" ? JSON.stringify(item) : String(item)}
           </span>
@@ -2060,8 +2050,8 @@ function SettingsValue({ value }: { value: unknown }) {
     <div className="space-y-0.5">
       {Object.entries(obj).map(([k, v]) => (
         <div key={k} className="font-mono text-[11px]">
-          <span className="text-gray-500">{k}:</span>{" "}
-          <span className="text-gray-200 break-all">
+          <span className="text-kad-text-muted">{k}:</span>{" "}
+          <span className="text-kad-text break-all">
             {typeof v === "object" ? JSON.stringify(v) : String(v)}
           </span>
         </div>
@@ -2178,20 +2168,20 @@ function MemoryPanel({
         <div key={m.scope} className="rounded-lg border border-border bg-surface-2">
           <div className="border-b border-border px-4 py-2.5 flex items-center gap-2 flex-wrap">
             <ScopeBadge scope={m.scope} />
-            <span className="font-mono text-[11px] text-gray-500 truncate flex-1 min-w-0">
+            <span className="font-mono text-[11px] text-kad-text-muted truncate flex-1 min-w-0">
               {m.file}
             </span>
-            <span className="text-[10px] text-gray-600">{formatBytes(m.size)}</span>
+            <span className="text-[10px] text-kad-text-muted">{formatBytes(m.size)}</span>
             <button
               onClick={() => onOpen(m.file)}
-              className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100 inline-flex items-center gap-1.5"
+              className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong inline-flex items-center gap-1.5"
             >
               <ExternalLink className="w-3 h-3" />
               {t("common.viewSource")}
             </button>
             <button
               onClick={() => onEdit("memory", { scope: m.scope, name: "", filePath: m.file })}
-              className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100 inline-flex items-center gap-1.5"
+              className="text-[11px] font-medium px-2 py-1 rounded-md border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong inline-flex items-center gap-1.5"
             >
               <Pencil className="w-3 h-3" />
               {t("edit.editButton")}
@@ -2204,10 +2194,10 @@ function MemoryPanel({
               {t("edit.deleteButton")}
             </button>
           </div>
-          <pre className="p-3 text-[11px] font-mono text-gray-300 whitespace-pre-wrap break-words max-h-72 overflow-auto">
+          <pre className="p-3 text-[11px] font-mono text-kad-text whitespace-pre-wrap break-words max-h-72 overflow-auto">
             {m.preview}
             {m.truncated && (
-              <span className="text-gray-600 italic">
+              <span className="text-kad-text-muted italic">
                 {"\n\n"}
                 {t("common.truncated")}
               </span>
@@ -2224,7 +2214,7 @@ function MemoryPanel({
           >
             <div className="flex items-center gap-2">
               <ScopeBadge scope={s} />
-              <span className="text-xs text-gray-500">{t("memory.missing")}</span>
+              <span className="text-xs text-kad-text-muted">{t("memory.missing")}</span>
             </div>
             <button
               onClick={() => onCreate(s)}
@@ -2241,19 +2231,19 @@ function MemoryPanel({
         <section className="pt-1">
           <div className="flex items-center gap-2 mb-1">
             <BookOpen className="w-3.5 h-3.5 text-teal-300" />
-            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            <h3 className="text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted">
               {t("memory.autoTitle")}
             </h3>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-surface-3 text-gray-400">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full font-semibold bg-surface-3 text-kad-text-muted">
               {q ? `${autoFiltered.length}/${totalAuto}` : totalAuto}
             </span>
           </div>
-          <p className="text-[11px] text-gray-500 mb-2.5 leading-relaxed">
+          <p className="text-[11px] text-kad-text-muted mb-2.5 leading-relaxed">
             {t("memory.autoSubtitle")}
           </p>
 
           {groups.length === 0 ? (
-            <div className="rounded-lg border border-border bg-surface-2 px-4 py-6 text-center text-sm text-gray-500">
+            <div className="rounded-lg border border-border bg-surface-2 px-4 py-6 text-center text-sm text-kad-text-muted">
               {t("memory.noMatches")}
             </div>
           ) : (
@@ -2316,13 +2306,13 @@ function MemoryProjectGroup({
           className="flex items-center gap-2 px-3 py-2.5 text-left flex-1 min-w-0"
         >
           <ChevronDown
-            className={`w-3.5 h-3.5 text-gray-500 flex-shrink-0 transition-transform ${
+            className={`w-3.5 h-3.5 text-kad-text-muted flex-shrink-0 transition-transform ${
               open ? "" : "-rotate-90"
             }`}
           />
           <FolderTree className="w-3.5 h-3.5 text-teal-300 flex-shrink-0" />
-          <span className="font-mono text-xs text-gray-200 truncate flex-1 min-w-0">{project}</span>
-          <span className="text-[10px] text-gray-500 flex-shrink-0">
+          <span className="font-mono text-xs text-kad-text truncate flex-1 min-w-0">{project}</span>
+          <span className="text-[10px] text-kad-text-muted flex-shrink-0">
             {t("memory.fileCount", { count: files.length })}
           </span>
         </button>
@@ -2340,7 +2330,7 @@ function MemoryProjectGroup({
         <div className="border-t border-border p-2.5 space-y-2.5">
           {indexFiles.length > 0 && (
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5 px-1">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1.5 px-1">
                 {t("memory.indexFiles")}
               </div>
               <div className="space-y-1.5">
@@ -2358,7 +2348,7 @@ function MemoryProjectGroup({
           )}
           {factFiles.length > 0 && (
             <div>
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5 px-1">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1.5 px-1">
                 {t("memory.factFiles", { count: factFiles.length })}
               </div>
               <div className="space-y-1">
@@ -2395,14 +2385,14 @@ function MemoryAutoActions({ item, onOpen, onEditAuto, onDeleteAuto }: MemoryAut
       <button
         onClick={() => onOpen(item.file)}
         title={t("common.viewSource")}
-        className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100 inline-flex items-center gap-1"
+        className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong inline-flex items-center gap-1"
       >
         <ExternalLink className="w-2.5 h-2.5" />
       </button>
       <button
         onClick={() => onEditAuto(item)}
         title={t("edit.editButton")}
-        className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-border bg-surface-1 hover:bg-surface-3 text-gray-300 hover:text-gray-100 inline-flex items-center gap-1"
+        className="text-[10px] font-medium px-1.5 py-0.5 rounded border border-border bg-surface-1 hover:bg-surface-3 text-kad-text hover:text-kad-text-strong inline-flex items-center gap-1"
       >
         <Pencil className="w-2.5 h-2.5" />
       </button>
@@ -2422,10 +2412,10 @@ function MemoryIndexCard({ item, onOpen, onEditAuto, onDeleteAuto }: MemoryAutoI
     <div className="rounded-md border border-teal-500/20 bg-teal-500/5">
       <div className="flex items-center gap-2 px-3 py-1.5 border-b border-teal-500/15">
         <BookOpen className="w-3 h-3 text-teal-300 flex-shrink-0" />
-        <span className="font-mono text-[11px] text-gray-200 truncate flex-1 min-w-0">
+        <span className="font-mono text-[11px] text-kad-text truncate flex-1 min-w-0">
           {item.name}
         </span>
-        <span className="text-[10px] text-gray-600">{formatBytes(item.size)}</span>
+        <span className="text-[10px] text-kad-text-muted">{formatBytes(item.size)}</span>
         <MemoryAutoActions
           item={item}
           onOpen={onOpen}
@@ -2433,9 +2423,9 @@ function MemoryIndexCard({ item, onOpen, onEditAuto, onDeleteAuto }: MemoryAutoI
           onDeleteAuto={onDeleteAuto}
         />
       </div>
-      <pre className="px-3 py-2 text-[10.5px] font-mono text-gray-400 whitespace-pre-wrap break-words max-h-40 overflow-auto">
+      <pre className="px-3 py-2 text-[10.5px] font-mono text-kad-text-muted whitespace-pre-wrap break-words max-h-40 overflow-auto">
         {item.preview}
-        {item.truncated && <span className="text-gray-600 italic">{"\n…"}</span>}
+        {item.truncated && <span className="text-kad-text-muted italic">{"\n…"}</span>}
       </pre>
     </div>
   );
@@ -2445,14 +2435,14 @@ function MemoryFactRow({ item, onOpen, onEditAuto, onDeleteAuto }: MemoryAutoIte
   const desc = memoryDescription(item);
   return (
     <div className="flex items-start gap-2.5 rounded-md border border-border bg-surface-1 px-3 py-2 hover:border-border/80 transition-colors">
-      <FileText className="w-3 h-3 text-gray-500 flex-shrink-0 mt-0.5" />
+      <FileText className="w-3 h-3 text-kad-text-muted flex-shrink-0 mt-0.5" />
       <div className="min-w-0 flex-1">
-        <span className="font-mono text-[11px] text-gray-200 truncate block">{item.name}</span>
+        <span className="font-mono text-[11px] text-kad-text truncate block">{item.name}</span>
         {desc && (
-          <p className="mt-0.5 text-[11px] text-gray-500 leading-snug line-clamp-2">{desc}</p>
+          <p className="mt-0.5 text-[11px] text-kad-text-muted leading-snug line-clamp-2">{desc}</p>
         )}
       </div>
-      <span className="text-[10px] text-gray-600 flex-shrink-0 mt-0.5">
+      <span className="text-[10px] text-kad-text-muted flex-shrink-0 mt-0.5">
         {formatBytes(item.size)}
       </span>
       <div className="mt-0.5">
@@ -2492,22 +2482,22 @@ function MarketplacesPanel({
         howTo={t("marketplaces.manifest")}
         commands={[{ cmd: t("marketplaces.addCmd"), note: "" }]}
       />
-      <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 flex items-center gap-2 text-[11px] text-gray-500">
+      <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 flex items-center gap-2 text-[11px] text-kad-text-muted">
         <FileText className="w-3.5 h-3.5" />
         <span className="font-mono truncate">{data.knownPath}</span>
       </div>
       {filtered.length === 0 ? (
-        <div className="rounded-lg border border-border bg-surface-2 px-4 py-6 text-center text-sm text-gray-500">
+        <div className="rounded-lg border border-border bg-surface-2 px-4 py-6 text-center text-sm text-kad-text-muted">
           {t("marketplaces.noMarketplaces")}
         </div>
       ) : (
         filtered.map((m) => (
           <div key={m.name} className="rounded-lg border border-border bg-surface-2 px-4 py-3">
             <div className="flex items-center gap-2 flex-wrap">
-              <Store className="w-3.5 h-3.5 text-gray-500" />
-              <span className="font-mono text-sm text-gray-100">{m.name}</span>
+              <Store className="w-3.5 h-3.5 text-kad-text-muted" />
+              <span className="font-mono text-sm text-kad-text-strong">{m.name}</span>
               {m.marketplaceName && m.marketplaceName !== m.name && (
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-gray-400 border border-border">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-kad-text-muted border border-border">
                   {m.marketplaceName}
                 </span>
               )}
@@ -2518,14 +2508,14 @@ function MarketplacesPanel({
               )}
             </div>
             {m.marketplaceDescription && (
-              <p className="mt-1.5 text-xs text-gray-400 leading-relaxed line-clamp-2">
+              <p className="mt-1.5 text-xs text-kad-text-muted leading-relaxed line-clamp-2">
                 {m.marketplaceDescription}
               </p>
             )}
-            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-500">
+            <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-kad-text-muted">
               {m.source && (
                 <div className="col-span-2 truncate">
-                  <span className="text-gray-600">{t("marketplaces.source")}:</span>{" "}
+                  <span className="text-kad-text-muted">{t("marketplaces.source")}:</span>{" "}
                   <span className="font-mono">
                     {m.source.source === "github" && m.source.repo
                       ? `github.com/${m.source.repo}`
@@ -2535,20 +2525,20 @@ function MarketplacesPanel({
               )}
               {m.marketplaceOwner?.name && (
                 <div>
-                  <span className="text-gray-600">{t("marketplaces.owner")}:</span>{" "}
+                  <span className="text-kad-text-muted">{t("marketplaces.owner")}:</span>{" "}
                   {m.marketplaceOwner.name}
                 </div>
               )}
               {m.lastUpdated && (
                 <div>
-                  <span className="text-gray-600">{t("marketplaces.lastUpdated")}:</span>{" "}
+                  <span className="text-kad-text-muted">{t("marketplaces.lastUpdated")}:</span>{" "}
                   {new Date(m.lastUpdated).toLocaleString()}
                 </div>
               )}
             </div>
             {m.installLocation && (
               <div className="mt-2 flex items-center gap-2">
-                <span className="font-mono text-[10px] text-gray-600 truncate flex-1">
+                <span className="font-mono text-[10px] text-kad-text-muted truncate flex-1">
                   {m.installLocation}
                 </span>
                 <CopyButton value={m.installLocation} />
@@ -2568,7 +2558,7 @@ function KeybindingsPanel({ data, search }: { data: CcKeybindings | null; search
   if (!data) return <SkeletonRows n={3} />;
   if (!data.exists) {
     return (
-      <div className="rounded-lg border border-border bg-surface-2 px-4 py-6 text-center text-sm text-gray-500">
+      <div className="rounded-lg border border-border bg-surface-2 px-4 py-6 text-center text-sm text-kad-text-muted">
         {t("keybindings.missing", { path: data.file })}
       </div>
     );
@@ -2576,7 +2566,7 @@ function KeybindingsPanel({ data, search }: { data: CcKeybindings | null; search
   const q = search.toLowerCase();
   return (
     <div className="space-y-3">
-      <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 flex items-center gap-2 text-[11px] text-gray-500 flex-wrap">
+      <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 flex items-center gap-2 text-[11px] text-kad-text-muted flex-wrap">
         <FileText className="w-3.5 h-3.5" />
         <span className="font-mono truncate flex-1 min-w-0">{data.file}</span>
         {data.docs && (
@@ -2602,17 +2592,17 @@ function KeybindingsPanel({ data, search }: { data: CcKeybindings | null; search
         if (filtered.length === 0) return null;
         return (
           <div key={g.context} className="rounded-lg border border-border bg-surface-2">
-            <div className="border-b border-border px-4 py-2 text-xs font-medium text-gray-300">
-              {t("keybindings.context")}: <span className="text-gray-100">{g.context}</span>
-              <span className="ml-2 text-[10px] text-gray-600">({filtered.length})</span>
+            <div className="border-b border-border px-4 py-2 text-xs font-medium text-kad-text">
+              {t("keybindings.context")}: <span className="text-kad-text-strong">{g.context}</span>
+              <span className="ml-2 text-[10px] text-kad-text-muted">({filtered.length})</span>
             </div>
             <div className="divide-y divide-border">
               {filtered.map((b) => (
                 <div key={b.key} className="px-4 py-1.5 flex items-center gap-3">
-                  <kbd className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-surface-3 border border-border text-gray-200 min-w-20 text-center">
+                  <kbd className="font-mono text-[11px] px-1.5 py-0.5 rounded bg-surface-3 border border-border text-kad-text min-w-20 text-center">
                     {b.key}
                   </kbd>
-                  <span className="font-mono text-[11px] text-gray-400">{b.action}</span>
+                  <span className="font-mono text-[11px] text-kad-text-muted">{b.action}</span>
                 </div>
               ))}
             </div>
@@ -2634,7 +2624,7 @@ function ScopeBadge({ scope }: { scope: string }) {
         ? "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
         : scope === "project-local"
           ? "bg-violet-500/10 text-violet-300 border-violet-500/30"
-          : "bg-surface-3 text-gray-400 border-border";
+          : "bg-surface-3 text-kad-text-muted border-border";
   const label =
     scope === "project-local"
       ? t("scope.projectLocal")
@@ -2662,7 +2652,7 @@ function CopyButton({ value }: { value: string }) {
           /* clipboard unavailable */
         }
       }}
-      className="text-[10px] font-medium px-1.5 py-1 rounded border border-border bg-surface-1 hover:bg-surface-3 text-gray-400 hover:text-gray-200 inline-flex items-center gap-1 flex-shrink-0"
+      className="text-[10px] font-medium px-1.5 py-1 rounded border border-border bg-surface-1 hover:bg-surface-3 text-kad-text-muted hover:text-kad-text inline-flex items-center gap-1 flex-shrink-0"
       title={t("common.copyPath")}
     >
       {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -2673,7 +2663,7 @@ function CopyButton({ value }: { value: string }) {
 function Empty() {
   const { t } = useTranslation("ccConfig");
   return (
-    <div className="rounded-lg border border-dashed border-border bg-surface-2 px-4 py-8 text-center text-sm text-gray-500">
+    <div className="rounded-lg border border-dashed border-border bg-surface-2 px-4 py-8 text-center text-sm text-kad-text-muted">
       {t("common.empty")}
     </div>
   );
@@ -2722,12 +2712,12 @@ function FileViewer({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-          <FileText className="w-4 h-4 text-gray-500" />
-          <span className="font-mono text-[12px] text-gray-300 truncate flex-1">{state.path}</span>
+          <FileText className="w-4 h-4 text-kad-text-muted" />
+          <span className="font-mono text-[12px] text-kad-text truncate flex-1">{state.path}</span>
           <CopyButton value={state.path} />
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-200 p-1 rounded-md hover:bg-surface-3"
+            className="text-kad-text-muted hover:text-kad-text p-1 rounded-md hover:bg-surface-3"
             aria-label={t("common.close")}
           >
             <X className="w-4 h-4" />
@@ -2740,12 +2730,12 @@ function FileViewer({
               {state.error}
             </div>
           ) : !state.data ? (
-            <div className="text-sm text-gray-500">…</div>
+            <div className="text-sm text-kad-text-muted">…</div>
           ) : (
-            <pre className="text-[11px] font-mono text-gray-200 whitespace-pre-wrap break-words">
+            <pre className="text-[11px] font-mono text-kad-text whitespace-pre-wrap break-words">
               {state.data.text}
               {state.data.truncated && (
-                <span className="text-gray-500 italic">
+                <span className="text-kad-text-muted italic">
                   {"\n\n"}
                   {t("common.truncated")}
                 </span>
@@ -2856,11 +2846,11 @@ function EditorModal({ state, onClose, onSave }: EditorModalProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-          <Pencil className="w-4 h-4 text-gray-500" />
-          <span className="text-sm font-medium text-gray-100 flex-1 truncate">{titleText}</span>
+          <Pencil className="w-4 h-4 text-kad-text-muted" />
+          <span className="text-sm font-medium text-kad-text-strong flex-1 truncate">{titleText}</span>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-200 p-1 rounded-md hover:bg-surface-3"
+            className="text-kad-text-muted hover:text-kad-text p-1 rounded-md hover:bg-surface-3"
             aria-label={t("common.close")}
           >
             <X className="w-4 h-4" />
@@ -2871,7 +2861,7 @@ function EditorModal({ state, onClose, onSave }: EditorModalProps) {
           {isCreate && state.type !== "memory" && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div>
-                <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                <label className="block text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1">
                   {t("edit.nameLabel")}
                 </label>
                 <input
@@ -2881,25 +2871,25 @@ function EditorModal({ state, onClose, onSave }: EditorModalProps) {
                     isAutoMemory ? t("memory.namePlaceholder") : t("edit.namePlaceholder")
                   }
                   pattern={isAutoMemory ? undefined : "[A-Za-z0-9][A-Za-z0-9._-]{0,63}"}
-                  className="w-full bg-surface-2 border border-border rounded-md px-3 py-1.5 text-sm font-mono text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-accent/50"
+                  className="w-full bg-surface-2 border border-border rounded-md px-3 py-1.5 text-sm font-mono text-kad-text-strong placeholder:text-kad-text-muted focus:outline-none focus:border-accent/50"
                 />
-                <p className="mt-1 text-[10px] text-gray-500">
+                <p className="mt-1 text-[10px] text-kad-text-muted">
                   {isAutoMemory ? t("memory.nameHelp") : t("edit.nameHelp")}
                 </p>
               </div>
               {isAutoMemory ? (
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1">
                     {t("memory.projectLabel")}
                   </label>
-                  <div className="rounded-md border border-border bg-surface-2 px-3 py-1.5 font-mono text-[11px] text-gray-300 truncate">
+                  <div className="rounded-md border border-border bg-surface-2 px-3 py-1.5 font-mono text-[11px] text-kad-text truncate">
                     {state.project}
                   </div>
-                  <p className="mt-1 text-[10px] text-gray-500">{t("memory.projectHelp")}</p>
+                  <p className="mt-1 text-[10px] text-kad-text-muted">{t("memory.projectHelp")}</p>
                 </div>
               ) : (
                 <div>
-                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+                  <label className="block text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1">
                     {t("edit.scopePicker")}
                   </label>
                   <div className="inline-flex rounded-md border border-border bg-surface-2 p-0.5">
@@ -2910,7 +2900,7 @@ function EditorModal({ state, onClose, onSave }: EditorModalProps) {
                         className={`px-3 py-1 text-[11px] font-medium rounded ${
                           targetScope === s
                             ? "bg-accent/20 text-accent border border-accent/30"
-                            : "text-gray-400 hover:text-gray-200"
+                            : "text-kad-text-muted hover:text-kad-text"
                         }`}
                       >
                         {t(`scope.${s}`)}
@@ -2923,7 +2913,7 @@ function EditorModal({ state, onClose, onSave }: EditorModalProps) {
           )}
 
           <div>
-            <label className="block text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1">
+            <label className="block text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1">
               {t("edit.contentLabel")}
             </label>
             {loading ? (
@@ -2933,7 +2923,7 @@ function EditorModal({ state, onClose, onSave }: EditorModalProps) {
                 value={content}
                 onChange={(e) => setContent(e.target.value)}
                 spellCheck={false}
-                className="w-full h-72 bg-surface-2 border border-border rounded-md px-3 py-2 text-[11px] font-mono text-gray-100 placeholder:text-gray-500 focus:outline-none focus:border-accent/50 resize-y"
+                className="w-full h-72 bg-surface-2 border border-border rounded-md px-3 py-2 text-[11px] font-mono text-kad-text-strong placeholder:text-kad-text-muted focus:outline-none focus:border-accent/50 resize-y"
               />
             )}
           </div>
@@ -2949,7 +2939,7 @@ function EditorModal({ state, onClose, onSave }: EditorModalProps) {
         <div className="border-t border-border px-4 py-3 flex items-center justify-end gap-2">
           <button
             onClick={onClose}
-            className="text-[12px] font-medium px-3 py-1.5 rounded-md border border-border bg-surface-2 hover:bg-surface-3 text-gray-300"
+            className="text-[12px] font-medium px-3 py-1.5 rounded-md border border-border bg-surface-2 hover:bg-surface-3 text-kad-text"
           >
             {t("edit.cancel")}
           </button>
@@ -3007,13 +2997,13 @@ function ConfirmDeleteModal({ state, onCancel, onConfirm }: ConfirmDeleteModalPr
       >
         <div className="border-b border-border px-4 py-2.5 flex items-center gap-2">
           <ShieldAlert className="w-4 h-4 text-red-300" />
-          <span className="text-sm font-medium text-gray-100 flex-1">
+          <span className="text-sm font-medium text-kad-text-strong flex-1">
             {t("edit.confirmDelete")}
           </span>
         </div>
         <div className="p-4 space-y-3">
-          <p className="text-xs text-gray-400 leading-relaxed">{t("edit.confirmDeleteBody")}</p>
-          <div className="rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-[11px] text-gray-300 break-all">
+          <p className="text-xs text-kad-text-muted leading-relaxed">{t("edit.confirmDeleteBody")}</p>
+          <div className="rounded-md border border-border bg-surface-2 px-3 py-2 font-mono text-[11px] text-kad-text break-all">
             {t("edit.confirmDeletePath", { path: state.path })}
           </div>
         </div>
@@ -3021,7 +3011,7 @@ function ConfirmDeleteModal({ state, onCancel, onConfirm }: ConfirmDeleteModalPr
           <button
             onClick={onCancel}
             disabled={busy}
-            className="text-[12px] font-medium px-3 py-1.5 rounded-md border border-border bg-surface-2 hover:bg-surface-3 text-gray-300 disabled:opacity-60"
+            className="text-[12px] font-medium px-3 py-1.5 rounded-md border border-border bg-surface-2 hover:bg-surface-3 text-kad-text disabled:opacity-60"
           >
             {t("edit.cancel")}
           </button>
@@ -3046,11 +3036,12 @@ function ToastNotice({ toast, onDismiss }: { toast: NonNullable<Toast>; onDismis
   return (
     <div className="fixed bottom-6 right-6 z-50 max-w-md">
       <div
-        className={`rounded-lg border px-3 py-2 shadow-lg flex items-start gap-2 ${
+        className={`rounded-lg border px-3 py-2 flex items-start gap-2 ${
           isErr
             ? "border-red-500/50 bg-red-500/15 text-red-100"
             : "border-emerald-500/40 bg-emerald-500/10 text-emerald-100"
         }`}
+        style={{ boxShadow: "var(--kad-shadow-1)" }}
       >
         {isErr ? (
           <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
@@ -3086,10 +3077,10 @@ function ExplainerBanner({ title, body, howTo, commands }: ExplainerBannerProps)
         <Lock className="w-4 h-4 text-amber-300 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1 space-y-2">
           <div className="text-sm font-medium text-amber-100">{title}</div>
-          <p className="text-xs text-gray-400 leading-relaxed">{body}</p>
+          <p className="text-xs text-kad-text-muted leading-relaxed">{body}</p>
           {commands.length > 0 && (
             <div className="pt-1">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 mb-1.5">
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-kad-text-muted mb-1.5">
                 {howTo}
               </div>
               <div className="space-y-1.5">
@@ -3112,10 +3103,10 @@ function CommandSnippet({ command, label }: { command: string; label?: string })
   const [copied, setCopied] = useState(false);
   return (
     <div className="rounded-md border border-border bg-surface-2 px-2.5 py-1.5 flex items-center gap-2">
-      <Terminal className="w-3 h-3 text-gray-500 flex-shrink-0" />
-      <code className="font-mono text-[11px] text-gray-200 truncate flex-1">{command}</code>
+      <Terminal className="w-3 h-3 text-kad-text-muted flex-shrink-0" />
+      <code className="font-mono text-[11px] text-kad-text truncate flex-1">{command}</code>
       {label && (
-        <span className="text-[10px] text-gray-500 hidden md:inline truncate">{label}</span>
+        <span className="text-[10px] text-kad-text-muted hidden md:inline truncate">{label}</span>
       )}
       <button
         onClick={async () => {
@@ -3127,7 +3118,7 @@ function CommandSnippet({ command, label }: { command: string; label?: string })
             /* clipboard unavailable */
           }
         }}
-        className="text-[10px] font-medium px-1.5 py-1 rounded border border-border bg-surface-1 hover:bg-surface-3 text-gray-400 hover:text-gray-200 inline-flex items-center gap-1 flex-shrink-0"
+        className="text-[10px] font-medium px-1.5 py-1 rounded border border-border bg-surface-1 hover:bg-surface-3 text-kad-text-muted hover:text-kad-text inline-flex items-center gap-1 flex-shrink-0"
         title={t("snippet.copy")}
       >
         {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
@@ -3169,18 +3160,18 @@ function BackupsModal({ onClose }: { onClose: () => void }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-          <History className="w-4 h-4 text-gray-500" />
-          <span className="text-sm font-medium text-gray-100 flex-1">{t("backups.title")}</span>
+          <History className="w-4 h-4 text-kad-text-muted" />
+          <span className="text-sm font-medium text-kad-text-strong flex-1">{t("backups.title")}</span>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-200 p-1 rounded-md hover:bg-surface-3"
+            className="text-kad-text-muted hover:text-kad-text p-1 rounded-md hover:bg-surface-3"
             aria-label={t("common.close")}
           >
             <X className="w-4 h-4" />
           </button>
         </div>
         <div className="px-4 py-3 border-b border-border">
-          <p className="text-[11px] text-gray-500 leading-relaxed">{t("backups.subtitle")}</p>
+          <p className="text-[11px] text-kad-text-muted leading-relaxed">{t("backups.subtitle")}</p>
         </div>
         <div className="overflow-auto p-4 space-y-2">
           {error && (
@@ -3191,7 +3182,7 @@ function BackupsModal({ onClose }: { onClose: () => void }) {
           )}
           {items === null && !error && <SkeletonRows n={4} />}
           {items !== null && items.length === 0 && (
-            <div className="rounded-lg border border-dashed border-border bg-surface-2 px-4 py-8 text-center text-sm text-gray-500">
+            <div className="rounded-lg border border-dashed border-border bg-surface-2 px-4 py-8 text-center text-sm text-kad-text-muted">
               {t("backups.empty")}
             </div>
           )}
@@ -3214,20 +3205,20 @@ function BackupRow({ backup }: { backup: CcBackup }) {
     <div className="rounded-lg border border-border bg-surface-2 px-3 py-2.5">
       <div className="flex items-center gap-2 flex-wrap">
         <ScopeBadge scope={backup.scope} />
-        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-gray-400 border border-border">
+        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-3 text-kad-text-muted border border-border">
           {backup.type}
         </span>
-        <span className="font-mono text-xs text-gray-100 truncate flex-1 min-w-0">
+        <span className="font-mono text-xs text-kad-text-strong truncate flex-1 min-w-0">
           {backup.name}
         </span>
-        <span className="text-[10px] text-gray-500">{new Date(backup.mtime).toLocaleString()}</span>
+        <span className="text-[10px] text-kad-text-muted">{new Date(backup.mtime).toLocaleString()}</span>
         {backup.size != null && (
-          <span className="text-[10px] text-gray-600">{formatBytes(backup.size)}</span>
+          <span className="text-[10px] text-kad-text-muted">{formatBytes(backup.size)}</span>
         )}
       </div>
-      <div className="mt-1.5 font-mono text-[10px] text-gray-600 truncate">{backup.backupPath}</div>
+      <div className="mt-1.5 font-mono text-[10px] text-kad-text-muted truncate">{backup.backupPath}</div>
       <div className="mt-2">
-        <div className="text-[10px] text-gray-500 mb-1">{t("backups.restoreHint")}</div>
+        <div className="text-[10px] text-kad-text-muted mb-1">{t("backups.restoreHint")}</div>
         <CommandSnippet command={restoreCmd} />
       </div>
     </div>

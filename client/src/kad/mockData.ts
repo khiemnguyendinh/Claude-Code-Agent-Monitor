@@ -1,0 +1,1611 @@
+/**
+ * Sample data for the KAD mockup — Kstudy R&D department (MVP roster, spec
+ * 01 §3.1). No `/api/kad/*` backend exists yet; every shape here matches the
+ * real table (spec/02-data-model.md) or the schema proposed at a [GAP]
+ * marker in spec/ui/*.md, so swapping this module for real fetch() calls
+ * later doesn't require touching the screens. Timestamps are generated
+ * relative to "now" so relative-time formatting always looks correct.
+ */
+import type {
+  AgentProfile,
+  AgentStats,
+  Approval,
+  ApprovalMatrixRow,
+  Artifact,
+  AutomationRule,
+  DepartmentPolicies,
+  ExceptionItem,
+  Goal,
+  KadNotification,
+  Kpi,
+  Objective,
+  OpsMetricCard,
+  OrgChartNode,
+  OrgContextSection,
+  Project,
+  StandupBrief,
+  TaskCard,
+  TaskDetail,
+  TemplateSkill,
+  WorkflowDefinition,
+} from "./types";
+
+const NOW = Date.now();
+const iso = (ms: number) => new Date(ms).toISOString();
+const hoursAgo = (h: number) => iso(NOW - h * 3_600_000);
+const minutesAgo = (m: number) => iso(NOW - m * 60_000);
+const daysAgo = (d: number) => iso(NOW - d * 86_400_000);
+const daysFromNow = (d: number) => iso(NOW + d * 86_400_000);
+
+// ── Workflow ───────────────────────────────────────────────────────────
+
+export const RD_WORKFLOW: WorkflowDefinition = {
+  id: "wf-rd-standard",
+  name: "rd-standard-flow",
+  displayName: "Soạn syllabus",
+  description: "Phân tích khung → Syllabus → Review",
+  examplePrompt:
+    "Soạn giúp anh syllabus khóa K3 — Nghề Digital Marketing định hướng AI Automation, 12 buổi, dựa trên khung chương trình đính kèm. Nhấn mạnh phần AI Agent và automation thực chiến.",
+  triggerKeywords: ["syllabus", "giáo trình", "khung chương trình", "chương trình học", "module"],
+  version: 1,
+  status: "active",
+  steps: [
+    { key: "framework", label: "Khung chương trình", agentName: "sub-program-architect" },
+    { key: "research", label: "Nghiên cứu", agentName: "sub-curriculum-researcher" },
+    {
+      key: "syllabus",
+      label: "Syllabus",
+      agentName: "sub-syllabus-designer",
+      approval: "artifact",
+    },
+    { key: "lesson", label: "Lesson", agentName: "sub-lesson-planner" },
+    { key: "slide", label: "Slide", agentName: "sub-slide-builder" },
+    { key: "video", label: "Video", agentName: "sub-video-script-writer" },
+    { key: "review", label: "Review", agentName: "sub-quality-reviewer" },
+  ],
+};
+
+/** [spec 07 §1] 2 quick-start bổ sung — không có sub-agent chuyên trách trong
+ * roster R&D hiện tại (spec 01 §3.1 chỉ có agent chương trình đào tạo), nên
+ * mô phỏng Main Agent tự thực thi thẳng (không delegation card) thay vì bịa
+ * ra một sub-agent không có thật. */
+export const WF_CONTENT_FUNNEL: WorkflowDefinition = {
+  id: "wf-content-funnel",
+  name: "content-funnel-flow",
+  displayName: "Content phễu",
+  description: "Insight → Outline → Content → Review",
+  examplePrompt:
+    "Viết chuỗi 5 bài content phễu cho chiến dịch tuyển sinh K3, tông chuyên gia gần gũi thực chiến, dựa trên tài liệu insight học viên đính kèm.",
+  triggerKeywords: ["content", "phễu", "tuyển sinh", "bài viết", "content phễu", "funnel"],
+  version: 1,
+  status: "active",
+  steps: [
+    { key: "insight", label: "Insight", agentName: "main-agent-rd" },
+    { key: "outline", label: "Outline", agentName: "main-agent-rd" },
+    { key: "content", label: "Content", agentName: "main-agent-rd", approval: "artifact" },
+    { key: "review", label: "Review", agentName: "sub-quality-reviewer" },
+  ],
+};
+
+export const WF_FREEFORM: WorkflowDefinition = {
+  id: "wf-freeform",
+  name: "freeform-flow",
+  displayName: "Việc tự do",
+  description: "Trợ lý tự lập kế hoạch sau khi làm rõ",
+  examplePrompt: "",
+  triggerKeywords: [],
+  version: 1,
+  status: "active",
+  steps: [],
+};
+
+/** [spec 07 §1] Thứ tự hiển thị đúng như đã duyệt trực quan ở prototype. */
+export const WORKFLOW_QUICKSTARTS: WorkflowDefinition[] = [RD_WORKFLOW, WF_CONTENT_FUNNEL, WF_FREEFORM];
+
+/** [spec 07 §5] Demo file đính kèm — bấm 📎 sẽ lần lượt gắn từng tên vào
+ * pending row (giống hành vi cycling trong prototype). */
+export const DEMO_ATTACHMENT_NAMES = [
+  "Khung-chuong-trinh-K3.xlsx",
+  "Tai-lieu-tham-khao-AI-Agent.pdf",
+  "Feedback-hoc-vien-K2.docx",
+];
+
+const STEP_LABELS = RD_WORKFLOW.steps;
+
+// ── Agents (roster spec 01 §3.1) ──────────────────────────────────────
+
+export const AGENTS: AgentProfile[] = [
+  {
+    id: "main-agent-rd",
+    agentType: "main",
+    name: "main-agent-rd",
+    displayName: "Trợ lý vận hành R&D",
+    title: "Điều phối phòng R&D",
+    engine: "claude",
+    model: "Claude Sonnet 5",
+    roleDescription:
+      "Nhận mục tiêu từ trưởng phòng, làm rõ yêu cầu, lập kế hoạch, xin duyệt, tạo delegation cho thành viên AI, tổng hợp và báo cáo. Không tự duyệt, không publish khi chưa qua phê duyệt, không sửa tri thức tổ chức/blueprint.",
+    permissions: {
+      createTask: true,
+      assignTask: true,
+      createHelper: true,
+      requestApproval: true,
+      readOrgContext: true,
+      readTemplates: true,
+      writeAudit: true,
+    },
+    skills: [],
+    status: "active",
+    parentAgentId: null,
+    jdVersion: 2,
+    jdApprovedAt: "2026-05-20T00:00:00.000Z",
+  },
+  {
+    id: "sub-program-architect",
+    agentType: "sub",
+    name: "sub-program-architect",
+    displayName: "Kiến trúc sư chương trình",
+    title: "Kiến trúc chương trình",
+    engine: "claude",
+    model: "Claude Sonnet 5",
+    roleDescription:
+      "Thiết kế khung chương trình và learning pathway từ mục tiêu đào tạo, đối tượng học viên và tri thức tổ chức.",
+    permissions: { readOrgContext: true, readTemplates: true },
+    skills: [],
+    status: "active",
+    parentAgentId: "main-agent-rd",
+    jdVersion: 2,
+    jdApprovedAt: "2026-05-20T00:00:00.000Z",
+  },
+  {
+    id: "sub-curriculum-researcher",
+    agentType: "sub",
+    name: "sub-curriculum-researcher",
+    displayName: "Nghiên cứu chương trình",
+    title: "Nghiên cứu & benchmark",
+    engine: "claude",
+    model: "Claude Sonnet 5",
+    roleDescription:
+      "Research, benchmark đối thủ, nhu cầu học viên, SWOT. Agent duy nhất được dùng web search qua MCP.",
+    permissions: { readOrgContext: true, readTemplates: true, webSearch: true },
+    skills: [],
+    status: "active",
+    parentAgentId: "main-agent-rd",
+    jdVersion: 2,
+    jdApprovedAt: "2026-05-20T00:00:00.000Z",
+  },
+  {
+    id: "sub-syllabus-designer",
+    agentType: "sub",
+    name: "sub-syllabus-designer",
+    displayName: "Thiết kế syllabus",
+    title: "Thiết kế syllabus",
+    engine: "claude",
+    model: "Claude Sonnet 5",
+    roleDescription: "Thiết kế module, thứ tự học, learning outcomes, assessment.",
+    permissions: { readOrgContext: true, readTemplates: true },
+    skills: [],
+    status: "active",
+    parentAgentId: "main-agent-rd",
+    jdVersion: 3,
+    jdApprovedAt: "2026-06-02T00:00:00.000Z",
+  },
+  {
+    id: "sub-lesson-planner",
+    agentType: "sub",
+    name: "sub-lesson-planner",
+    displayName: "Lập kế hoạch bài giảng",
+    title: "Lesson planning",
+    engine: "claude",
+    model: "Claude Sonnet 5",
+    roleDescription: "Hoạt động, bài tập, ghi chú giáo viên cho từng bài.",
+    permissions: { readTemplates: true },
+    skills: [],
+    status: "active",
+    parentAgentId: "main-agent-rd",
+    jdVersion: 1,
+    jdApprovedAt: "2026-04-10T00:00:00.000Z",
+  },
+  {
+    id: "sub-slide-builder",
+    agentType: "sub",
+    name: "sub-slide-builder",
+    displayName: "Xây dựng slide",
+    title: "Slide outline",
+    engine: "claude",
+    model: "Claude Sonnet 5",
+    roleDescription: "Slide outline, nội dung, brief hình ảnh theo brand Kstudy.",
+    permissions: { readOrgContext: true, readTemplates: true },
+    skills: [],
+    status: "active",
+    parentAgentId: "main-agent-rd",
+    jdVersion: 1,
+    jdApprovedAt: "2026-04-10T00:00:00.000Z",
+  },
+  {
+    id: "sub-video-script-writer",
+    agentType: "sub",
+    name: "sub-video-script-writer",
+    displayName: "Viết kịch bản video",
+    title: "Video script",
+    engine: "claude",
+    model: "Claude Sonnet 5",
+    roleDescription: "Kịch bản video và kế hoạch quay từ lesson plan + slide outline.",
+    permissions: { readTemplates: true },
+    skills: [],
+    status: "active",
+    parentAgentId: "main-agent-rd",
+    jdVersion: 1,
+    jdApprovedAt: "2026-04-10T00:00:00.000Z",
+  },
+  {
+    id: "sub-quality-reviewer",
+    agentType: "sub",
+    name: "sub-quality-reviewer",
+    displayName: "Kiểm tra chất lượng",
+    title: "Quality review",
+    engine: "claude",
+    model: "Claude Sonnet 5",
+    roleDescription:
+      "Kiểm 4 tiêu chí (đầy đủ, chính xác, sư phạm, thương hiệu) + hoàn thiện + flag sensitivity (metrics/people/brand) trên mọi học liệu.",
+    permissions: { readOrgContext: true, readTemplates: true },
+    skills: [],
+    status: "active",
+    parentAgentId: "main-agent-rd",
+    jdVersion: 2,
+    jdApprovedAt: "2026-05-20T00:00:00.000Z",
+  },
+];
+
+export function findAgent(id: string): AgentProfile | undefined {
+  return AGENTS.find((a) => a.id === id);
+}
+
+// Seed 6 R&D templates (spec 02 §8) assigned across agents.
+AGENTS.find((a) => a.id === "sub-program-architect")?.skills.push({
+  name: "program_framework",
+  description: "Khung chương trình chuẩn CDIO",
+  version: 2,
+  usageCount: 14,
+  enabled: true,
+});
+AGENTS.find((a) => a.id === "sub-syllabus-designer")?.skills.push({
+  name: "syllabus",
+  description: "Syllabus theo KASH + Bloom",
+  version: 3,
+  usageCount: 22,
+  enabled: true,
+});
+AGENTS.find((a) => a.id === "sub-lesson-planner")?.skills.push({
+  name: "lesson_plan",
+  description: "Giáo án theo mẫu Kstudy",
+  version: 1,
+  usageCount: 9,
+  enabled: true,
+});
+AGENTS.find((a) => a.id === "sub-slide-builder")?.skills.push({
+  name: "slide_outline",
+  description: "Outline slide 1920x1080 chuẩn brand",
+  version: 1,
+  usageCount: 11,
+  enabled: true,
+});
+AGENTS.find((a) => a.id === "sub-video-script-writer")?.skills.push({
+  name: "video_script",
+  description: "Kịch bản video micro-learning",
+  version: 1,
+  usageCount: 7,
+  enabled: true,
+});
+AGENTS.find((a) => a.id === "sub-quality-reviewer")?.skills.push({
+  name: "quality_rubric",
+  description: "Rubric 4 tiêu chí + sensitivity flags",
+  version: 2,
+  usageCount: 31,
+  enabled: true,
+});
+
+export const AGENT_STATS: Record<string, AgentStats> = {
+  "main-agent-rd": {
+    agentId: "main-agent-rd",
+    tasksThisWeek: 9,
+    qualityPassRate30d: 84,
+    cost7dVnd: 210_000,
+    sparkline14d: [1, 2, 1, 3, 2, 4, 3, 2, 3, 4, 3, 5, 4, 5],
+    tasksCoordinating: 5,
+    approvalsWaiting: 6,
+  },
+  "sub-program-architect": {
+    agentId: "sub-program-architect",
+    tasksThisWeek: 2,
+    qualityPassRate30d: 88,
+    cost7dVnd: 64_000,
+    sparkline14d: [0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1],
+  },
+  "sub-curriculum-researcher": {
+    agentId: "sub-curriculum-researcher",
+    tasksThisWeek: 3,
+    qualityPassRate30d: 91,
+    cost7dVnd: 58_000,
+    sparkline14d: [1, 0, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1],
+  },
+  "sub-syllabus-designer": {
+    agentId: "sub-syllabus-designer",
+    tasksThisWeek: 4,
+    qualityPassRate30d: 76,
+    cost7dVnd: 82_000,
+    sparkline14d: [1, 1, 2, 1, 1, 0, 1, 2, 1, 1, 0, 1, 1, 2],
+  },
+  "sub-lesson-planner": {
+    agentId: "sub-lesson-planner",
+    tasksThisWeek: 3,
+    qualityPassRate30d: 93,
+    cost7dVnd: 41_000,
+    sparkline14d: [0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1],
+  },
+  "sub-slide-builder": {
+    agentId: "sub-slide-builder",
+    tasksThisWeek: 5,
+    qualityPassRate30d: 95,
+    cost7dVnd: 77_000,
+    sparkline14d: [1, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1, 1, 2, 1],
+  },
+  "sub-video-script-writer": {
+    agentId: "sub-video-script-writer",
+    tasksThisWeek: 2,
+    qualityPassRate30d: 68,
+    cost7dVnd: 53_000,
+    sparkline14d: [0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0],
+  },
+  "sub-quality-reviewer": {
+    agentId: "sub-quality-reviewer",
+    tasksThisWeek: 11,
+    qualityPassRate30d: 97,
+    cost7dVnd: 39_000,
+    sparkline14d: [1, 2, 2, 1, 2, 3, 2, 1, 2, 2, 1, 2, 2, 3],
+  },
+};
+
+// ── Org chart (04-man-doi-ngu §1a) ──────────────────────────────────────
+
+export const ORG_CHART_NODES: OrgChartNode[] = [
+  { id: "node-human", parentId: null, name: "Anh Khiêm", nodeType: "position", agentId: null, isHuman: true },
+  {
+    id: "node-main",
+    parentId: "node-human",
+    name: "Trợ lý vận hành R&D",
+    nodeType: "position",
+    agentId: "main-agent-rd",
+    isHuman: false,
+  },
+  ...AGENTS.filter((a) => a.agentType === "sub").map((a) => ({
+    id: `node-${a.id}`,
+    parentId: "node-main",
+    name: a.displayName,
+    nodeType: "position" as const,
+    agentId: a.id,
+    isHuman: false,
+  })),
+  {
+    id: "node-helper-1",
+    parentId: "node-sub-curriculum-researcher",
+    name: "Trợ thủ tạm thời — rà soát nguồn báo chí",
+    nodeType: "position",
+    agentId: null,
+    isHuman: false,
+    isHelperGhost: true,
+    helperExpiresInMinutes: 42,
+  },
+];
+
+// ── Goals [GAP] ──────────────────────────────────────────────────────────
+
+export const GOALS: Goal[] = [
+  {
+    id: "goal-k3",
+    title: "Ra mắt Khóa AI Marketing K3",
+    metric: "Học liệu hoàn thành",
+    target: 7,
+    current: 2,
+    due: "Q3/2026",
+    status: "on_track",
+  },
+  {
+    id: "goal-quy-trinh",
+    title: "Chuẩn hoá quy trình R&D",
+    metric: "Tỷ lệ đạt duyệt lần đầu",
+    target: 90,
+    current: 78,
+    due: "Q3/2026",
+    status: "at_risk",
+  },
+  {
+    id: "goal-template",
+    title: "Mở rộng thư viện mẫu",
+    metric: "Template mới",
+    target: 6,
+    current: 4,
+    due: "Q3/2026",
+    status: "on_track",
+  },
+];
+
+// ── OKR (Objective + KeyResults) [GAP] — tab Mục tiêu (Đội ngũ) ──────────
+// Công ty (Kstudy) đặt OKR năm + quý; Phòng R&D Đào tạo đặt OKR quý ĐÓNG GÓP
+// lên OKR quý công ty qua parentObjectiveId (cascade/alignment). Owner cấp
+// objective là người (Anh Khiêm); mỗi KR gắn 1 agent/người chịu trách nhiệm.
+// Số liệu là MẪU minh hoạ, thay bằng GET /api/kad/okrs khi wire thật.
+export const OBJECTIVES: Objective[] = [
+  {
+    id: "obj-cty-2026",
+    level: "company",
+    cycle: "year",
+    period: "2026",
+    title: "Đưa Kstudy thành học viện AI-Native dẫn đầu đào tạo Digital Marketing ứng dụng AI",
+    ownerId: "human",
+    parentObjectiveId: null,
+    confidence: "at_risk",
+    keyResults: [
+      { id: "kr-cty-hocvien", title: "Học viên tốt nghiệp trong năm", metric: "Học viên", current: 320, target: 800, ownerId: "human", health: "at_risk" },
+      { id: "kr-cty-nps", title: "NPS học viên", metric: "NPS", current: 58, target: 70, ownerId: "human", health: "on_track" },
+      { id: "kr-cty-sanpham", title: "Sản phẩm/khóa AI-native ra mắt", metric: "Khóa", current: 2, target: 5, ownerId: "human", health: "at_risk" },
+    ],
+  },
+  {
+    id: "obj-cty-q3",
+    level: "company",
+    cycle: "quarter",
+    period: "Q3/2026",
+    title: "Chuẩn hoá pipeline sản xuất học liệu AI và tăng tốc tuyển sinh K3",
+    ownerId: "human",
+    parentObjectiveId: "obj-cty-2026",
+    confidence: "at_risk",
+    keyResults: [
+      { id: "kr-ctyq3-pipeline", title: "Pipeline học liệu tự động hoá end-to-end", metric: "Mức tự động", current: 60, target: 100, unit: "%", ownerId: "main-agent-rd", health: "on_track" },
+      { id: "kr-ctyq3-khoa", title: "Khóa ra mắt trong quý", metric: "Khóa", current: 1, target: 2, ownerId: "human", health: "at_risk" },
+      { id: "kr-ctyq3-tuyensinh", title: "Lượt đăng ký tuyển sinh K3", metric: "Đăng ký", current: 145, target: 300, ownerId: "human", health: "at_risk" },
+    ],
+  },
+  {
+    id: "obj-rd-q3-1",
+    level: "department",
+    cycle: "quarter",
+    period: "Q3/2026",
+    title: "Ra mắt Khóa AI Marketing K3 đúng hạn, đạt chuẩn chất lượng",
+    ownerId: "human",
+    parentObjectiveId: "obj-cty-q3",
+    confidence: "on_track",
+    keyResults: [
+      { id: "kr-rd1-hoclieu", title: "Học liệu K3 hoàn thành", metric: "Học liệu", current: 2, target: 7, ownerId: "sub-syllabus-designer", health: "on_track" },
+      { id: "kr-rd1-duyet", title: "Tỷ lệ đạt duyệt lần đầu", metric: "Chất lượng", current: 78, target: 90, unit: "%", ownerId: "sub-quality-reviewer", health: "at_risk" },
+      { id: "kr-rd1-video", title: "Video micro-learning hoàn thiện", metric: "Video", current: 3, target: 12, ownerId: "sub-video-script-writer", health: "off_track" },
+    ],
+  },
+  {
+    id: "obj-rd-q3-2",
+    level: "department",
+    cycle: "quarter",
+    period: "Q3/2026",
+    title: "Tăng năng suất đội AI Agent, giảm chi phí trên mỗi học liệu",
+    ownerId: "human",
+    parentObjectiveId: "obj-cty-q3",
+    confidence: "at_risk",
+    keyResults: [
+      { id: "kr-rd2-cost", title: "Chi phí trung bình / học liệu", metric: "Chi phí", current: 82, target: 60, unit: "K", direction: "down", ownerId: "main-agent-rd", health: "at_risk" },
+      { id: "kr-rd2-throughput", title: "Học liệu hoàn thành mỗi tuần", metric: "Throughput", current: 9, target: 14, ownerId: "main-agent-rd", health: "at_risk" },
+      { id: "kr-rd2-template", title: "Thư viện mẫu (template) mới", metric: "Template", current: 4, target: 6, ownerId: "sub-program-architect", health: "on_track" },
+    ],
+  },
+];
+
+export function findObjective(id: string): Objective | undefined {
+  return OBJECTIVES.find((o) => o.id === id);
+}
+
+// ── KPI [GAP] — chỉ số sức khoẻ vận hành nhịp tuần/tháng (tab Mục tiêu) ───
+// Khác OKR (đo "thay đổi/tham vọng"): KPI đo "duy trì", cập nhật TỰ ĐỘNG từ
+// nguồn (source) — không nhập tay. trend = các kỳ gần nhất, cũ→mới.
+export const KPIS: Kpi[] = [
+  { id: "kpi-throughput", level: "department", name: "Học liệu hoàn thành / tháng", metric: "Năng suất", current: 34, target: 48, cadence: "monthly", ownerId: "main-agent-rd", source: "Tự động · KAD", trend: [22, 26, 25, 30, 31, 34], health: "at_risk" },
+  { id: "kpi-quality", level: "department", name: "Tỷ lệ đạt duyệt lần đầu", metric: "Chất lượng", current: 78, target: 90, unit: "%", cadence: "monthly", ownerId: "sub-quality-reviewer", source: "Tự động · KAD", trend: [85, 84, 82, 80, 79, 78], health: "at_risk" },
+  { id: "kpi-cost", level: "department", name: "Chi phí / học liệu", metric: "Chi phí", current: 82, target: 60, unit: "K", direction: "down", cadence: "monthly", ownerId: "main-agent-rd", source: "Tự động · Cost ledger", trend: [95, 92, 90, 86, 84, 82], health: "off_track" },
+  { id: "kpi-sla", level: "department", name: "Duyệt đúng SLA", metric: "Vận hành", current: 88, target: 95, unit: "%", cadence: "weekly", ownerId: "human", source: "Tự động · KAD", trend: [90, 88, 92, 86, 88, 88], health: "at_risk" },
+  { id: "kpi-tuyensinh", level: "company", name: "Tuyển sinh K3 — lượt đăng ký", metric: "Marketing", current: 145, target: 300, cadence: "monthly", ownerId: "human", source: "Tự động · Analytics", trend: [40, 62, 85, 102, 128, 145], health: "at_risk" },
+];
+
+// ── Projects (tasks gốc — 02-man-tong-quan §3 / 03-man-cong-viec §3) ────
+
+export const PROJECTS: Project[] = [
+  {
+    id: "proj-k3",
+    title: "Khóa AI Marketing K3",
+    status: "doing",
+    workflowId: RD_WORKFLOW.id,
+    itemsDone: 2,
+    itemsTotal: 7,
+    agentIdsInvolved: ["sub-program-architect", "sub-curriculum-researcher", "sub-syllabus-designer"],
+    dueDate: daysFromNow(18),
+    priority: "normal",
+    hasBlocker: false,
+    createdAt: daysAgo(20),
+    updatedAt: hoursAgo(2),
+    steps: [
+      { key: "framework", label: "Khung chương trình", state: "done", agentId: "sub-program-architect" },
+      { key: "research", label: "Nghiên cứu", state: "done", agentId: "sub-curriculum-researcher" },
+      { key: "syllabus", label: "Syllabus", state: "doing", agentId: "sub-syllabus-designer" },
+      { key: "lesson", label: "Lesson", state: "todo" },
+      { key: "slide", label: "Slide", state: "todo" },
+      { key: "video", label: "Video", state: "todo" },
+      { key: "review", label: "Review", state: "todo" },
+    ],
+  },
+  {
+    id: "proj-video-k2",
+    title: "Video Script K2 — Module Automation",
+    status: "needs_changes",
+    workflowId: RD_WORKFLOW.id,
+    itemsDone: 5,
+    itemsTotal: 7,
+    agentIdsInvolved: ["sub-video-script-writer", "main-agent-rd"],
+    dueDate: daysAgo(2),
+    priority: "high",
+    hasBlocker: true,
+    createdAt: daysAgo(15),
+    updatedAt: hoursAgo(3),
+    steps: [
+      { key: "framework", label: "Khung chương trình", state: "done", agentId: "sub-program-architect" },
+      { key: "research", label: "Nghiên cứu", state: "done", agentId: "sub-curriculum-researcher" },
+      { key: "syllabus", label: "Syllabus", state: "done", agentId: "sub-syllabus-designer" },
+      { key: "lesson", label: "Lesson", state: "done", agentId: "sub-lesson-planner" },
+      { key: "slide", label: "Slide", state: "done", agentId: "sub-slide-builder" },
+      { key: "video", label: "Video", state: "failed", agentId: "sub-video-script-writer" },
+      { key: "review", label: "Review", state: "todo" },
+    ],
+  },
+  {
+    id: "proj-public-speaking",
+    title: "Chương trình Public Speaking AI-Augmented",
+    status: "doing",
+    workflowId: RD_WORKFLOW.id,
+    itemsDone: 0,
+    itemsTotal: 7,
+    agentIdsInvolved: ["sub-program-architect"],
+    dueDate: daysFromNow(21),
+    priority: "normal",
+    hasBlocker: false,
+    createdAt: daysAgo(3),
+    updatedAt: hoursAgo(5),
+    steps: STEP_LABELS.map((s, i) => ({
+      key: s.key,
+      label: s.label,
+      state: i === 0 ? "doing" : "todo",
+      agentId: i === 0 ? s.agentName : undefined,
+    })),
+  },
+  {
+    id: "proj-workshop-sme",
+    title: "Workshop AI Agent cho SME — Slide & Video",
+    status: "review",
+    workflowId: RD_WORKFLOW.id,
+    itemsDone: 6,
+    itemsTotal: 7,
+    agentIdsInvolved: ["sub-slide-builder", "sub-video-script-writer", "sub-quality-reviewer"],
+    dueDate: daysFromNow(1),
+    priority: "high",
+    hasBlocker: false,
+    createdAt: daysAgo(10),
+    updatedAt: hoursAgo(3),
+    steps: [
+      { key: "framework", label: "Khung chương trình", state: "done", agentId: "sub-program-architect" },
+      { key: "research", label: "Nghiên cứu", state: "done", agentId: "sub-curriculum-researcher" },
+      { key: "syllabus", label: "Syllabus", state: "done", agentId: "sub-syllabus-designer" },
+      { key: "lesson", label: "Lesson", state: "done", agentId: "sub-lesson-planner" },
+      { key: "slide", label: "Slide", state: "done", agentId: "sub-slide-builder" },
+      { key: "video", label: "Video", state: "done", agentId: "sub-video-script-writer" },
+      { key: "review", label: "Review", state: "doing", agentId: "sub-quality-reviewer" },
+    ],
+  },
+  {
+    id: "proj-onboarding",
+    title: "Chương trình Kstudy AI Mentor Onboarding",
+    status: "waiting_human",
+    workflowId: RD_WORKFLOW.id,
+    itemsDone: 0,
+    itemsTotal: 7,
+    agentIdsInvolved: ["main-agent-rd"],
+    dueDate: daysFromNow(10),
+    priority: "normal",
+    hasBlocker: false,
+    createdAt: daysAgo(2),
+    updatedAt: hoursAgo(28),
+    steps: STEP_LABELS.map((s) => ({ key: s.key, label: s.label, state: "todo" as const })),
+  },
+];
+
+export function findProject(id: string): Project | undefined {
+  return PROJECTS.find((p) => p.id === id);
+}
+
+// ── Kanban task cards (03-man-cong-viec §4) ─────────────────────────────
+
+export const TASK_CARDS: TaskCard[] = [
+  {
+    id: "task-framework-ps",
+    parentTaskId: "proj-public-speaking",
+    title: "Viết khung chương trình — Public Speaking",
+    status: "triaged",
+    projectTitle: "Chương trình Public Speaking AI-Augmented",
+    dueDate: daysFromNow(5),
+    assignedAgentId: "sub-program-architect",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "normal",
+    updatedAt: hoursAgo(6),
+  },
+  {
+    id: "task-research-ps",
+    parentTaskId: "proj-public-speaking",
+    title: "Research đối thủ & nhu cầu học viên — Public Speaking",
+    status: "inbox",
+    projectTitle: "Chương trình Public Speaking AI-Augmented",
+    dueDate: null,
+    assignedAgentId: null,
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "normal",
+    updatedAt: hoursAgo(8),
+  },
+  {
+    id: "task-skill-seo",
+    parentTaskId: null,
+    title: "Đề xuất kỹ năng “SEO Audit Prompt”",
+    status: "inbox",
+    projectTitle: "Nội bộ",
+    dueDate: null,
+    assignedAgentId: "main-agent-rd",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "low",
+    updatedAt: daysAgo(1),
+  },
+  {
+    id: "task-syllabus-k3-m2",
+    parentTaskId: "proj-k3",
+    title: "Viết syllabus module 2 — Khóa AI Marketing K3",
+    status: "waiting_human",
+    projectTitle: "Khóa AI Marketing K3",
+    dueDate: daysFromNow(2),
+    assignedAgentId: "sub-syllabus-designer",
+    hasFailedRun: false,
+    retryCount: 1,
+    priority: "normal",
+    updatedAt: hoursAgo(1),
+  },
+  {
+    id: "task-research-k3-retry",
+    parentTaskId: "proj-k3",
+    title: "Research benchmark đối thủ — K3",
+    status: "doing",
+    projectTitle: "Khóa AI Marketing K3",
+    dueDate: null,
+    assignedAgentId: "sub-curriculum-researcher",
+    hasFailedRun: true,
+    retryCount: 1,
+    priority: "normal",
+    updatedAt: hoursAgo(4),
+  },
+  {
+    id: "task-slide-sme-b4",
+    parentTaskId: "proj-workshop-sme",
+    title: "Slide outline Bài 4 — Workshop SME",
+    status: "review",
+    projectTitle: "Workshop AI Agent cho SME",
+    dueDate: daysFromNow(0),
+    assignedAgentId: "sub-slide-builder",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "high",
+    updatedAt: hoursAgo(3),
+  },
+  {
+    id: "task-qr-sme-final",
+    parentTaskId: "proj-workshop-sme",
+    title: "QR tổng review — Workshop SME",
+    status: "doing",
+    projectTitle: "Workshop AI Agent cho SME",
+    dueDate: daysFromNow(1),
+    assignedAgentId: "sub-quality-reviewer",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "high",
+    updatedAt: hoursAgo(2),
+  },
+  {
+    id: "task-plan-onboarding",
+    parentTaskId: "proj-onboarding",
+    title: "Duyệt kế hoạch tổng thể — Onboarding",
+    status: "waiting_human",
+    projectTitle: "Kstudy AI Mentor Onboarding",
+    dueDate: hoursAgo(4),
+    assignedAgentId: "main-agent-rd",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "normal",
+    updatedAt: hoursAgo(4),
+  },
+  {
+    id: "task-framework-ps-approve",
+    parentTaskId: "proj-public-speaking",
+    title: "Duyệt khung chương trình — Public Speaking",
+    status: "waiting_human",
+    projectTitle: "Chương trình Public Speaking AI-Augmented",
+    dueDate: daysFromNow(2),
+    assignedAgentId: "sub-program-architect",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "normal",
+    updatedAt: hoursAgo(3),
+  },
+  {
+    id: "task-video-k2-fix",
+    parentTaskId: "proj-video-k2",
+    title: "Video script Bài 5 — K2 Automation",
+    status: "needs_changes",
+    projectTitle: "Video Script K2 — Module Automation",
+    dueDate: daysAgo(2),
+    assignedAgentId: "sub-video-script-writer",
+    hasFailedRun: true,
+    retryCount: 2,
+    priority: "high",
+    updatedAt: hoursAgo(3),
+  },
+  {
+    id: "task-slide-sme-done",
+    parentTaskId: "proj-workshop-sme",
+    title: "Slide outline: AI Agent Workspace cho SME",
+    status: "done",
+    projectTitle: "Workshop AI Agent cho SME",
+    dueDate: null,
+    assignedAgentId: "sub-slide-builder",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "normal",
+    updatedAt: hoursAgo(3),
+  },
+  {
+    id: "task-lesson-sme-done",
+    parentTaskId: "proj-workshop-sme",
+    title: "Lesson plan Bài 3 — AI Agent Workspace",
+    status: "done",
+    projectTitle: "Workshop AI Agent cho SME",
+    dueDate: null,
+    assignedAgentId: "sub-lesson-planner",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "normal",
+    updatedAt: daysAgo(2),
+  },
+  {
+    id: "task-research-ps-done",
+    parentTaskId: "proj-public-speaking",
+    title: "Nghiên cứu thị trường — Public Speaking",
+    status: "done",
+    projectTitle: "Chương trình Public Speaking AI-Augmented",
+    dueDate: null,
+    assignedAgentId: "sub-curriculum-researcher",
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "normal",
+    updatedAt: daysAgo(1),
+  },
+];
+
+// ── Approvals (Block F + /doi-ngu matrix data + inbox) ──────────────────
+
+export const APPROVALS: Approval[] = [
+  {
+    id: "appr-plan-onboarding",
+    taskId: "proj-onboarding",
+    taskTitle: "Kstudy AI Mentor Onboarding",
+    requestedByAgentId: "main-agent-rd",
+    approvalType: "plan",
+    sensitivitySubtype: null,
+    title: "Duyệt kế hoạch tổng thể — Onboarding",
+    description: "Kế hoạch triển khai chương trình onboarding cho Kstudy AI Mentor.",
+    artifactId: null,
+    status: "pending",
+    reviewer: "human",
+    decisionReason: null,
+    slaReminderHours: 24,
+    createdAt: hoursAgo(28),
+  },
+  {
+    id: "appr-syllabus-k3",
+    taskId: "task-syllabus-k3-m2",
+    taskTitle: "Khóa AI Marketing K3",
+    requestedByAgentId: "sub-syllabus-designer",
+    approvalType: "artifact",
+    sensitivitySubtype: null,
+    title: "Duyệt syllabus — Khóa AI Marketing K3 (module 2)",
+    description: "Syllabus module 2 sau khi Kiểm tra chất lượng review, bản v2.",
+    artifactId: "art-syllabus-k3-m2-v2",
+    status: "pending",
+    reviewer: "human",
+    decisionReason: null,
+    slaReminderHours: 48,
+    createdAt: hoursAgo(20),
+  },
+  {
+    id: "appr-sensitive-metrics",
+    taskId: "proj-workshop-sme",
+    taskTitle: "Workshop AI Agent cho SME",
+    requestedByAgentId: "sub-slide-builder",
+    approvalType: "sensitive_content",
+    sensitivitySubtype: "metrics",
+    title: "Nội dung có số liệu: case study tỷ lệ chuyển đổi 37%",
+    description: "Slide dẫn số liệu case study khách hàng — cần xác nhận trước khi đưa vào bài giảng.",
+    artifactId: null,
+    status: "pending",
+    reviewer: "human",
+    decisionReason: null,
+    slaReminderHours: 24,
+    createdAt: hoursAgo(2),
+  },
+  {
+    id: "appr-sensitive-brand",
+    taskId: "proj-workshop-sme",
+    taskTitle: "Workshop AI Agent cho SME",
+    requestedByAgentId: "sub-slide-builder",
+    approvalType: "sensitive_content",
+    sensitivitySubtype: "brand",
+    title: "Slogan mới cho Workshop AI Agent SME",
+    description: "Đề xuất câu định vị cho trang bìa slide — thuộc nhóm thương hiệu, cần duyệt.",
+    artifactId: null,
+    status: "pending",
+    reviewer: "human",
+    decisionReason: null,
+    slaReminderHours: 24,
+    createdAt: hoursAgo(5),
+  },
+  {
+    id: "appr-blueprint-seo-skill",
+    taskId: "task-skill-seo",
+    taskTitle: "Nội bộ",
+    requestedByAgentId: "main-agent-rd",
+    approvalType: "blueprint_change",
+    sensitivitySubtype: null,
+    title: "Thêm kỹ năng “SEO Audit Prompt” cho Nghiên cứu chương trình",
+    description: "Đề xuất bổ sung skill mới vào blueprint của Nghiên cứu chương trình.",
+    artifactId: null,
+    status: "pending",
+    reviewer: "human",
+    decisionReason: null,
+    slaReminderHours: 48,
+    createdAt: hoursAgo(10),
+  },
+  {
+    id: "appr-framework-ps",
+    taskId: "proj-public-speaking",
+    taskTitle: "Chương trình Public Speaking AI-Augmented",
+    requestedByAgentId: "sub-program-architect",
+    approvalType: "artifact",
+    sensitivitySubtype: null,
+    title: "Duyệt khung chương trình — Public Speaking AI-Augmented",
+    description: "Khung chương trình sau khi Kiểm tra chất lượng review.",
+    artifactId: null,
+    status: "pending",
+    reviewer: "human",
+    decisionReason: null,
+    slaReminderHours: 48,
+    createdAt: hoursAgo(3),
+  },
+];
+
+// ── Exceptions [GAP] (Block G) ───────────────────────────────────────────
+
+export const EXCEPTIONS: ExceptionItem[] = [
+  {
+    id: "exc-run-video-k2",
+    kind: "run_failed",
+    description: "Run lỗi: Viết kịch bản video — timeout",
+    taskId: "proj-video-k2",
+    severity: "danger",
+    occurredAt: hoursAgo(3),
+  },
+  {
+    id: "exc-delegation-video-k2",
+    kind: "delegation_stuck",
+    description: "Video script K2 kẹt 2 lần retry",
+    taskId: "proj-video-k2",
+    severity: "danger",
+    occurredAt: hoursAgo(3),
+  },
+  {
+    id: "exc-sla-onboarding",
+    kind: "approval_sla",
+    description: "Duyệt kế hoạch tổng thể quá SLA 4h — Kstudy AI Mentor Onboarding",
+    taskId: "proj-onboarding",
+    severity: "warning",
+    occurredAt: hoursAgo(4),
+  },
+  {
+    id: "exc-connector-wordpress",
+    kind: "connector_error",
+    description: "Kết nối WordPress lỗi xác thực — publish đang bị treo",
+    taskId: null,
+    severity: "warning",
+    occurredAt: daysAgo(1),
+  },
+];
+
+// ── Standup [GAP] ─────────────────────────────────────────────────────────
+
+export const STANDUP: StandupBrief = {
+  generatedAt: hoursAgo(2),
+  dangChay: [{ text: "Syllabus K3 — Thiết kế syllabus đang viết module 2", linkTaskId: "proj-k3" }],
+  choAnh: [{ text: "2 phê duyệt, 1 quá SLA 4h", linkTaskId: undefined }],
+  ruiRo: [{ text: "Video script K2 kẹt 2 lần retry", linkTaskId: "proj-video-k2" }],
+  costYesterdayTokens: 128_000,
+  costYesterdayVnd: 86_000,
+};
+
+// ── Ops metric cards (Block C) ───────────────────────────────────────────
+
+export const OPS_METRICS: OpsMetricCard[] = [
+  {
+    label: "Năng suất — học liệu hoàn thành (7 ngày)",
+    value: "9",
+    deltaLabel: "+2 so với 7 ngày trước",
+    deltaDirection: "up",
+    deltaGood: true,
+    series14d: [0, 1, 1, 0, 2, 1, 1, 1, 2, 1, 0, 2, 1, 1],
+  },
+  {
+    label: "Chất lượng — tỷ lệ đạt lần đầu",
+    value: "78%",
+    deltaLabel: "-4% so với 7 ngày trước",
+    deltaDirection: "down",
+    deltaGood: false,
+    series14d: [85, 84, 83, 82, 80, 81, 79, 80, 78, 77, 79, 78, 77, 78],
+  },
+  {
+    label: "Sự cố — đang mở",
+    value: String(EXCEPTIONS.length),
+    deltaLabel: "+1 so với 7 ngày trước",
+    deltaDirection: "up",
+    deltaGood: false,
+    series14d: [1, 1, 0, 1, 2, 1, 1, 0, 1, 1, 2, 1, 1, 2],
+  },
+];
+
+// ── Artifacts (Block D + task detail) ────────────────────────────────────
+
+export const ARTIFACTS: Artifact[] = [
+  {
+    id: "art-slide-sme-b4",
+    taskId: "task-slide-sme-b4",
+    agentId: "sub-slide-builder",
+    artifactType: "slide_outline",
+    title: "Slide Outline: AI Agent Workspace cho SME — Bài 4",
+    content: "# Bài 4 — Thiết lập AI Agent đầu tiên\n\n- Mở bài: use case thực tế SME\n- Demo: dựng agent trả lời khách hàng\n- Bài tập: học viên tự cấu hình 1 agent",
+    parentArtifactId: null,
+    status: "approved",
+    version: 1,
+    qualityScore: 9.2,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: hoursAgo(3),
+    updatedAt: hoursAgo(3),
+  },
+  {
+    id: "art-video-sme-b4",
+    taskId: "task-slide-sme-b4",
+    agentId: "sub-video-script-writer",
+    artifactType: "video_script",
+    title: "Video Script: AI Agent Workspace cho SME — Bài 4",
+    content: "# Kịch bản quay — Bài 4\n\n00:00 Mở đầu bằng câu hỏi thực tế\n00:30 Demo màn hình dựng agent\n03:00 Tóm tắt + bài tập",
+    parentArtifactId: "art-slide-sme-b4",
+    status: "approved",
+    version: 1,
+    qualityScore: 8.8,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: hoursAgo(5),
+    updatedAt: hoursAgo(5),
+  },
+  {
+    id: "art-syllabus-k3-m1",
+    taskId: "proj-k3",
+    agentId: "sub-syllabus-designer",
+    artifactType: "syllabus",
+    title: "Syllabus: Khóa AI Marketing K3 — Module 1",
+    content: "# Module 1 — Nền tảng Digital Marketing\n\n1. Facebook Ads cơ bản\n2. Google Ads cơ bản\n3. Đo lường & tối ưu",
+    parentArtifactId: null,
+    status: "approved",
+    version: 1,
+    qualityScore: 9.5,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: daysAgo(1),
+    updatedAt: daysAgo(1),
+  },
+  {
+    id: "art-research-ps",
+    taskId: "task-research-ps-done",
+    agentId: "sub-curriculum-researcher",
+    artifactType: "research_report",
+    title: "Nghiên cứu thị trường: Public Speaking AI-Augmented",
+    content: "# Research — Public Speaking AI-Augmented\n\n## Nhu cầu\n...\n## Đối thủ\n...",
+    parentArtifactId: null,
+    status: "approved",
+    version: 1,
+    qualityScore: null,
+    sensitivityFlags: { metrics: true, people: false, brand: false },
+    createdAt: daysAgo(1),
+    updatedAt: daysAgo(1),
+  },
+  {
+    id: "art-framework-ps",
+    taskId: "proj-public-speaking",
+    agentId: "sub-program-architect",
+    artifactType: "program_framework",
+    title: "Khung chương trình: Public Speaking AI-Augmented",
+    content: "# Khung chương trình\n\n- Mục tiêu\n- Learning pathway 6 module\n- Đối tượng học viên",
+    parentArtifactId: "art-research-ps",
+    status: "review",
+    version: 1,
+    qualityScore: 8.5,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: daysAgo(2),
+    updatedAt: daysAgo(2),
+  },
+  {
+    id: "art-lesson-sme-b3",
+    taskId: "task-lesson-sme-done",
+    agentId: "sub-lesson-planner",
+    artifactType: "lesson_plan",
+    title: "Lesson Plan: AI Agent Workspace — Bài 3",
+    content: "# Bài 3 — Giáo án\n\n- Hoạt động khởi động\n- Bài tập nhóm\n- Ghi chú giảng viên",
+    parentArtifactId: null,
+    status: "approved",
+    version: 1,
+    qualityScore: 9.0,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: daysAgo(2),
+    updatedAt: daysAgo(2),
+  },
+  {
+    id: "art-syllabus-k3-m2-v1",
+    taskId: "task-syllabus-k3-m2",
+    agentId: "sub-syllabus-designer",
+    artifactType: "syllabus",
+    title: "Syllabus module 2 — Khóa AI Marketing K3",
+    content:
+      "# Module 2 — AI Automation nâng cao\n\n## Bài 2.1 — Tổng quan AI Automation cho marketer\n## Bài 2.2 — Xây workflow tự động hoá đầu tiên\n## Bài 2.3 — Kết nối công cụ AI vào funnel\n## Bài 2.4 — Đo lường hiệu quả automation\n## Bài 2.5 — Dự án thực hành cuối module\n",
+    parentArtifactId: "art-syllabus-k3-m1",
+    status: "archived",
+    version: 1,
+    qualityScore: 7.2,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: hoursAgo(13),
+    updatedAt: hoursAgo(13),
+  },
+  {
+    id: "art-syllabus-k3-m2-v2",
+    taskId: "task-syllabus-k3-m2",
+    agentId: "sub-syllabus-designer",
+    artifactType: "syllabus",
+    title: "Syllabus module 2 — Khóa AI Marketing K3",
+    content:
+      "# Module 2 — AI Automation nâng cao\n\n## Bài 2.1 — Tổng quan AI Automation cho marketer\n## Bài 2.2 — Xây workflow tự động hoá đầu tiên\n## Bài 2.3 — Kết nối công cụ AI vào funnel\nLearning outcome: học viên tự nối được 1 công cụ AI vào funnel sẵn có.\n## Bài 2.4 — Đo lường hiệu quả automation\n## Bài 2.5 — Dự án thực hành cuối module\nLearning outcome: học viên nộp 1 workflow automation hoàn chỉnh, có đo lường kết quả.\n",
+    parentArtifactId: "art-syllabus-k3-m2-v1",
+    status: "review",
+    version: 2,
+    qualityScore: 8.9,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: hoursAgo(1),
+    updatedAt: hoursAgo(1),
+  },
+  // [spec 07 §1/§4] Học liệu demo cho kịch bản Giao việc mới → intake → brief
+  // → report ở /cong-viec/moi (TraoDoiCongViec.tsx). taskId dùng placeholder
+  // cố định vì task thật được tạo động (task-new-N) — chỉ cần đủ để
+  // ArtifactViewer nhóm version, không cần khớp task thật.
+  {
+    id: "art-demo-syllabus-v1",
+    taskId: "task-demo-fresh-syllabus",
+    agentId: "sub-syllabus-designer",
+    artifactType: "syllabus",
+    title: "Syllabus K3 — bản nháp",
+    content:
+      "# Syllabus K3 — Nghề Digital Marketing định hướng AI Automation\n\n## Module 1 · Nền tảng (buổi 1–4)\n- B1: Tư duy Digital Marketing thời AI\n- B2: Phễu & hành trình khách hàng\n- B3: Content chiến lược\n- B4: Đo lường cơ bản\n\n## Module 2 · AI Agent thực chiến (buổi 5–9)\n- B5: Prompt & context engineering\n- B6: Thiết kế AI Agent có JD\n- B7: Automation phễu tuyển sinh\n- B8: AI content pipeline\n- B9: Case tổng hợp\n\n## Module 3 · Tốt nghiệp (buổi 10–12)\n- B10–11: Capstone\n- B12: Bảo vệ + định hướng nghề",
+    parentArtifactId: null,
+    status: "review",
+    version: 1,
+    qualityScore: null,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: minutesAgo(6),
+    updatedAt: minutesAgo(6),
+  },
+  {
+    id: "art-demo-syllabus-v2",
+    taskId: "task-demo-fresh-syllabus",
+    agentId: "sub-syllabus-designer",
+    artifactType: "syllabus",
+    title: "Syllabus K3 — bản nháp",
+    content:
+      "# Syllabus K3 — Nghề Digital Marketing định hướng AI Automation\n\n## Module 1 · Nền tảng (buổi 1–4)\n- B1: Tư duy Digital Marketing thời AI\n- B2: Phễu & hành trình khách hàng\n- B3: Content chiến lược\n- B4: Đo lường & dashboard tự động (bổ sung theo yêu cầu sửa)\n\n## Module 2 · AI Agent thực chiến (buổi 5–9)\n- B5: Prompt & context engineering\n- B6: Thiết kế AI Agent có JD\n- B7: Automation phễu tuyển sinh\n- B8: AI content pipeline\n- B9: Case tổng hợp\n\n## Module 3 · Tốt nghiệp (buổi 10–12)\n- B10–11: Capstone\n- B12: Bảo vệ + định hướng nghề",
+    parentArtifactId: "art-demo-syllabus-v1",
+    status: "review",
+    version: 2,
+    qualityScore: null,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: minutesAgo(1),
+    updatedAt: minutesAgo(1),
+  },
+  {
+    id: "art-demo-content-v1",
+    taskId: "task-demo-fresh-content",
+    agentId: "main-agent-rd",
+    artifactType: "connector_draft",
+    title: "Content phễu K3 — bản nháp",
+    content:
+      "# Content phễu tuyển sinh K3 — 5 bài\n\n## Bài 1 — Mỏ neo đời thực\nCâu chuyện học viên K2 áp dụng AI Agent vào công việc thực tế, theo insight từ tài liệu đính kèm.\n\n## Bài 2 — Vấn đề thị trường\nSME Việt Nam đang bỏ lỡ gì khi chưa dùng AI Automation trong marketing.\n\n## Bài 3 — Giải pháp Kstudy\nLộ trình 12 buổi, từ nền tảng đến AI Agent thực chiến.\n\n## Bài 4 — Bằng chứng\nCase học viên K2, số liệu trước/sau khoá học.\n\n## Bài 5 — Lời kêu gọi\nCTA đăng ký K3, ưu đãi sớm.",
+    parentArtifactId: null,
+    status: "review",
+    version: 1,
+    qualityScore: null,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: minutesAgo(4),
+    updatedAt: minutesAgo(4),
+  },
+  {
+    id: "art-demo-freeform-v1",
+    taskId: "task-demo-fresh-freeform",
+    agentId: "main-agent-rd",
+    artifactType: "other",
+    title: "Kế hoạch đề xuất",
+    content:
+      "# Đề xuất kế hoạch thực thi\n\n## Phạm vi đề xuất\nDựa trên mô tả, Trợ lý đề xuất chia việc thành các giai đoạn nhỏ để anh duyệt từng phần thay vì chờ bản hoàn chỉnh.\n\n## Các bước tiếp theo\n- Xác nhận phạm vi chi tiết\n- Thực thi giai đoạn 1\n- Báo cáo & xin duyệt trước khi sang giai đoạn 2",
+    parentArtifactId: null,
+    status: "review",
+    version: 1,
+    qualityScore: null,
+    sensitivityFlags: { metrics: false, people: false, brand: false },
+    createdAt: minutesAgo(4),
+    updatedAt: minutesAgo(4),
+  },
+];
+
+export function findArtifact(id: string): Artifact | undefined {
+  return ARTIFACTS.find((a) => a.id === id);
+}
+
+export const RECENT_ARTIFACTS = ARTIFACTS.filter(
+  (a) => a.status === "approved" || a.status === "published"
+).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+// ── Task detail + chat thread (05-man-trao-doi-cong-viec) ────────────────
+// Kept strictly to the hard rule "chat chỉ với Trợ lý vận hành": every
+// `chat` message is sent by 'human' or 'main-agent-rd', never by a sub-agent
+// directly. Sub-agent activity surfaces via status/delegation/artifact cards.
+
+export const TASK_DETAIL_SYLLABUS_K3: TaskDetail = {
+  id: "task-syllabus-k3-m2",
+  title: "Viết syllabus module 2 — Khóa AI Marketing K3",
+  status: "waiting_human",
+  projectTitle: "Khóa AI Marketing K3",
+  priority: "normal",
+  dueDate: daysFromNow(2),
+  createdAt: hoursAgo(14),
+  costToDateTokens: 42_000,
+  costToDateVnd: 28_000,
+  currentStepKey: "syllabus",
+  isRunning: false,
+  steps: [
+    { key: "framework", label: "Khung chương trình", state: "done", agentId: "sub-program-architect" },
+    { key: "research", label: "Nghiên cứu", state: "done", agentId: "sub-curriculum-researcher" },
+    { key: "syllabus", label: "Syllabus", state: "waiting_human", agentId: "sub-syllabus-designer" },
+    { key: "lesson", label: "Lesson", state: "todo" },
+    { key: "slide", label: "Slide", state: "todo" },
+    { key: "video", label: "Video", state: "todo" },
+    { key: "review", label: "Review", state: "todo" },
+  ],
+  activeDelegation: {
+    id: "deleg-syllabus-k3-m2",
+    taskId: "task-syllabus-k3-m2",
+    fromAgentId: "main-agent-rd",
+    toAgentId: "sub-syllabus-designer",
+    instruction: "Viết syllabus module 2 dựa trên khung chương trình đã duyệt + research benchmark.",
+    status: "review",
+    retryCount: 1,
+    runId: "run-syllabus-k3-m2-v2",
+    outputArtifactId: "art-syllabus-k3-m2-v2",
+    createdAt: hoursAgo(14),
+    updatedAt: hoursAgo(1),
+  },
+  messages: [
+    {
+      id: "msg-1",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content: "Đã giao cho Thiết kế syllabus",
+      messageType: "status",
+      createdAt: hoursAgo(14),
+    },
+    {
+      id: "msg-2",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content:
+        "Em đã giao viết syllabus module 2 cho Thiết kế syllabus, dựa trên khung chương trình đã duyệt và research benchmark của module 1.",
+      messageType: "chat",
+      createdAt: hoursAgo(14),
+    },
+    {
+      id: "msg-3",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content:
+        "Thiết kế syllabus báo thiếu ngữ cảnh: chưa rõ trình độ đầu vào học viên module 2 (mới bắt đầu hay đã học xong module 1?). Anh bổ sung giúp em?",
+      messageType: "escalation",
+      metadata: { suggestedActions: ["Bổ sung chỉ đạo"] },
+      createdAt: hoursAgo(14),
+    },
+    {
+      id: "msg-4",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "human",
+      senderId: "human",
+      content:
+        "Học viên đã hoàn thành module 1, coi như biết cơ bản Facebook Ads + Google Ads. Module 2 nâng cao hơn, thêm phần AI automation.",
+      messageType: "chat",
+      createdAt: hoursAgo(13.5),
+    },
+    {
+      id: "msg-5",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content: "Rõ rồi anh, em chuyển tiếp chỉ đạo cho Thiết kế syllabus ngay.",
+      messageType: "chat",
+      createdAt: hoursAgo(13.4),
+    },
+    {
+      id: "msg-6",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content: "Đang viết syllabus module 2",
+      messageType: "status",
+      metadata: {
+        delegation: {
+          id: "deleg-syllabus-k3-m2-v1",
+          taskId: "task-syllabus-k3-m2",
+          fromAgentId: "main-agent-rd",
+          toAgentId: "sub-syllabus-designer",
+          instruction: "Viết syllabus module 2 — bổ sung ngữ cảnh trình độ đầu vào.",
+          status: "running",
+          retryCount: 0,
+          runId: "run-syllabus-k3-m2-v1",
+          outputArtifactId: null,
+          createdAt: hoursAgo(13.3),
+          updatedAt: hoursAgo(13.3),
+        },
+      },
+      createdAt: hoursAgo(13.3),
+    },
+    {
+      id: "msg-7",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content: "Syllabus module 2 v1",
+      messageType: "artifact_delivery",
+      metadata: { artifact: findArtifact("art-syllabus-k3-m2-v1") },
+      createdAt: hoursAgo(13),
+    },
+    {
+      id: "msg-8",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content: "Đang chờ Kiểm tra chất lượng review",
+      messageType: "status",
+      createdAt: hoursAgo(12.5),
+    },
+    {
+      id: "msg-9",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content:
+        "Kiểm tra chất lượng đề nghị bổ sung learning outcomes rõ hơn cho bài 2.3 và 2.5. Em đã yêu cầu Thiết kế syllabus chỉnh lại.",
+      messageType: "chat",
+      createdAt: hoursAgo(2.2),
+    },
+    {
+      id: "msg-10",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content: "Đang chỉnh syllabus module 2 (v2)",
+      messageType: "status",
+      metadata: {
+        delegation: {
+          id: "deleg-syllabus-k3-m2-v2",
+          taskId: "task-syllabus-k3-m2",
+          fromAgentId: "main-agent-rd",
+          toAgentId: "sub-syllabus-designer",
+          instruction: "Bổ sung learning outcomes rõ ràng cho bài 2.3 và 2.5.",
+          status: "review",
+          retryCount: 1,
+          runId: "run-syllabus-k3-m2-v2",
+          outputArtifactId: "art-syllabus-k3-m2-v2",
+          createdAt: hoursAgo(2),
+          updatedAt: hoursAgo(1),
+        },
+      },
+      createdAt: hoursAgo(2),
+    },
+    {
+      id: "msg-11",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content: "Syllabus module 2 v2",
+      messageType: "artifact_delivery",
+      metadata: { artifact: findArtifact("art-syllabus-k3-m2-v2") },
+      createdAt: hoursAgo(1),
+    },
+    {
+      id: "msg-12",
+      taskId: "task-syllabus-k3-m2",
+      senderType: "agent",
+      senderId: "main-agent-rd",
+      content: "Duyệt syllabus module 2 — Khóa AI Marketing K3",
+      messageType: "approval_request",
+      metadata: { approval: APPROVALS.find((a) => a.id === "appr-syllabus-k3") },
+      createdAt: hoursAgo(1),
+    },
+  ],
+};
+
+// ── Org context sections (04-man-doi-ngu §2) ─────────────────────────────
+
+export const ORG_CONTEXT_SECTIONS: OrgContextSection[] = [
+  {
+    key: "su-menh",
+    title: "Sứ mệnh",
+    bodyMarkdown:
+      "Đào tạo nghề Digital Marketing định hướng AI Automation, giúp học viên có năng lực làm việc thật trong 6–8 tháng.",
+    version: 2,
+    approvedAt: "20/05/2026",
+    pendingChange: false,
+  },
+  {
+    key: "tam-nhin",
+    title: "Tầm nhìn",
+    bodyMarkdown:
+      "Kstudy AI-Native — mỗi nhân sự phụ trách một phòng ban cùng đội ngũ AI Agent chuyên trách, có JD và quy trình riêng.",
+    version: 2,
+    approvedAt: "20/05/2026",
+    pendingChange: false,
+  },
+  {
+    key: "gia-tri",
+    title: "Giá trị cốt lõi",
+    bodyMarkdown: "AI-First · Asset-light (Ultra-lean) · Thực chiến, đo lường được",
+    version: 2,
+    approvedAt: "20/05/2026",
+    pendingChange: false,
+  },
+  {
+    key: "nguyen-tac",
+    title: "Nguyên tắc làm việc",
+    bodyMarkdown:
+      "Ưu tiên hợp tác/outsource khi hiệu quả hơn tự làm. Học liệu chuẩn KASH/Bloom/CDIO. Không dùng ngôn từ quảng cáo phóng đại (“100%”, “số 1”, “duy nhất”).",
+    version: 2,
+    approvedAt: "20/05/2026",
+    pendingChange: false,
+  },
+  {
+    key: "ky-luat",
+    title: "Kỷ luật công việc",
+    bodyMarkdown:
+      "SLA duyệt thường 24h, nội dung chương trình 48h. Escalate sau 2 lần quá SLA. Giao ban 8:30 sáng. Ngưỡng ngân sách token/ngày theo dõi tại Kiểm soát & Phân quyền.",
+    version: 2,
+    approvedAt: "20/05/2026",
+    pendingChange: true,
+  },
+  {
+    key: "chien-luoc",
+    title: "Chiến lược & Ưu tiên",
+    bodyMarkdown:
+      "Tập trung ra mắt Khóa AI Marketing K3 và chuẩn hoá quy trình R&D để nâng tỷ lệ đạt duyệt lần đầu. Ưu tiên hợp tác/outsource khi hiệu quả hơn tự làm; mở rộng thư viện mẫu để tái sử dụng.",
+    version: 3,
+    approvedAt: "12/06/2026",
+    pendingChange: false,
+  },
+];
+
+// ── Template library (JD & Kỹ năng tab) ──────────────────────────────────
+
+export const TEMPLATE_SKILLS: TemplateSkill[] = [
+  { id: "tpl-framework", name: "program_framework", templateType: "Khung chương trình", purpose: "Chuẩn CDIO", version: 2, usageCount: 14, status: "active" },
+  { id: "tpl-syllabus", name: "syllabus", templateType: "Syllabus", purpose: "Chuẩn KASH + Bloom", version: 3, usageCount: 22, status: "active" },
+  { id: "tpl-lesson", name: "lesson_plan", templateType: "Lesson plan", purpose: "Mẫu giáo án Kstudy", version: 1, usageCount: 9, status: "active" },
+  { id: "tpl-slide", name: "slide_outline", templateType: "Slide outline", purpose: "Chuẩn brand 1920x1080", version: 1, usageCount: 11, status: "active" },
+  { id: "tpl-video", name: "video_script", templateType: "Video script", purpose: "Micro-learning", version: 1, usageCount: 7, status: "active" },
+  { id: "tpl-rubric", name: "quality_rubric", templateType: "Quality rubric", purpose: "4 tiêu chí + sensitivity", version: 2, usageCount: 31, status: "active" },
+];
+
+// ── Approval matrix (spec 01 §4 — transcribed verbatim, no invented rows) ─
+
+export const APPROVAL_MATRIX: ApprovalMatrixRow[] = [
+  { action: "Kế hoạch tổng thể", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "24h", automatic: false },
+  { action: "Chiến lược đào tạo", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "24h", automatic: false },
+  { action: "Khung chương trình (sau QR)", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "48h", automatic: false },
+  { action: "Syllabus (sau QR)", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "48h", automatic: false },
+  { action: "Nội dung chứa số liệu / con người / thương hiệu", requestedBy: "Bất kỳ thành viên AI", cooldown: "—", slaHours: "24h", automatic: false },
+  { action: "Publish Facebook / WordPress", requestedBy: "Trợ lý vận hành", cooldown: "5 phút", slaHours: "4h", automatic: false },
+  { action: "Sửa blueprint / template mặc định", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "48h", automatic: false },
+  { action: "Sửa tri thức tổ chức", requestedBy: "Anh Khiêm qua UI", cooldown: "—", slaHours: "—", automatic: false },
+  { action: "Slide outline", requestedBy: "Xây dựng slide", cooldown: "—", slaHours: "Auto", automatic: true, condition: "Đã có approval “approved” cho syllabus cùng workflow" },
+  { action: "Video script", requestedBy: "Viết kịch bản video", cooldown: "—", slaHours: "Auto", automatic: true, condition: "Đã có approval “approved” cho lesson plan cùng workflow" },
+  { action: "Tạo trợ thủ tạm thời", requestedBy: "Thành viên AI có quyền", cooldown: "—", slaHours: "Auto", automatic: true, condition: "Agent có create_helper=true + task cha trong scope" },
+  { action: "Outline expansion, draft generation, nghiên cứu nội bộ, checklist", requestedBy: "Thành viên AI", cooldown: "—", slaHours: "Auto", automatic: true, condition: "Luôn tự động" },
+];
+
+export const DEPARTMENT_POLICIES: DepartmentPolicies = {
+  autoApprove: [
+    { artifactType: "slide_outline", enabled: true, minQualityScore: 8.0 },
+    { artifactType: "video_script", enabled: true, minQualityScore: 8.0 },
+    { artifactType: "lesson_plan", enabled: false, minQualityScore: 8.0 },
+    { artifactType: "syllabus", enabled: false, minQualityScore: 9.0 },
+  ],
+  dailyTokenLimit: 2_000_000,
+  tokensUsedToday: 640_000,
+  perTaskTokenLimit: 300_000,
+};
+
+// ── Notifications (topbar) ───────────────────────────────────────────────
+
+export const NOTIFICATIONS: KadNotification[] = [
+  {
+    id: "notif-1",
+    kind: "approval_sla",
+    title: "Quá SLA phê duyệt",
+    body: "Duyệt kế hoạch tổng thể — Onboarding đã quá SLA 4h.",
+    linkPath: "/",
+    readAt: null,
+    createdAt: hoursAgo(4),
+  },
+  {
+    id: "notif-2",
+    kind: "run_failed",
+    title: "Run lỗi",
+    body: "Viết kịch bản video — Video Script K2 timeout, đã retry 2 lần.",
+    linkPath: "/cong-viec/task-video-k2-fix",
+    readAt: null,
+    createdAt: hoursAgo(3),
+  },
+  {
+    id: "notif-3",
+    kind: "approval_pending",
+    title: "Chờ duyệt mới",
+    body: "Syllabus module 2 — Khóa AI Marketing K3 đã sẵn sàng để duyệt.",
+    linkPath: "/cong-viec/task-syllabus-k3-m2",
+    readAt: null,
+    createdAt: hoursAgo(1),
+  },
+  {
+    id: "notif-4",
+    kind: "task_blocked",
+    title: "Công việc bị chặn",
+    body: "Research benchmark đối thủ — K3 gặp lỗi lần 1, đang theo dõi.",
+    linkPath: "/he-thong/kanban",
+    readAt: daysAgo(1),
+    createdAt: hoursAgo(4.5),
+  },
+  {
+    id: "notif-5",
+    kind: "daily_briefing",
+    title: "Giao ban buổi sáng",
+    body: "Bản tin sáng nay đã sẵn sàng.",
+    linkPath: "/",
+    readAt: daysAgo(1),
+    createdAt: hoursAgo(26),
+  },
+];
+
+export function minutesAgoIso(m: number): string {
+  return minutesAgo(m);
+}
+
+// ── Trigger / lịch / tự động hoá (spec/ui/09) ───────────────────────────
+
+/** Nguồn có thể đặt điều kiện phụ thuộc — dùng cho picker "Bắt đầu khi" (spec/ui/09 §1). */
+export const DEPENDENCY_SOURCES = [
+  "Syllabus Môn 01",
+  "Khung chương trình K3",
+  "Khóa AI Marketing K3",
+  "Nghiên cứu nhu cầu SME",
+];
+
+/** Task đang chờ điều kiện (status='blocked' + task_dependencies) — spec/ui/09 §3. */
+export const BLOCKED_TASKS: TaskCard[] = [
+  {
+    id: "task-blocked-1",
+    parentTaskId: null,
+    title: "R&D Môn 02 — AI Automation nâng cao cho SME",
+    status: "blocked",
+    projectTitle: "Khóa AI Marketing K3",
+    dueDate: null,
+    assignedAgentId: null,
+    hasFailedRun: false,
+    retryCount: 0,
+    priority: "normal",
+    updatedAt: hoursAgo(2),
+    startCondition: 'Khi "Syllabus Môn 01" được duyệt',
+  },
+];
+
+export const AUTOMATION_RULES: AutomationRule[] = [
+  {
+    id: "rule-briefing",
+    name: "Giao ban buổi sáng",
+    trigger: { type: "schedule", label: "Hằng ngày lúc 07:00" },
+    actionType: "run_briefing",
+    actionLabel: "Tạo Báo cáo đầu ngày",
+    approvalRequired: false,
+    enabled: true,
+    lastFiredAtLabel: "hôm nay",
+    fireCount: 42,
+    dryRun30d: "Sẽ kích 30 lần (mỗi sáng 07:00)",
+    fires: [
+      { id: "fire-b1", firedAt: hoursAgo(6), triggerRef: "Lịch 07:00", result: "created", note: "Báo cáo đầu ngày" },
+      { id: "fire-b2", firedAt: hoursAgo(30), triggerRef: "Lịch 07:00", result: "created" },
+    ],
+  },
+  {
+    id: "rule-next-module",
+    name: "Môn xong → tạo môn kế",
+    trigger: { type: "event", label: "Khi một khoá/môn hoàn thành" },
+    actionType: "create_task",
+    actionLabel: "Tạo việc R&D môn kế tiếp",
+    approvalRequired: true,
+    enabled: true,
+    lastFiredAtLabel: "2 ngày",
+    fireCount: 3,
+    dryRun30d: "Sẽ kích 2 lần: 08/07 (Môn 01 xong), 22/07 (Môn 02 xong)",
+    fires: [
+      {
+        id: "fire-m1",
+        firedAt: daysAgo(2),
+        triggerRef: "Môn 01 hoàn thành",
+        result: "created",
+        note: "Đã tạo R&D Môn 02 — chờ xác nhận",
+      },
+      {
+        id: "fire-m2",
+        firedAt: daysAgo(9),
+        triggerRef: "Khoá K2 hoàn thành",
+        result: "skipped_budget",
+        note: "Vượt ngân sách ngày — không tạo việc",
+      },
+    ],
+  },
+  {
+    id: "rule-quality",
+    name: "Chất lượng đạt lần đầu < 80%",
+    trigger: { type: "metric_threshold", label: "Khi tỷ lệ đạt lần đầu < 80%" },
+    actionType: "notify",
+    actionLabel: "Cảnh báo trưởng phòng",
+    approvalRequired: false,
+    enabled: false,
+    lastFiredAtLabel: null,
+    fireCount: 0,
+    dryRun30d: "Sẽ kích 0 lần (ngưỡng chưa chạm trong 30 ngày)",
+    fires: [],
+  },
+];

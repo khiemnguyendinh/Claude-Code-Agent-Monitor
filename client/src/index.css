@@ -4,14 +4,24 @@
  * @author Son Nguyen <hoangson091104@gmail.com>
  */
 
+/* @import must precede every other rule (CSS spec) — Vite/PostCSS will not
+   apply an @import that comes after @tailwind, so the KAD light-theme
+   tokens (--kad-*, .kad-root, typography scale) were silently failing to
+   load. Keep this the first line in the file. */
+@import "./kad/kad-tokens.css";
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  /* 2026-07-04 retheme: global scrollbar/selection now match the "Kstudy
+     Flat" light theme (previously hardcoded dark, from before /he-thong/*
+     shared tokens with the KAD screens). The .kad-root-scoped versions in
+     kad-tokens.css are the same values now — kept for the ::-webkit- rules'
+     specificity, harmless duplication. */
   * {
     scrollbar-width: thin;
-    scrollbar-color: #2a2a3d #0c0c14;
+    scrollbar-color: var(--kad-border-strong) var(--kad-surface-2);
   }
 
   *::-webkit-scrollbar {
@@ -20,21 +30,21 @@
   }
 
   *::-webkit-scrollbar-track {
-    background: #0c0c14;
+    background: var(--kad-surface-2);
   }
 
   *::-webkit-scrollbar-thumb {
-    background: #2a2a3d;
+    background: var(--kad-border-strong);
     border-radius: 3px;
   }
 
   *::-webkit-scrollbar-thumb:hover {
-    background: #363650;
+    background: var(--kad-text-faint);
   }
 
   ::selection {
-    background: rgba(99, 102, 241, 0.3);
-    color: #e4e4ed;
+    background: var(--kad-accent-muted);
+    color: var(--kad-text-strong);
   }
 
   ::-webkit-calendar-picker-indicator {
@@ -67,16 +77,22 @@
     @apply inline-flex items-center gap-2 px-4 py-2 bg-accent hover:bg-accent-hover text-white text-sm font-medium rounded-lg transition-colors duration-150;
   }
 
+  /* text-gray-400/200 assumed a dark backdrop (hover got *lighter* to pop
+     against black). Flipped to kad text tokens so hover gets *darker* —
+     correct direction of emphasis on a light surface. */
   .btn-ghost {
-    @apply inline-flex items-center gap-2 px-3 py-1.5 text-sm text-gray-400 hover:text-gray-200 hover:bg-surface-4 rounded-lg transition-colors duration-150;
+    @apply inline-flex items-center gap-2 px-3 py-1.5 text-sm text-kad-text-muted hover:text-kad-text hover:bg-surface-4 rounded-lg transition-colors duration-150;
   }
 
   .badge {
     @apply inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-full border whitespace-nowrap shrink-0;
   }
 
+  /* text-gray-200 was near-white (illegible on a light input fill);
+     placeholder-gray-500 happened to be ~identical to kad-text-muted so
+     this is mostly a rename, but text-* needed the actual fix. */
   .input {
-    @apply bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors;
+    @apply bg-surface-2 border border-border rounded-lg px-3 py-2 text-sm text-kad-text placeholder-kad-text-muted focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/30 transition-colors;
   }
 }
 

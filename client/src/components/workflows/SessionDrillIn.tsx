@@ -24,19 +24,23 @@ type AgentNode = SessionDrillInData["tree"][number];
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function statusColor(status: string): string {
+  // "completed" reads as success (green) — more conventional than the navy
+  // this briefly held after the flat-theme conversion. "working"/"active"
+  // share accent blue ("in progress right now"), distinct from both
+  // completed-green and waiting-amber.
   switch (status) {
     case "completed":
-      return "text-violet-400 bg-violet-500/10 border-violet-500/20";
+      return "text-kad-success bg-[var(--kad-success)]/10 border-[var(--kad-success)]/20";
     case "working":
-      return "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
+      return "text-kad-accent bg-[var(--kad-accent)]/10 border-[var(--kad-accent)]/20";
     case "error":
-      return "text-red-400 bg-red-500/10 border-red-500/20";
+      return "text-kad-danger bg-[var(--kad-danger)]/10 border-[var(--kad-danger)]/20";
     case "active":
-      return "text-emerald-400 bg-emerald-500/10 border-emerald-500/20";
+      return "text-kad-accent bg-[var(--kad-accent)]/10 border-[var(--kad-accent)]/20";
     case "waiting":
-      return "text-yellow-400 bg-yellow-500/10 border-yellow-500/20";
+      return "text-kad-warning bg-[var(--kad-warning)]/10 border-[var(--kad-warning)]/20";
     default:
-      return "text-gray-400 bg-gray-500/10 border-gray-500/20";
+      return "text-kad-text-muted bg-[var(--kad-text-muted)]/10 border-[var(--kad-text-muted)]/20";
   }
 }
 
@@ -85,8 +89,8 @@ function TabBar({ active, onChange }: TabBarProps) {
           className={[
             "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors duration-150",
             active === tab.id
-              ? "bg-surface-5 text-gray-100 shadow-sm"
-              : "text-gray-500 hover:text-gray-300",
+              ? "bg-surface-5 text-kad-text-strong"
+              : "text-kad-text-muted hover:text-kad-text",
           ].join(" ")}
         >
           {tab.icon}
@@ -122,7 +126,7 @@ function TreeNode({ node, depth }: TreeNodeProps) {
   return (
     <div>
       <div
-        className="flex items-center gap-2 py-1.5 hover:bg-white/5 rounded transition-colors"
+        className="flex items-center gap-2 py-1.5 hover:bg-surface-2 rounded transition-colors"
         style={{ paddingLeft: `${indentPx + 8}px`, paddingRight: "8px" }}
       >
         {/* Depth connector line */}
@@ -137,20 +141,22 @@ function TreeNode({ node, depth }: TreeNodeProps) {
 
         {/* Name */}
         <span
-          className={`text-sm font-medium truncate ${isMain ? "text-indigo-300" : "text-gray-200"}`}
+          className={`text-sm font-medium truncate ${isMain ? "text-accent" : "text-kad-text"}`}
         >
           {node.name}
         </span>
 
         {/* Subagent type */}
         {node.subagent_type && (
-          <span className="text-xs text-gray-500 truncate flex-shrink-0">
+          <span className="text-xs text-kad-text-muted truncate flex-shrink-0">
             [{node.subagent_type}]
           </span>
         )}
 
         {/* Duration */}
-        <span className="ml-auto flex-shrink-0 text-xs text-gray-600 tabular-nums">{dur}</span>
+        <span className="ml-auto flex-shrink-0 text-xs text-kad-text-faint tabular-nums">
+          {dur}
+        </span>
       </div>
 
       {node.children.length > 0 && (
@@ -171,7 +177,9 @@ interface AgentTreeProps {
 function AgentTree({ tree }: AgentTreeProps) {
   const { t } = useTranslation("workflows");
   if (tree.length === 0) {
-    return <p className="text-sm text-gray-500 text-center py-8">{t("drillIn.noAgentTree")}</p>;
+    return (
+      <p className="text-sm text-kad-text-muted text-center py-8">{t("drillIn.noAgentTree")}</p>
+    );
   }
 
   return (
@@ -194,7 +202,9 @@ interface ToolTimelineProps {
 function ToolTimeline({ events }: ToolTimelineProps) {
   const { t } = useTranslation("workflows");
   if (events.length === 0) {
-    return <p className="text-sm text-gray-500 text-center py-8">{t("drillIn.noToolEvents")}</p>;
+    return (
+      <p className="text-sm text-kad-text-muted text-center py-8">{t("drillIn.noToolEvents")}</p>
+    );
   }
 
   return (
@@ -203,20 +213,22 @@ function ToolTimeline({ events }: ToolTimelineProps) {
         {events.map((ev) => (
           <div
             key={ev.id}
-            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/5 transition-colors"
+            className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-surface-2 transition-colors"
           >
             {/* Tool pill */}
-            <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-indigo-500/15 text-indigo-300 border border-indigo-500/20 whitespace-nowrap">
+            <span className="flex-shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-accent-muted text-accent border border-accent/20 whitespace-nowrap">
               {ev.tool_name ?? ev.event_type}
             </span>
 
             {/* Summary */}
             {ev.summary && (
-              <span className="text-xs text-gray-400 truncate flex-1 min-w-0">{ev.summary}</span>
+              <span className="text-xs text-kad-text-muted truncate flex-1 min-w-0">
+                {ev.summary}
+              </span>
             )}
 
             {/* Timestamp */}
-            <span className="flex-shrink-0 text-[10px] text-gray-600 tabular-nums ml-auto">
+            <span className="flex-shrink-0 text-[10px] text-kad-text-faint tabular-nums ml-auto">
               {safeTimestamp(ev.created_at)}
             </span>
           </div>
@@ -233,22 +245,22 @@ interface EventSequenceProps {
 }
 
 const EVENT_TYPE_COLOR: Record<string, string> = {
-  tool_use: "text-blue-400",
-  tool_result: "text-emerald-400",
-  agent_start: "text-indigo-400",
-  agent_stop: "text-violet-400",
-  compaction: "text-amber-400",
-  error: "text-red-400",
+  tool_use: "text-accent",
+  tool_result: "text-kad-success",
+  agent_start: "text-kad-primary",
+  agent_stop: "text-kad-info",
+  compaction: "text-kad-warning",
+  error: "text-kad-danger",
 };
 
 function eventTypeColor(type: string): string {
-  return EVENT_TYPE_COLOR[type] ?? "text-gray-400";
+  return EVENT_TYPE_COLOR[type] ?? "text-kad-text-muted";
 }
 
 function EventSequence({ events }: EventSequenceProps) {
   const { t } = useTranslation("workflows");
   if (events.length === 0) {
-    return <p className="text-sm text-gray-500 text-center py-8">{t("drillIn.noEvents")}</p>;
+    return <p className="text-sm text-kad-text-muted text-center py-8">{t("drillIn.noEvents")}</p>;
   }
 
   const recent = events.slice(0, 100);
@@ -259,7 +271,7 @@ function EventSequence({ events }: EventSequenceProps) {
         {recent.map((ev) => (
           <div
             key={ev.id}
-            className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-white/5 transition-colors group"
+            className="flex items-start gap-2 px-2 py-1.5 rounded hover:bg-surface-2 transition-colors group"
           >
             {/* Event type badge */}
             <span
@@ -270,18 +282,18 @@ function EventSequence({ events }: EventSequenceProps) {
             </span>
 
             {/* Summary */}
-            <span className="text-xs text-gray-400 flex-1 min-w-0 truncate">
+            <span className="text-xs text-kad-text-muted flex-1 min-w-0 truncate">
               {ev.summary ?? ev.tool_name ?? "-"}
             </span>
 
             {/* Timestamp */}
-            <span className="flex-shrink-0 text-[10px] text-gray-600 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
+            <span className="flex-shrink-0 text-[10px] text-kad-text-faint tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
               {safeTimestamp(ev.created_at)}
             </span>
           </div>
         ))}
         {events.length > 100 && (
-          <p className="text-xs text-gray-600 text-center py-2">
+          <p className="text-xs text-kad-text-faint text-center py-2">
             {t("drillIn.showingOf", { total: events.length })}
           </p>
         )}
@@ -310,11 +322,11 @@ function ErrorState({ message }: ErrorStateProps) {
   const { t } = useTranslation("workflows");
   return (
     <div className="flex flex-col items-center justify-center py-10 text-center px-4">
-      <div className="w-9 h-9 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-3">
-        <X className="w-4 h-4 text-red-400" />
+      <div className="w-9 h-9 rounded-xl bg-[var(--kad-danger)]/10 border border-[var(--kad-danger)]/20 flex items-center justify-center mb-3">
+        <X className="w-4 h-4 text-kad-danger" />
       </div>
-      <p className="text-sm font-medium text-red-400">{t("drillIn.failedLoad")}</p>
-      <p className="text-xs text-gray-600 mt-1 max-w-xs">{message}</p>
+      <p className="text-sm font-medium text-kad-danger">{t("drillIn.failedLoad")}</p>
+      <p className="text-xs text-kad-text-faint mt-1 max-w-xs">{message}</p>
     </div>
   );
 }
@@ -350,17 +362,19 @@ function NoSessionState({ onSelectSession }: NoSessionStateProps) {
 
       <div className="flex flex-col items-center text-center mt-2">
         <div className="w-10 h-10 rounded-xl bg-surface-4 flex items-center justify-center mb-4">
-          <GitFork className="w-5 h-5 text-gray-600" />
+          <GitFork className="w-5 h-5 text-kad-text-faint" />
         </div>
-        <p className="text-sm font-medium text-gray-400 mb-1">{t("drillIn.noSessionSelected")}</p>
-        <p className="text-xs text-gray-600 max-w-xs">{t("drillIn.noSessionDesc")}</p>
+        <p className="text-sm font-medium text-kad-text-muted mb-1">
+          {t("drillIn.noSessionSelected")}
+        </p>
+        <p className="text-xs text-kad-text-faint max-w-xs">{t("drillIn.noSessionDesc")}</p>
 
         {/* Preview tab pills */}
         <div className="flex gap-2 mt-5">
           {tabs.map((tab) => (
             <div
               key={tab.id}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-gray-600 bg-surface-3 border border-border"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium text-kad-text-faint bg-surface-3 border border-border"
             >
               {tab.icon}
               {tab.label}
@@ -389,10 +403,10 @@ function SessionHeader({ drillIn, onClose, activeTab, onTabChange }: SessionHead
     <div className="flex flex-col gap-3 mb-4">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-gray-100 truncate">
+          <p className="text-sm font-semibold text-kad-text-strong truncate">
             {session.name ?? session.id}
           </p>
-          <p className="text-xs text-gray-500 mt-0.5 truncate">
+          <p className="text-xs text-kad-text-muted mt-0.5 truncate">
             {formatModelName(session.model) ?? t("drillIn.unknownModel")} &middot;{" "}
             {t(`common:status.${session.status}`, { defaultValue: session.status })}
             {session.started_at && ` \u00b7 ${safeTimestamp(session.started_at)}`}
@@ -401,7 +415,7 @@ function SessionHeader({ drillIn, onClose, activeTab, onTabChange }: SessionHead
         <button
           type="button"
           onClick={onClose}
-          className="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-gray-500 hover:text-gray-200 hover:bg-white/10 transition-colors"
+          className="flex-shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-kad-text-muted hover:text-kad-text-strong hover:bg-surface-2 transition-colors"
           aria-label={t("drillIn.closePanel")}
         >
           <X className="w-4 h-4" />
@@ -507,20 +521,20 @@ function SessionSelector({ onSelectSession }: SessionSelectorProps) {
       <div
         className={[
           "flex items-center gap-2 px-3 py-2 rounded-lg border bg-surface-3 transition-colors cursor-text",
-          open ? "border-indigo-500/40 ring-1 ring-indigo-500/20" : "border-border",
+          open ? "border-accent/40 ring-1 ring-accent/20" : "border-border",
         ].join(" ")}
         onClick={() => {
           setOpen(true);
           inputRef.current?.focus();
         }}
       >
-        <Search className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+        <Search className="w-3.5 h-3.5 text-kad-text-muted flex-shrink-0" />
         <input
           ref={inputRef}
           type="text"
           value={search}
           placeholder={t("drillIn.searchPlaceholder")}
-          className="flex-1 bg-transparent text-xs text-gray-200 placeholder-gray-600 outline-none min-w-0"
+          className="flex-1 bg-transparent text-xs text-kad-text placeholder-kad-text-faint outline-none min-w-0"
           onFocus={() => setOpen(true)}
           onChange={(e) => {
             setSearch(e.target.value);
@@ -529,7 +543,7 @@ function SessionSelector({ onSelectSession }: SessionSelectorProps) {
         />
         <ChevronDown
           className={[
-            "w-3.5 h-3.5 text-gray-600 flex-shrink-0 transition-transform duration-150",
+            "w-3.5 h-3.5 text-kad-text-faint flex-shrink-0 transition-transform duration-150",
             open ? "rotate-180" : "",
           ].join(" ")}
         />
@@ -537,7 +551,10 @@ function SessionSelector({ onSelectSession }: SessionSelectorProps) {
 
       {/* Dropdown panel */}
       {open && (
-        <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-surface-2 border border-border rounded-lg shadow-xl overflow-hidden">
+        <div
+          className="absolute z-50 left-0 right-0 top-full mt-1 bg-surface-2 border border-border rounded-lg overflow-hidden"
+          style={{ boxShadow: "var(--kad-shadow-1)" }}
+        >
           <div className="max-h-64 overflow-y-auto">
             {loading && sessions.length === 0 ? (
               <div className="flex flex-col gap-2 p-3 animate-pulse">
@@ -550,7 +567,7 @@ function SessionSelector({ onSelectSession }: SessionSelectorProps) {
                 ))}
               </div>
             ) : filtered.length === 0 ? (
-              <p className="text-xs text-gray-600 text-center py-6 px-3">
+              <p className="text-xs text-kad-text-faint text-center py-6 px-3">
                 {search.trim() ? t("drillIn.noMatch") : t("drillIn.notFound")}
               </p>
             ) : (
@@ -562,7 +579,7 @@ function SessionSelector({ onSelectSession }: SessionSelectorProps) {
                       key={s.id}
                       type="button"
                       onClick={() => handleSelect(s.id)}
-                      className="flex items-center gap-2 px-3 py-2 text-left hover:bg-white/5 transition-colors border-b border-border/50 last:border-0"
+                      className="flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-3 transition-colors border-b border-border/50 last:border-0"
                     >
                       <span
                         className={`flex-shrink-0 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${sc}`}
@@ -570,22 +587,22 @@ function SessionSelector({ onSelectSession }: SessionSelectorProps) {
                         {s.status}
                       </span>
                       <span className="flex-1 min-w-0">
-                        <span className="block text-xs font-medium text-gray-200 truncate">
+                        <span className="block text-xs font-medium text-kad-text truncate">
                           {s.name ?? s.id}
                         </span>
                         {s.name && (
-                          <span className="block text-[10px] text-gray-600 font-mono truncate">
+                          <span className="block text-[10px] text-kad-text-faint font-mono truncate">
                             {s.id}
                           </span>
                         )}
                       </span>
                       {s.model && (
-                        <span className="flex-shrink-0 text-[10px] text-gray-500 truncate max-w-[80px]">
+                        <span className="flex-shrink-0 text-[10px] text-kad-text-muted truncate max-w-[80px]">
                           {formatModelName(s.model)}
                         </span>
                       )}
                       {s.started_at && (
-                        <span className="flex-shrink-0 text-[10px] text-gray-600 tabular-nums">
+                        <span className="flex-shrink-0 text-[10px] text-kad-text-faint tabular-nums">
                           {safeTimestamp(s.started_at)}
                         </span>
                       )}
@@ -601,7 +618,7 @@ function SessionSelector({ onSelectSession }: SessionSelectorProps) {
                 type="button"
                 onClick={handleLoadMore}
                 disabled={loading}
-                className="w-full px-3 py-2 text-xs text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors border-t border-border/50 disabled:opacity-50"
+                className="w-full px-3 py-2 text-xs text-kad-text-muted hover:text-kad-text hover:bg-surface-3 transition-colors border-t border-border/50 disabled:opacity-50"
               >
                 {loading ? t("drillIn.loading") : t("drillIn.loadMore")}
               </button>
@@ -682,11 +699,11 @@ export function SessionDrillIn({ sessionId, onClose, onSelectSession }: SessionD
       <div className="bg-surface-2 border border-border rounded-xl p-4">
         <SessionSelector onSelectSession={onSelectSession} />
         <div className="flex items-center justify-between mb-2">
-          <p className="text-xs text-gray-600 font-mono truncate">{sessionId}</p>
+          <p className="text-xs text-kad-text-faint font-mono truncate">{sessionId}</p>
           <button
             type="button"
             onClick={onClose}
-            className="w-6 h-6 flex items-center justify-center rounded text-gray-600 hover:text-gray-300 hover:bg-white/10 transition-colors"
+            className="w-6 h-6 flex items-center justify-center rounded text-kad-text-faint hover:text-kad-text-muted hover:bg-surface-2 transition-colors"
             aria-label={t("drillIn.close")}
           >
             <X className="w-3.5 h-3.5" />

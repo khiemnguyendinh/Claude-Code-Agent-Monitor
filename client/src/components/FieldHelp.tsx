@@ -74,7 +74,7 @@ export function FieldHelp({
           e.preventDefault();
           setOpen((v) => !v);
         }}
-        className="text-gray-500 hover:text-gray-300 transition-colors"
+        className="text-kad-text-muted hover:text-kad-text transition-colors"
       >
         <HelpCircle className="w-3.5 h-3.5" />
       </button>
@@ -89,14 +89,15 @@ export function FieldHelp({
               top: pos.top,
               zIndex: 99999,
               maxWidth: 320,
+              boxShadow: "var(--kad-shadow-1)",
             }}
-            className="rounded-lg border border-border bg-surface-1 shadow-xl shadow-black/40 p-3 w-[300px] pointer-events-none"
+            className="rounded-lg border border-border bg-surface-1 p-3 w-[300px] pointer-events-none"
           >
-            {title && <p className="text-xs font-semibold text-gray-200 mb-1">{title}</p>}
-            <p className="text-[11px] leading-relaxed text-gray-400">{description}</p>
+            {title && <p className="text-xs font-semibold text-kad-text mb-1">{title}</p>}
+            <p className="text-[11px] leading-relaxed text-kad-text-muted">{description}</p>
             {examples && examples.length > 0 && (
               <div className="mt-2">
-                <p className="text-[10px] uppercase tracking-wider text-gray-600 mb-1">
+                <p className="text-[10px] uppercase tracking-wider text-kad-text-muted mb-1">
                   {t("examples")}
                 </p>
                 <div className="flex flex-wrap gap-1">
@@ -111,7 +112,7 @@ export function FieldHelp({
                 </div>
               </div>
             )}
-            {note && <p className="text-[10px] text-gray-500 mt-2 leading-relaxed">{note}</p>}
+            {note && <p className="text-[10px] text-kad-text-muted mt-2 leading-relaxed">{note}</p>}
           </div>,
           document.body
         )}

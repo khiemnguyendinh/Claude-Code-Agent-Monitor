@@ -67,21 +67,6 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
   root.selectAll("*").remove();
   root.attr("viewBox", `0 0 ${width} ${CHART_HEIGHT}`).attr("preserveAspectRatio", "xMidYMid meet");
 
-  const defs = root.append("defs");
-  const grad = defs
-    .append("linearGradient")
-    .attr("id", "compact-bar-grad")
-    .attr("x1", "0%")
-    .attr("y1", "0%")
-    .attr("x2", "0%")
-    .attr("y2", "100%");
-  grad.append("stop").attr("offset", "0%").attr("stop-color", "#818cf8");
-  grad
-    .append("stop")
-    .attr("offset", "100%")
-    .attr("stop-color", "#3730a3")
-    .attr("stop-opacity", 0.7);
-
   const g = root.append("g").attr("transform", `translate(${MARGIN.left},${MARGIN.top})`);
 
   const maxSessions = d3.max(histo, (d) => d.sessions) ?? 1;
@@ -104,7 +89,7 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
     .attr("x2", innerW)
     .attr("y1", (d) => yScale(d))
     .attr("y2", (d) => yScale(d))
-    .attr("stroke", "#2a2a3d")
+    .attr("stroke", "var(--kad-border)")
     .attr("stroke-width", 1);
 
   // Y axis (sessions)
@@ -119,7 +104,7 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
     )
     .call((ax) => ax.select(".domain").remove())
     .selectAll("text")
-    .attr("fill", "#6b7280")
+    .attr("fill", "var(--kad-text-muted)")
     .attr("font-size", 10)
     .attr("font-family", "Inter, sans-serif");
 
@@ -129,7 +114,7 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
     .call(d3.axisBottom(xScale).tickSize(0).tickPadding(8))
     .call((ax) => ax.select(".domain").remove())
     .selectAll("text")
-    .attr("fill", "#9ca3af")
+    .attr("fill", "var(--kad-text-muted)")
     .attr("font-size", 10)
     .attr("font-family", "Inter, sans-serif");
 
@@ -138,7 +123,7 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
     .attr("x", innerW / 2)
     .attr("y", innerH + 38)
     .attr("text-anchor", "middle")
-    .attr("fill", "#6b7280")
+    .attr("fill", "var(--kad-text-muted)")
     .attr("font-size", 10)
     .attr("font-weight", 500)
     .attr("font-family", "Inter, sans-serif")
@@ -149,7 +134,7 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
     .attr("x", -innerH / 2)
     .attr("y", -38)
     .attr("text-anchor", "middle")
-    .attr("fill", "#6b7280")
+    .attr("fill", "var(--kad-text-muted)")
     .attr("font-size", 10)
     .attr("font-weight", 500)
     .attr("font-family", "Inter, sans-serif")
@@ -175,14 +160,14 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
         .attr("width", bw)
         .attr("height", barH)
         .attr("rx", Math.min(4, bw / 2))
-        .attr("fill", "url(#compact-bar-grad)")
+        .attr("fill", "var(--kad-accent)")
         .style("transition", "fill 120ms ease");
 
       bg.append("text")
         .attr("x", bx + bw / 2)
         .attr("y", by - 5)
         .attr("text-anchor", "middle")
-        .attr("fill", "#a5b4fc")
+        .attr("fill", "var(--kad-accent)")
         .attr("font-size", 10)
         .attr("font-weight", "600")
         .attr("font-family", "Inter, sans-serif")
@@ -195,7 +180,7 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
         .attr("y", innerH - 1)
         .attr("width", bw)
         .attr("height", 1)
-        .attr("fill", "#2a2a3d");
+        .attr("fill", "var(--kad-border-strong)");
     }
 
     // Transparent, full-height hover target on top of the bar.
@@ -207,12 +192,12 @@ function renderHistogram(svg: SVGSVGElement, histo: HistogramBucket[], opts: His
       .attr("fill", "transparent")
       .style("cursor", "pointer")
       .on("mouseenter", (event: MouseEvent) => {
-        if (bar) bar.attr("fill", "#a5b4fc");
+        if (bar) bar.attr("fill", "var(--kad-accent-hover)");
         opts.onHover(event, d);
       })
       .on("mousemove", (event: MouseEvent) => opts.onMove(event))
       .on("mouseleave", () => {
-        if (bar) bar.attr("fill", "url(#compact-bar-grad)");
+        if (bar) bar.attr("fill", "var(--kad-accent)");
         opts.onLeave();
       });
   });
@@ -231,10 +216,10 @@ function StatBox({ label, value, sub, accent = "text-accent" }: StatBoxProps) {
   return (
     <div className="flex flex-col gap-1 bg-surface-3 border border-border rounded-xl px-4 py-3.5 flex-1 min-w-0">
       <span className={`text-2xl font-semibold tabular-nums ${accent}`}>{value}</span>
-      <span className="text-[11px] font-medium text-gray-500 uppercase tracking-wider leading-tight">
+      <span className="text-[11px] font-medium text-kad-text-muted uppercase tracking-wider leading-tight">
         {label}
       </span>
-      {sub && <span className="text-[11px] text-gray-600 tabular-nums">{sub}</span>}
+      {sub && <span className="text-[11px] text-kad-text-faint tabular-nums">{sub}</span>}
     </div>
   );
 }
@@ -281,7 +266,7 @@ export function CompactionImpact({ data }: CompactionImpactProps) {
 
   if (!hasData) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-500">
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-kad-text-muted">
         <svg
           width="40"
           height="40"
@@ -304,36 +289,36 @@ export function CompactionImpact({ data }: CompactionImpactProps) {
   return (
     <div className="flex flex-col gap-5">
       {/* What compaction is - one line so the numbers below make sense */}
-      <p className="text-xs text-gray-500 leading-relaxed">{t("compaction.help")}</p>
+      <p className="text-xs text-kad-text-muted leading-relaxed">{t("compaction.help")}</p>
 
       {/* Stat tiles */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatBox
           label={t("compaction.totalCompactions")}
           value={data.totalCompactions.toLocaleString()}
-          accent="text-accent-hover"
+          accent="text-accent"
         />
         <StatBox
           label={t("compaction.sessionsAffected")}
           value={affected.toLocaleString()}
           sub={t("compaction.ofTotal", { total: data.totalSessions.toLocaleString() })}
-          accent="text-violet-300"
+          accent="text-kad-primary"
         />
         <StatBox
           label={t("compaction.avgPerSession")}
           value={avgPerSession.toFixed(1)}
-          accent="text-blue-300"
+          accent="text-kad-info"
         />
         <StatBox
           label={t("compaction.peakSession")}
           value={peak.toLocaleString()}
-          accent="text-emerald-400"
+          accent="text-kad-success"
         />
       </div>
 
       {/* Histogram: sessions by compaction count */}
       <div className="w-full overflow-hidden">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+        <p className="text-xs font-medium text-kad-text-muted uppercase tracking-wider mb-2">
           {t("compaction.distribution")}
         </p>
         <svg
@@ -346,7 +331,7 @@ export function CompactionImpact({ data }: CompactionImpactProps) {
       </div>
 
       {/* Plain-English summary + (when present) tokens freed */}
-      <p className="text-xs text-gray-500 leading-relaxed">
+      <p className="text-xs text-kad-text-muted leading-relaxed">
         {t("compaction.summary", {
           affected: affected.toLocaleString(),
           total: data.totalSessions.toLocaleString(),
@@ -360,15 +345,18 @@ export function CompactionImpact({ data }: CompactionImpactProps) {
       {/* Hover tooltip (matches the app's other chart tooltips) */}
       {tip && (
         <div
-          className="fixed z-50 pointer-events-none rounded-md border border-[#2a2a4a] bg-[#12121f] px-2.5 py-1.5 text-xs shadow-xl"
+          className="fixed z-50 pointer-events-none rounded-md px-2.5 py-1.5 text-xs"
           style={{
             left: tip.x > window.innerWidth - 220 ? tip.x - 14 : tip.x + 14,
             top: tip.y - 10,
             transform: tip.x > window.innerWidth - 220 ? "translateX(-100%)" : undefined,
+            background: "var(--kad-surface)",
+            border: "1px solid var(--kad-border)",
+            boxShadow: "var(--kad-shadow-1)",
           }}
         >
-          <div className="font-medium text-gray-100">{tip.title}</div>
-          <div className="mt-0.5 text-gray-400">{tip.detail}</div>
+          <div className="font-medium text-kad-text-strong">{tip.title}</div>
+          <div className="mt-0.5 text-kad-text-muted">{tip.detail}</div>
         </div>
       )}
     </div>

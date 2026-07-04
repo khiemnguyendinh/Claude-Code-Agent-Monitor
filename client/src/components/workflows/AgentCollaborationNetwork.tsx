@@ -37,31 +37,26 @@ interface PipelineLink extends d3.SimulationLinkDatum<PipelineNode> {
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 
+// 10-slot categorical palette for agent-type nodes (colorIndex cycles through
+// these). First 4 reuse kad tokens (accent/primary/info/text-muted); remaining
+// 6 are new muted/desaturated hex chosen to stay distinct from each other and
+// from the kad tokens already used.
 const PALETTE = [
-  "#6366f1",
-  "#3b82f6",
-  "#22c55e",
-  "#a855f7",
-  "#f59e0b",
-  "#ec4899",
-  "#06b6d4",
-  "#f97316",
-  "#ef4444",
-  "#14b8a6",
+  "var(--kad-accent)",
+  "var(--kad-primary)",
+  "var(--kad-info)",
+  "var(--kad-text-muted)",
+  "#a35a2f", // muted terracotta/brown
+  "#6d3fae", // muted purple
+  "#b0518a", // muted magenta/rose
+  "#3f7a5c", // muted teal-green
+  "#8a7a1f", // muted olive/gold
+  "#4a6fa5", // muted steel blue
 ];
 
-const STROKE_PALETTE = [
-  "#818cf8",
-  "#60a5fa",
-  "#4ade80",
-  "#c084fc",
-  "#fbbf24",
-  "#f472b6",
-  "#22d3ee",
-  "#fb923c",
-  "#f87171",
-  "#2dd4bf",
-];
+// Stroke ring for each node uses the same family color, at full opacity
+// (fill-opacity on the circle already provides the lighter wash).
+const STROKE_PALETTE = PALETTE;
 
 const MIN_R = 20;
 const MAX_R = 44;
@@ -72,10 +67,10 @@ function appendTooltipRow(parent: HTMLElement, label: string, value: string) {
   const row = document.createElement("div");
   row.style.cssText = "display:flex;justify-content:space-between;gap:16px;font-size:11px";
   const lbl = document.createElement("span");
-  lbl.style.color = "#64748b";
+  lbl.style.color = "var(--kad-text-muted)";
   lbl.textContent = label;
   const val = document.createElement("span");
-  val.style.cssText = "color:#cbd5e1;font-weight:500";
+  val.style.cssText = "color:var(--kad-text);font-weight:500";
   val.textContent = value;
   row.appendChild(lbl);
   row.appendChild(val);
@@ -85,7 +80,7 @@ function appendTooltipRow(parent: HTMLElement, label: string, value: string) {
 function appendTooltipDescription(parent: HTMLElement, text: string) {
   const p = document.createElement("p");
   p.style.cssText =
-    "font-size:11px;color:#94a3b8;line-height:1.45;margin:8px 0 0;padding-top:8px;border-top:1px solid #2a2a4a";
+    "font-size:11px;color:var(--kad-text-muted);line-height:1.45;margin:8px 0 0;padding-top:8px;border-top:1px solid var(--kad-border)";
   p.textContent = text;
   parent.appendChild(p);
 }
@@ -120,13 +115,13 @@ function showTooltip(
   el.textContent = "";
 
   const title = document.createElement("p");
-  title.style.cssText = "font-size:12px;font-weight:600;color:#e2e8f0;margin:0 0 2px";
+  title.style.cssText = "font-size:12px;font-weight:600;color:var(--kad-text-strong);margin:0 0 2px";
   title.textContent = d.id;
   el.appendChild(title);
 
   const subtitle = document.createElement("p");
   subtitle.style.cssText =
-    "font-size:10px;color:#64748b;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em";
+    "font-size:10px;color:var(--kad-text-muted);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em";
   subtitle.textContent = t("pipeline.tooltip.agentType");
   el.appendChild(subtitle);
 
@@ -253,7 +248,7 @@ export function AgentCollaborationNetwork({
       .attr("orient", "auto")
       .append("path")
       .attr("d", "M0,0 L10,3 L0,6 Z")
-      .attr("fill", "#64748b");
+      .attr("fill", "var(--kad-text-muted)");
 
     // Clone data
     const simNodes = nodes.map((n) => ({ ...n }));
@@ -286,7 +281,7 @@ export function AgentCollaborationNetwork({
       .data(simLinks)
       .join("path")
       .attr("fill", "none")
-      .attr("stroke", "#64748b")
+      .attr("stroke", "var(--kad-text-muted)")
       .attr("stroke-opacity", 0.55)
       .attr("stroke-width", (d) => Math.max(1.5, strokeScale(d.weight)))
       .attr("marker-end", "url(#arrowhead)");
@@ -298,7 +293,7 @@ export function AgentCollaborationNetwork({
       .data(simLinks)
       .join("text")
       .attr("text-anchor", "middle")
-      .attr("fill", "#94a3b8")
+      .attr("fill", "var(--kad-text-muted)")
       .attr("font-size", "9px")
       .attr("font-weight", "600")
       .attr("font-family", "Inter, sans-serif")
@@ -316,16 +311,16 @@ export function AgentCollaborationNetwork({
     nodeEls
       .append("circle")
       .attr("r", (d) => rScale(d.total))
-      .attr("fill", (d) => PALETTE[d.colorIndex] ?? "#6366f1")
+      .attr("fill", (d) => PALETTE[d.colorIndex] ?? "var(--kad-accent)")
       .attr("fill-opacity", 0.8)
-      .attr("stroke", (d) => STROKE_PALETTE[d.colorIndex] ?? "#818cf8")
+      .attr("stroke", (d) => STROKE_PALETTE[d.colorIndex] ?? "var(--kad-accent)")
       .attr("stroke-width", 2);
 
     nodeEls
       .append("text")
       .attr("text-anchor", "middle")
       .attr("dy", (d) => rScale(d.total) + 14)
-      .attr("fill", "#cbd5e1")
+      .attr("fill", "var(--kad-text-strong)")
       .attr("font-size", "10px")
       .attr("font-weight", "500")
       .attr("font-family", "Inter, sans-serif")
@@ -364,13 +359,14 @@ export function AgentCollaborationNetwork({
         if (tipEl) {
           tipEl.textContent = "";
           const title = document.createElement("p");
-          title.style.cssText = "font-size:12px;font-weight:600;color:#e2e8f0;margin:0 0 2px";
+          title.style.cssText =
+            "font-size:12px;font-weight:600;color:var(--kad-text-strong);margin:0 0 2px";
           title.textContent = `${src.id} \u2192 ${tgt.id}`;
           tipEl.appendChild(title);
 
           const subtitle = document.createElement("p");
           subtitle.style.cssText =
-            "font-size:10px;color:#64748b;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em";
+            "font-size:10px;color:var(--kad-text-muted);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em";
           subtitle.textContent = t("pipeline.tooltip.edge");
           tipEl.appendChild(subtitle);
 
@@ -531,8 +527,8 @@ export function AgentCollaborationNetwork({
   if (isEmpty) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center">
-        <p className="text-sm font-medium text-gray-400">{t("pipeline.noData")}</p>
-        <p className="text-xs text-gray-600 mt-1">{t("pipeline.noDataDesc")}</p>
+        <p className="text-sm font-medium text-[var(--kad-text-muted)]">{t("pipeline.noData")}</p>
+        <p className="text-xs text-[var(--kad-text-faint)] mt-1">{t("pipeline.noDataDesc")}</p>
       </div>
     );
   }
@@ -555,17 +551,20 @@ export function AgentCollaborationNetwork({
         ref={tooltipRef}
         role="tooltip"
         aria-hidden="true"
-        className="fixed z-50 px-3 py-2 bg-[#12121f] border border-[#2a2a4a] rounded-lg shadow-2xl pointer-events-none"
+        className="fixed z-50 px-3 py-2 rounded-lg pointer-events-none"
         style={{
           opacity: 0,
           left: 0,
           top: 0,
           minWidth: 172,
+          background: "var(--kad-surface)",
+          border: "1px solid var(--kad-border)",
+          boxShadow: "var(--kad-shadow-1)",
           transition: "opacity 120ms ease-out",
         }}
       />
       <div className="flex flex-wrap items-center gap-3 mt-3 px-1">
-        <span className="text-[10px] text-gray-600 uppercase tracking-widest font-medium">
+        <span className="text-[10px] text-[var(--kad-text-muted)] uppercase tracking-widest font-medium">
           {t("pipeline.legend")}
         </span>
         {nodes.map((n) => (
@@ -577,15 +576,15 @@ export function AgentCollaborationNetwork({
                 border: `1.5px solid ${STROKE_PALETTE[n.colorIndex] ?? STROKE_PALETTE[0]}`,
               }}
             />
-            <span className="text-[11px] text-gray-500">{n.id}</span>
+            <span className="text-[11px] text-[var(--kad-text-muted)]">{n.id}</span>
           </div>
         ))}
         <div className="flex items-center gap-1.5 ml-2">
           <svg width="20" height="8" className="flex-shrink-0">
-            <line x1="0" y1="4" x2="14" y2="4" stroke="#64748b" strokeWidth="1.5" />
-            <polygon points="14,1 20,4 14,7" fill="#64748b" />
+            <line x1="0" y1="4" x2="14" y2="4" stroke="var(--kad-text-muted)" strokeWidth="1.5" />
+            <polygon points="14,1 20,4 14,7" fill="var(--kad-text-muted)" />
           </svg>
-          <span className="text-[11px] text-gray-500">{t("pipeline.legendDesc")}</span>
+          <span className="text-[11px] text-[var(--kad-text-muted)]">{t("pipeline.legendDesc")}</span>
         </div>
       </div>
     </div>

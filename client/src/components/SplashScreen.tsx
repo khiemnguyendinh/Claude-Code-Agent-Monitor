@@ -126,20 +126,10 @@ export function SplashScreen() {
 function BrandMark() {
   return (
     <svg viewBox="0 0 32 32" width="96" height="96" className="splash-svg">
-      <defs>
-        <linearGradient id="splashBg" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#6366f1" />
-          <stop offset="100%" stopColor="#818cf8" />
-        </linearGradient>
-        <linearGradient id="splashGlow" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#a5b4fc" stopOpacity="0.95" />
-          <stop offset="100%" stopColor="#c7d2fe" stopOpacity="0.6" />
-        </linearGradient>
-      </defs>
       <polygon
         className="splash-hex"
         points="16,2 28,9 28,23 16,30 4,23 4,9"
-        fill="url(#splashBg)"
+        fill="var(--kad-accent)"
       />
       <circle cx="16" cy="16" r="3" fill="white" opacity="0.95" />
       <line
@@ -172,20 +162,20 @@ function BrandMark() {
         strokeWidth="1.5"
         strokeLinecap="round"
       />
-      <circle className="splash-node" cx="16" cy="6" r="1.8" fill="url(#splashGlow)" />
+      <circle className="splash-node" cx="16" cy="6" r="1.8" fill="var(--kad-accent-hover)" />
       <circle
         className="splash-node splash-node-2"
         cx="24.5"
         cy="21"
         r="1.8"
-        fill="url(#splashGlow)"
+        fill="var(--kad-accent-hover)"
       />
       <circle
         className="splash-node splash-node-3"
         cx="7.5"
         cy="21"
         r="1.8"
-        fill="url(#splashGlow)"
+        fill="var(--kad-accent-hover)"
       />
     </svg>
   );
@@ -201,7 +191,7 @@ function ConstellationField() {
       preserveAspectRatio="xMidYMid slice"
       aria-hidden="true"
     >
-      <g stroke="#6366f1" strokeOpacity="0.18" strokeWidth="1">
+      <g stroke="var(--kad-accent)" strokeOpacity="0.18" strokeWidth="1">
         <line x1="120" y1="160" x2="340" y2="90" />
         <line x1="340" y1="90" x2="520" y2="240" />
         <line x1="980" y1="120" x2="1080" y2="320" />
@@ -209,7 +199,7 @@ function ConstellationField() {
         <line x1="780" y1="660" x2="1010" y2="560" />
         <line x1="520" y1="240" x2="660" y2="430" />
       </g>
-      <g fill="#818cf8">
+      <g fill="var(--kad-accent)">
         {[
           [120, 160],
           [340, 90],
@@ -246,11 +236,11 @@ const SPLASH_CSS = `
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #06060a;
+  background: var(--kad-bg);
   cursor: pointer;
   /* Opaque from the very first paint - the overlay must NOT fade in, or the
      app rendered behind it flashes through for the fade duration. Only the
-     content cascades in (below); the dark backdrop is solid immediately. */
+     content cascades in (below); the backdrop is solid immediately. */
 }
 .splash-root.splash-exit {
   animation: splashFadeOut ${EXIT_MS}ms cubic-bezier(0.4, 0, 0.2, 1) both;
@@ -258,11 +248,8 @@ const SPLASH_CSS = `
 .splash-bg {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(60% 50% at 50% 42%, rgba(99, 102, 241, 0.22) 0%, rgba(99, 102, 241, 0) 70%),
-    radial-gradient(40% 40% at 78% 80%, rgba(129, 140, 248, 0.12) 0%, rgba(129, 140, 248, 0) 70%),
-    radial-gradient(45% 45% at 18% 18%, rgba(165, 180, 252, 0.10) 0%, rgba(165, 180, 252, 0) 70%),
-    linear-gradient(180deg, #07070d 0%, #06060a 60%, #05050a 100%);
+  /* Flat wash (no gradient) — replaces the previous multi-layer radial glow. */
+  background: var(--kad-surface-2);
 }
 .splash-constellation {
   position: absolute;
@@ -297,14 +284,10 @@ const SPLASH_CSS = `
   animation: splashMark 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s forwards;
 }
 .splash-mark-glow {
-  position: absolute;
-  inset: -18%;
-  border-radius: 9999px;
-  background: radial-gradient(circle, rgba(129, 140, 248, 0.4) 0%, rgba(129, 140, 248, 0) 66%);
-  filter: blur(3px);
-  animation: splashGlowPulse 2.6s ease-in-out infinite;
+  /* Flat design — no blurred gradient halo behind the mark. */
+  display: none;
 }
-.splash-svg { position: relative; display: block; filter: drop-shadow(0 8px 28px rgba(99, 102, 241, 0.45)); }
+.splash-svg { position: relative; display: block; }
 .splash-hex { transform-origin: center; animation: splashHexBreathe 3.4s ease-in-out infinite; }
 .splash-line { stroke-dasharray: 8; stroke-dashoffset: 8; opacity: 0.75; animation: splashDraw 0.7s ease 0.5s forwards; }
 .splash-line-2 { animation-delay: 0.62s; }
@@ -327,24 +310,21 @@ const SPLASH_CSS = `
   font-weight: 600;
   letter-spacing: 0.34em;
   text-transform: uppercase;
-  color: #a5b4fc;
+  color: var(--kad-accent);
   white-space: nowrap;
 }
 .splash-rule {
   height: 1px;
   width: clamp(1.75rem, 8vw, 4rem);
-  background: linear-gradient(90deg, transparent, rgba(165, 180, 252, 0.55));
-}
-.splash-rule-right {
-  background: linear-gradient(90deg, rgba(165, 180, 252, 0.55), transparent);
+  /* Flat (no fade gradient). */
+  background: var(--kad-border-strong);
 }
 .splash-dot {
   width: 5px;
   height: 5px;
   border-radius: 9999px;
   flex-shrink: 0;
-  background: #818cf8;
-  box-shadow: 0 0 10px 2px rgba(129, 140, 248, 0.7);
+  background: var(--kad-accent);
   animation: splashGlowPulse 1.8s ease-in-out infinite;
 }
 .splash-tagline {
@@ -352,31 +332,31 @@ const SPLASH_CSS = `
   line-height: 1.12;
   font-weight: 700;
   letter-spacing: -0.02em;
-  color: #f4f4f8;
+  color: var(--kad-text-strong);
   margin: 0 0 1.5rem;
   text-wrap: balance;
   opacity: 0;
   animation: splashRise 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.62s forwards;
 }
-.splash-tagline::selection { background: rgba(129, 140, 248, 0.3); }
+.splash-tagline::selection { background: var(--kad-accent-muted); }
 .splash-sub {
   font-size: clamp(0.85rem, 1.6vw, 1rem);
   line-height: 1.6;
-  color: #9a9ab0;
+  color: var(--kad-text-muted);
   margin: 0 auto;
   max-width: 32rem;
   opacity: 0;
   animation: splashRise 0.7s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 .splash-sub-1 { animation-delay: 0.82s; }
-.splash-sub-2 { animation-delay: 0.94s; color: #6f6f86; margin-top: 0.35rem; }
+.splash-sub-2 { animation-delay: 0.94s; margin-top: 0.35rem; }
 .splash-brand {
   margin-top: 2.75rem;
   font-size: 0.7rem;
   font-weight: 600;
   letter-spacing: 0.34em;
   text-transform: uppercase;
-  color: #4a4a60;
+  color: var(--kad-text-faint);
   opacity: 0;
   animation: splashRise 0.7s ease 1.1s forwards;
 }

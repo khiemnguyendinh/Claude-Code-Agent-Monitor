@@ -1,0 +1,217 @@
+/**
+ * KAD design tokens — "Kstudy Flat".
+ *
+ * Exposed as CSS custom properties on :root, applied everywhere (not just
+ * the KAD screens): as of the 2026-07-04 retheme, tailwind.config.js points
+ * the original monitor's `surface-*` / `border` / `accent` tokens at these
+ * same vars, so /he-thong/* renders the identical light-flat theme instead
+ * of its old hardcoded dark palette. The `.kad-root` wrapper class below
+ * still applies convenience base rules (font, ::selection, scrollbar,
+ * skeleton) that are also mirrored as global defaults in index.css. See:
+ * plans/260703-2330-kad-v2-build/spec/ui/00-design-language.md
+ */
+
+:root {
+  /* Surface */
+  --kad-bg: #fafbfe;
+  --kad-surface: #ffffff;
+  --kad-surface-2: #f4f5fb;
+  --kad-border: #e9ebf4;
+  --kad-border-strong: #dcdfee;
+
+  /* Text */
+  --kad-text: #2a2f55;
+  --kad-text-strong: #0e1230;
+  --kad-text-muted: #6b7099;
+  --kad-text-faint: #aeb2cc;
+
+  /* Action & semantic status */
+  --kad-accent: #1a6ee8;
+  --kad-accent-hover: #155ec2; /* accent, darkened ~15% for hover/active */
+  --kad-accent-muted: rgba(26, 110, 232, 0.12); /* accent wash for subtle fills/focus rings */
+  --kad-primary: #1d237d;
+  --kad-success: #1fae73;
+  --kad-warning: #b97d10;
+  --kad-danger: #d6373d;
+  --kad-info: #0e7490;
+
+  /* RGB triples (space-separated, no rgb() wrapper) of every color above —
+     feed Tailwind's `rgb(var(--kad-x-rgb) / <alpha-value>)` color functions
+     in tailwind.config.js so opacity modifiers (`bg-kad-accent/30`,
+     `bg-accent/15`, `bg-surface-2/50`, etc.) work. Tailwind can only inject
+     an alpha channel into a color it controls the format of — a bare
+     `var(--kad-accent)` hex reference can't be modified with `/NN`, hence
+     this second set of variables. Keep in sync with the hex values above by
+     hand (checked at build time — `vite build` fails loudly with "class does
+     not exist" if a token here is missing, so a mismatch won't go unnoticed). */
+  --kad-bg-rgb: 250 251 254;
+  --kad-surface-rgb: 255 255 255;
+  --kad-surface-2-rgb: 244 245 251;
+  --kad-border-rgb: 233 235 244;
+  --kad-border-strong-rgb: 220 223 238;
+  --kad-text-rgb: 42 47 85;
+  --kad-text-strong-rgb: 14 18 48;
+  --kad-text-muted-rgb: 107 112 153;
+  --kad-text-faint-rgb: 174 178 204;
+  --kad-accent-rgb: 26 110 232;
+  --kad-accent-hover-rgb: 21 94 194;
+  --kad-primary-rgb: 29 35 125;
+  --kad-success-rgb: 31 174 115;
+  --kad-warning-rgb: 185 125 16;
+  --kad-danger-rgb: 214 55 61;
+  --kad-info-rgb: 14 116 144;
+
+  /* Elevation — exactly 2 levels, no more */
+  --kad-shadow-1: 0 8px 24px rgba(14, 18, 48, 0.1);
+
+  /* Motion */
+  --kad-ease: cubic-bezier(0.2, 0, 0, 1);
+  --kad-dur-fast: 120ms;
+  --kad-dur-fade: 160ms;
+  --kad-dur-drawer: 200ms;
+
+  /*
+   * Brand spec calls for "Google Sans Flex" (variable, Vietnamese subset).
+   * That font isn't distributable/self-hostable the way Inter is, so this
+   * substitutes the project's existing self-hosted Inter (already used by
+   * the monitor shell, already has a Vietnamese glyph subset available via
+   * @fontsource/inter/vietnamese-*.css) — matching the spec's own documented
+   * fallback ("Fallback system-ui"). Swap this one variable if a licensed
+   * Google Sans Flex build becomes available later.
+   */
+  --kad-font:
+    "Inter",
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    sans-serif;
+}
+
+.kad-root {
+  font-family: var(--kad-font);
+  color: var(--kad-text);
+  background: var(--kad-bg);
+  font-variant-numeric: tabular-nums;
+}
+
+.kad-root ::selection {
+  background: rgba(26, 110, 232, 0.18);
+  color: var(--kad-text-strong);
+}
+
+/* Typography scale — 00-design-language.md §3. Compose with color/utility
+   classes, e.g. <h1 className="kad-display text-kad-text-strong">. */
+.kad-display {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+}
+.kad-title {
+  font-size: 18px;
+  line-height: 26px;
+  font-weight: 600;
+}
+.kad-heading {
+  font-size: 15px;
+  line-height: 22px;
+  font-weight: 600;
+}
+.kad-body {
+  font-size: 14px;
+  line-height: 22px;
+  font-weight: 400;
+}
+.kad-label {
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+}
+.kad-caption {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+}
+.kad-overline {
+  font-size: 11px;
+  line-height: 14px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Thin on-brand scrollbars inside the KAD zone (monitor's global
+   ::-webkit-scrollbar rule in index.css is dark-only). */
+.kad-root ::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.kad-root ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.kad-root ::-webkit-scrollbar-thumb {
+  background: var(--kad-border-strong);
+  border-radius: 3px;
+}
+.kad-root ::-webkit-scrollbar-thumb:hover {
+  background: var(--kad-text-faint);
+}
+
+/* Skeleton — static dim block, no shimmer sweep (00 §5: "skeleton tĩnh mờ
+   dần, không shimmer chạy sóng"). */
+.kad-skeleton {
+  background: var(--kad-surface-2);
+  border-radius: 8px;
+}
+
+/* Single motion exception in the KAD zone (03-man-cong-viec §3): the "doing"
+   segment of a workflow progress strip breathes very slowly. */
+@keyframes kad-breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+/* Second, narrowly-scoped motion exception: the "Đang chạy trực tiếp" live
+   flow connector on Đội ngũ > Tổ chức (added after the mockup review — this
+   screen didn't exist in 00-design-language.md's original audit). A dashed
+   line whose offset creeps along it, reading as "data flowing right now"
+   without being distracting. Used only on that one connector. */
+@keyframes kad-flow-dash {
+  to {
+    stroke-dashoffset: -16;
+  }
+}
+.kad-flow-line {
+  animation: kad-flow-dash 900ms linear infinite;
+}
+
+@keyframes kad-slide-in {
+  from {
+    transform: translateX(24px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes kad-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kad-root * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -17,17 +17,21 @@ export function EventFiltersInfo() {
   const { t } = useTranslation("common");
   return (
     <details className="card bg-surface-2/40 border border-border rounded overflow-hidden">
-      <summary className="cursor-pointer select-none px-3 py-2 flex items-center text-[11px] text-gray-400 hover:text-gray-200 hover:bg-surface-2/80">
+      <summary className="cursor-pointer select-none px-3 py-2 flex items-center text-[11px] text-kad-text-muted hover:text-kad-text hover:bg-surface-2/80">
         <Info className="w-3.5 h-3.5 mr-2" />
         <span className="font-semibold uppercase tracking-wide mr-1.5">
           {t("eventFilters.help.title")}
         </span>
-        <span className="text-gray-500 font-normal">- {t("eventFilters.help.subtitle")}</span>
+        <span className="text-kad-text-muted font-normal">
+          - {t("eventFilters.help.subtitle")}
+        </span>
       </summary>
 
       <div className="divide-y divide-border">
         <Section title={t("eventFilters.help.statusesTitle")}>
-          <p className="text-[11px] text-gray-500 mb-2">{t("eventFilters.help.statusesIntro")}</p>
+          <p className="text-[11px] text-kad-text-muted mb-2">
+            {t("eventFilters.help.statusesIntro")}
+          </p>
           <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5 text-[11px]">
             <dt>
               <AgentStatusBadge status="working" />
@@ -49,17 +53,19 @@ export function EventFiltersInfo() {
         </Section>
 
         <Section title={t("eventFilters.help.lifecycleTitle")}>
-          <p className="text-[11px] text-gray-400 mb-2">{t("eventFilters.help.lifecycleDesc")}</p>
-          <code className="block bg-black/40 border border-border rounded p-2 text-[11px] font-mono text-gray-300 whitespace-pre-wrap">
+          <p className="text-[11px] text-kad-text-muted mb-2">
+            {t("eventFilters.help.lifecycleDesc")}
+          </p>
+          <code className="block bg-surface-2 border border-border rounded p-2 text-[11px] font-mono text-kad-text whitespace-pre-wrap">
             {t("eventFilters.help.lifecycleFlow")}
           </code>
         </Section>
 
         <Section title={t("eventFilters.help.filtersTitle")}>
-          <ul className="list-disc pl-5 space-y-1 text-[11px] text-gray-400">
+          <ul className="list-disc pl-5 space-y-1 text-[11px] text-kad-text-muted">
             <li>{t("eventFilters.help.filterTip1")}</li>
             <li>{t("eventFilters.help.filterTip2")}</li>
-            <li className="text-amber-300/90">{t("eventFilters.help.filterTipGrouping")}</li>
+            <li className="text-amber-600">{t("eventFilters.help.filterTipGrouping")}</li>
             <li>{t("eventFilters.help.filterTip3")}</li>
             <li>{t("eventFilters.help.filterTip4")}</li>
           </ul>
@@ -102,9 +108,9 @@ export function EventFiltersInfo() {
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <details className="group" open>
-      <summary className="cursor-pointer select-none px-3 py-1.5 text-[11px] text-gray-300 hover:bg-surface-2/60 flex items-center gap-2">
-        <span className="text-gray-500 transition-transform group-open:rotate-90">▶</span>
-        <span className="font-semibold uppercase tracking-wide text-gray-400">{title}</span>
+      <summary className="cursor-pointer select-none px-3 py-1.5 text-[11px] text-kad-text hover:bg-surface-2/60 flex items-center gap-2">
+        <span className="text-kad-text-muted transition-transform group-open:rotate-90">▶</span>
+        <span className="font-semibold uppercase tracking-wide text-kad-text-muted">{title}</span>
       </summary>
       <div className="px-3 pb-3 pt-1">{children}</div>
     </details>
@@ -114,8 +120,8 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 function Field({ label, desc }: { label: string; desc: string }) {
   return (
     <>
-      <dt className="font-semibold text-gray-300 whitespace-nowrap">{label}</dt>
-      <dd className="text-gray-400">{desc}</dd>
+      <dt className="font-semibold text-kad-text whitespace-nowrap">{label}</dt>
+      <dd className="text-kad-text-muted">{desc}</dd>
     </>
   );
 }

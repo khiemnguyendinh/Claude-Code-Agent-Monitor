@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -8,7 +8,7 @@
     <link rel="manifest" href="/manifest.json" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="theme-color" content="#6366f1" />
+    <meta name="theme-color" content="#1a6ee8" />
     <title>Agent Dashboard - Claude Code Monitor</title>
     <meta
       name="description"
@@ -18,7 +18,6 @@
       name="keywords"
       content="Claude Code, agent dashboard, AI monitoring, real-time dashboard, developer tools, session tracking, kanban, activity feed, analytics, cost tracking, browser notifications, token usage"
     />
-    <meta name="author" content="Son Nguyen Hoang" />
     <meta name="robots" content="index, follow" />
 
     <!-- Open Graph -->
@@ -44,7 +43,6 @@
     />
     <meta name="twitter:image" content="/og-image.svg" />
     <meta name="twitter:image:alt" content="Agent Dashboard - real-time Claude Code monitoring" />
-    <meta name="twitter:creator" content="@hoangsonww" />
 
     <!-- JSON-LD structured data -->
     <script type="application/ld+json">
@@ -57,17 +55,16 @@
         "operatingSystem": "Windows, macOS, Linux",
         "softwareVersion": "1.0.0",
         "license": "https://opensource.org/licenses/MIT",
-        "author": {
-          "@type": "Person",
-          "name": "Son Nguyen Hoang",
-          "url": "https://sonnguyenhoang.com"
-        },
-        "codeRepository": "https://github.com/hoangsonww/Claude-Code-Agent-Monitor",
         "featureList": "Real-time dashboard, Kanban board, Session tracking, Activity feed, Token usage analytics, Cost tracking, Browser notifications, WebSocket live updates, CLI statusline"
       }
     </script>
   </head>
-  <body class="bg-surface-0 text-gray-200 antialiased">
+  <!-- Default body bg is the KAD light theme since "/" (KAD) is now the
+       primary landing route. KadShell / Layout each sync this to their own
+       theme on mount (see src/kad/components/KadShell.tsx and
+       src/components/Layout.tsx) so macOS overscroll-bounce never flashes
+       the wrong theme's color at the edges of the page. -->
+  <body class="antialiased" style="background: #fafbfe">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

@@ -35,42 +35,37 @@ const SENDER_STYLES: Record<
   user: {
     label: "User",
     icon: User,
-    avatarRing:
-      "bg-gradient-to-br from-blue-500/30 to-cyan-500/20 text-blue-200 ring-1 ring-blue-400/30",
-    accentBar: "before:bg-blue-500/40",
-    headerText: "text-blue-200",
+    avatarRing: "bg-kad-accent/15 text-kad-accent ring-1 ring-kad-accent/30",
+    accentBar: "before:bg-kad-accent/50",
+    headerText: "text-kad-accent",
   },
   assistant: {
     label: "Assistant",
     icon: Bot,
-    avatarRing:
-      "bg-gradient-to-br from-violet-500/30 to-fuchsia-500/20 text-violet-200 ring-1 ring-violet-400/30",
-    accentBar: "before:bg-violet-500/40",
-    headerText: "text-violet-200",
+    avatarRing: "bg-kad-primary/15 text-kad-primary ring-1 ring-kad-primary/30",
+    accentBar: "before:bg-kad-primary/50",
+    headerText: "text-kad-primary",
   },
   orchestrator: {
     label: "Main agent",
     icon: Workflow,
-    avatarRing:
-      "bg-gradient-to-br from-teal-500/30 to-emerald-500/20 text-teal-200 ring-1 ring-teal-400/30",
-    accentBar: "before:bg-teal-500/40",
-    headerText: "text-teal-200",
+    avatarRing: "bg-kad-info/15 text-kad-info ring-1 ring-kad-info/30",
+    accentBar: "before:bg-kad-info/50",
+    headerText: "text-kad-info",
   },
   system: {
     label: "System",
     icon: Cog,
-    avatarRing:
-      "bg-gradient-to-br from-slate-500/30 to-gray-500/20 text-gray-300 ring-1 ring-slate-400/30",
-    accentBar: "before:bg-slate-500/40",
-    headerText: "text-gray-300",
+    avatarRing: "bg-kad-surface-2 text-kad-text-muted ring-1 ring-kad-border-strong",
+    accentBar: "before:bg-kad-border-strong",
+    headerText: "text-kad-text-muted",
   },
   tool: {
     label: "Tool",
     icon: Terminal,
-    avatarRing:
-      "bg-gradient-to-br from-amber-500/30 to-orange-500/20 text-amber-200 ring-1 ring-amber-400/30",
-    accentBar: "before:bg-amber-500/40",
-    headerText: "text-amber-200",
+    avatarRing: "bg-kad-warning/15 text-kad-warning ring-1 ring-kad-warning/30",
+    accentBar: "before:bg-kad-warning/50",
+    headerText: "text-kad-warning",
   },
 };
 import { ToolCallBlock } from "./ToolCallBlock";
@@ -122,12 +117,12 @@ function formatLocalTime(iso: string): string {
 function SessionEventRow({ title, timestamp }: { title?: string; timestamp: string | null }) {
   return (
     <div className="flex items-center justify-center py-1">
-      <div className="inline-flex items-center gap-2 text-[11px] text-gray-400 bg-surface-2/70 border border-surface-3 rounded-full px-3 py-1 max-w-full">
-        <Pencil className="w-3 h-3 text-violet-300/70 flex-shrink-0" />
-        <span className="text-gray-500">Renamed session →</span>
-        <span className="text-gray-200 font-medium truncate">{title || "(untitled)"}</span>
+      <div className="inline-flex items-center gap-2 text-[11px] text-kad-text-muted bg-surface-2/70 border border-surface-3 rounded-full px-3 py-1 max-w-full">
+        <Pencil className="w-3 h-3 text-kad-info/70 flex-shrink-0" />
+        <span className="text-kad-text-muted">Renamed session →</span>
+        <span className="text-kad-text font-medium truncate">{title || "(untitled)"}</span>
         {timestamp && (
-          <span className="text-[10px] text-gray-600 font-mono flex-shrink-0">
+          <span className="text-[10px] text-kad-text-faint font-mono flex-shrink-0">
             {formatLocalTime(timestamp)}
           </span>
         )}
@@ -139,8 +134,8 @@ function SessionEventRow({ title, timestamp }: { title?: string; timestamp: stri
 /** Compact pill for /command invocations parsed out of TUI markup. */
 function CommandPill({ display }: { display: string }) {
   return (
-    <div className="inline-flex items-center gap-2 text-sm text-emerald-300 font-mono bg-emerald-500/10 border border-emerald-500/20 rounded-md px-3 py-1.5 max-w-full">
-      <span className="text-emerald-500/70">›</span>
+    <div className="inline-flex items-center gap-2 text-sm text-kad-success font-mono bg-kad-success/10 border border-kad-success/20 rounded-md px-3 py-1.5 max-w-full">
+      <span className="text-kad-success/70">›</span>
       <span className="break-all">{display}</span>
     </div>
   );
@@ -151,9 +146,9 @@ function TerminalBlock({ text, stream }: { text: string; stream: "stdout" | "std
   const cleaned = stripAnsi(text).replace(/^\n+|\n+$/g, "");
   const isErr = stream === "stderr";
   const accent = isErr
-    ? "border-red-500/30 bg-red-950/30 text-red-200/90"
-    : "border-surface-3 bg-surface-4/60 text-gray-200";
-  const labelColor = isErr ? "text-red-300/80" : "text-gray-400";
+    ? "border-kad-danger/30 bg-kad-danger/10 text-kad-danger"
+    : "border-surface-3 bg-surface-4/60 text-kad-text";
+  const labelColor = isErr ? "text-kad-danger/80" : "text-kad-text-muted";
   return (
     <div className={`rounded-lg border ${accent} overflow-hidden`}>
       <div
@@ -172,7 +167,7 @@ function TerminalBlock({ text, stream }: { text: string; stream: "stdout" | "std
 /** Subtle inline note for the local-command-caveat banner. */
 function CaveatBlock({ text }: { text: string }) {
   return (
-    <div className="flex items-start gap-2 rounded-md border border-amber-500/15 bg-amber-500/[0.05] px-3 py-1.5 text-[11px] text-amber-200/70">
+    <div className="flex items-start gap-2 rounded-md border border-kad-warning/20 bg-kad-warning/5 px-3 py-1.5 text-[11px] text-kad-warning">
       <Info className="w-3.5 h-3.5 mt-px flex-shrink-0 opacity-60" />
       <span className="leading-relaxed italic">{stripAnsi(text).trim()}</span>
     </div>
@@ -195,11 +190,11 @@ function renderSegment(seg: TuiSegment, key: number): React.ReactNode {
         <CollapsibleBlock
           key={key}
           text={seg.text}
-          icon={<AlertTriangle className="w-3.5 h-3.5 text-amber-400/70 flex-shrink-0" />}
+          icon={<AlertTriangle className="w-3.5 h-3.5 text-kad-warning flex-shrink-0" />}
           title="System reminder"
-          borderClass="border-amber-500/20"
-          bgClass="bg-amber-500/5"
-          textClass="text-amber-300/80"
+          borderClass="border-kad-warning/20"
+          bgClass="bg-kad-warning/5"
+          textClass="text-kad-warning"
         />
       );
     case "persisted-output":
@@ -207,11 +202,11 @@ function renderSegment(seg: TuiSegment, key: number): React.ReactNode {
         <CollapsibleBlock
           key={key}
           text={seg.text}
-          icon={<ScrollText className="w-3.5 h-3.5 text-violet-400/60 flex-shrink-0" />}
+          icon={<ScrollText className="w-3.5 h-3.5 text-kad-primary/70 flex-shrink-0" />}
           title="Persisted output"
-          borderClass="border-violet-500/20"
-          bgClass="bg-violet-500/5"
-          textClass="text-violet-300/80"
+          borderClass="border-kad-primary/20"
+          bgClass="bg-kad-primary/5"
+          textClass="text-kad-primary"
         />
       );
     case "text": {
@@ -274,7 +269,7 @@ export function MessageList({ messages, loading }: MessageListProps) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
+      <div className="flex items-center justify-center py-12 text-kad-text-muted text-sm">
         Loading conversation...
       </div>
     );
@@ -282,7 +277,9 @@ export function MessageList({ messages, loading }: MessageListProps) {
 
   if (messages.length === 0) {
     return (
-      <div className="text-center py-12 text-gray-500 text-sm">No conversation records found.</div>
+      <div className="text-center py-12 text-kad-text-muted text-sm">
+        No conversation records found.
+      </div>
     );
   }
 
@@ -327,7 +324,7 @@ export function MessageList({ messages, loading }: MessageListProps) {
           >
             {/* Avatar */}
             <div
-              className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-0.5 shadow-sm ${style.avatarRing}`}
+              className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center mt-0.5 ${style.avatarRing}`}
             >
               <SenderIcon className="w-4 h-4" />
             </div>
@@ -340,19 +337,19 @@ export function MessageList({ messages, loading }: MessageListProps) {
                   {style.label}
                 </span>
                 {msg.model && (
-                  <span className="text-[10px] text-gray-400 font-mono bg-surface-3/60 border border-surface-3 rounded px-1.5 py-0.5">
+                  <span className="text-[10px] text-kad-text-muted font-mono bg-surface-3/60 border border-surface-3 rounded px-1.5 py-0.5">
                     {formatModelName(msg.model)}
                   </span>
                 )}
                 {msg.usage && (
-                  <span className="text-[10px] text-gray-500 font-mono inline-flex items-center gap-1">
-                    <span className="text-emerald-300/70">↓ {fmt(msg.usage.input_tokens)}</span>
-                    <span className="text-gray-700">·</span>
-                    <span className="text-orange-300/70">↑ {fmt(msg.usage.output_tokens)}</span>
+                  <span className="text-[10px] text-kad-text-muted font-mono inline-flex items-center gap-1">
+                    <span className="text-kad-success/70">↓ {fmt(msg.usage.input_tokens)}</span>
+                    <span className="text-kad-text-faint">·</span>
+                    <span className="text-kad-info/70">↑ {fmt(msg.usage.output_tokens)}</span>
                   </span>
                 )}
                 {msg.timestamp && (
-                  <span className="text-[10px] text-gray-600 ml-auto font-mono">
+                  <span className="text-[10px] text-kad-text-faint ml-auto font-mono">
                     {formatLocalTime(msg.timestamp)}
                   </span>
                 )}
@@ -367,11 +364,11 @@ export function MessageList({ messages, loading }: MessageListProps) {
                       <CollapsibleBlock
                         key={bIdx}
                         text={block.text}
-                        icon={<ScrollText className="w-3.5 h-3.5 text-cyan-400/60 flex-shrink-0" />}
+                        icon={<ScrollText className="w-3.5 h-3.5 text-kad-info/70 flex-shrink-0" />}
                         title="Task Notification"
-                        borderClass="border-cyan-500/20"
-                        bgClass="bg-cyan-500/5"
-                        textClass="text-cyan-400/80"
+                        borderClass="border-kad-info/20"
+                        bgClass="bg-kad-info/5"
+                        textClass="text-kad-info"
                       />
                     );
                   }
@@ -384,11 +381,11 @@ export function MessageList({ messages, loading }: MessageListProps) {
                       <CollapsibleBlock
                         key={bIdx}
                         text={block.text}
-                        icon={<ScrollText className="w-3.5 h-3.5 text-blue-400/60 flex-shrink-0" />}
+                        icon={<ScrollText className="w-3.5 h-3.5 text-kad-accent/70 flex-shrink-0" />}
                         title={skillPath}
-                        borderClass="border-blue-500/20"
-                        bgClass="bg-blue-500/5"
-                        textClass="text-blue-400/80"
+                        borderClass="border-kad-accent/20"
+                        bgClass="bg-kad-accent/5"
+                        textClass="text-kad-accent"
                       />
                     );
                   }
@@ -418,7 +415,7 @@ export function MessageList({ messages, loading }: MessageListProps) {
                   return (
                     <div
                       key={bIdx}
-                      className="rounded-lg border border-amber-500/20 bg-amber-500/5 overflow-hidden"
+                      className="rounded-lg border border-kad-warning/20 bg-kad-warning/5 overflow-hidden"
                     >
                       <button
                         onClick={() =>
@@ -429,23 +426,23 @@ export function MessageList({ messages, loading }: MessageListProps) {
                             return next;
                           })
                         }
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-amber-500/10 transition-colors"
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-kad-warning/10 transition-colors"
                       >
                         <ChevronRight
-                          className={`w-3.5 h-3.5 text-amber-500/60 transition-transform duration-150 ${
+                          className={`w-3.5 h-3.5 text-kad-warning/60 transition-transform duration-150 ${
                             isExpanded ? "rotate-90" : ""
                           }`}
                         />
-                        <Brain className="w-3.5 h-3.5 text-amber-400/80" />
-                        <span className="text-xs text-amber-200/90 font-medium">Thinking</span>
+                        <Brain className="w-3.5 h-3.5 text-kad-warning/80" />
+                        <span className="text-xs text-kad-warning font-medium">Thinking</span>
                         {!isExpanded && (
-                          <span className="text-[10px] text-amber-300/40 font-mono ml-auto">
+                          <span className="text-[10px] text-kad-warning/40 font-mono ml-auto">
                             {block.text.length.toLocaleString()} chars
                           </span>
                         )}
                       </button>
                       {isExpanded && (
-                        <div className="border-t border-amber-500/10 px-3 py-2 text-amber-100/80">
+                        <div className="border-t border-kad-warning/10 px-3 py-2 text-kad-warning">
                           <MarkdownContent text={block.text} dense />
                         </div>
                       )}

@@ -135,7 +135,10 @@ export function UpdateNotifier() {
         if (e.target === e.currentTarget) dismiss();
       }}
     >
-      <div className="w-full max-w-lg card shadow-2xl animate-slide-up overflow-hidden">
+      <div
+        className="w-full max-w-lg card animate-slide-up overflow-hidden"
+        style={{ boxShadow: "var(--kad-shadow-1)" }}
+      >
         {/* Header */}
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3 min-w-0">
@@ -145,11 +148,11 @@ export function UpdateNotifier() {
             <div className="min-w-0">
               <h2
                 id="update-notifier-title"
-                className="text-sm font-semibold text-gray-100 truncate"
+                className="text-sm font-semibold text-kad-text-strong truncate"
               >
                 {t("title")}
               </h2>
-              <p className="text-[11px] text-gray-500 mt-0.5 font-mono truncate">
+              <p className="text-[11px] text-kad-text-muted mt-0.5 font-mono truncate">
                 {t("commitsBehind", { count: behind, ref: refLabel })}
               </p>
             </div>
@@ -158,7 +161,7 @@ export function UpdateNotifier() {
             type="button"
             onClick={dismiss}
             aria-label={t("dismiss")}
-            className="p-1.5 -m-1 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-surface-4 transition-colors flex-shrink-0"
+            className="p-1.5 -m-1 rounded-lg text-kad-text-muted hover:text-kad-text hover:bg-surface-4 transition-colors flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -166,29 +169,29 @@ export function UpdateNotifier() {
 
         {/* Body */}
         <div className="px-5 py-4 space-y-3">
-          <p className="text-sm text-gray-300 leading-relaxed">{t("lead")}</p>
+          <p className="text-sm text-kad-text leading-relaxed">{t("lead")}</p>
 
           {status.fetch_error ? (
-            <div className="text-xs text-amber-300/90 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
+            <div className="text-xs text-amber-700 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2">
               {t("fetchError")}
             </div>
           ) : null}
 
           {!status.git_repo ? (
-            <div className="text-xs text-gray-400 bg-surface-2 border border-border rounded-lg px-3 py-2">
+            <div className="text-xs text-kad-text-muted bg-surface-2 border border-border rounded-lg px-3 py-2">
               {t("notGit")}
             </div>
           ) : null}
 
           {status.situation_note ? (
-            <div className="text-xs text-amber-200/90 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2 leading-relaxed">
+            <div className="text-xs text-amber-700 bg-amber-500/5 border border-amber-500/20 rounded-lg px-3 py-2 leading-relaxed">
               {status.situation_note}
             </div>
           ) : null}
 
           {status.manual_command ? (
             <pre
-              className="bg-surface-1 border border-border rounded-lg px-3 py-2.5 text-[11px] font-mono text-gray-200 whitespace-pre-wrap break-all leading-relaxed"
+              className="bg-surface-1 border border-border rounded-lg px-3 py-2.5 text-[11px] font-mono text-kad-text whitespace-pre-wrap break-all leading-relaxed"
               aria-label={t("commandLabel")}
             >
               {status.manual_command}
@@ -200,11 +203,11 @@ export function UpdateNotifier() {
            * are fetch-only - restarting the dashboard would change nothing. */}
           {status.situation === "tracking_canonical" ||
           status.situation === "fork_or_diverged_tracking" ? (
-            <p className="text-[11px] text-gray-500 leading-relaxed">{t("restartNote")}</p>
+            <p className="text-[11px] text-kad-text-muted leading-relaxed">{t("restartNote")}</p>
           ) : null}
 
           {error ? (
-            <p className="text-xs text-red-400" role="alert">
+            <p className="text-xs text-red-600" role="alert">
               {error}
             </p>
           ) : null}

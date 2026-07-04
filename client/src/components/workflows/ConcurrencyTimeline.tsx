@@ -8,18 +8,21 @@ import { useTranslation } from "react-i18next";
 import type { ConcurrencyData, ConcurrencyLane } from "../../lib/types";
 
 // ── Color palette ─────────────────────────────────────────────────────────────
+// Categorical palette distinguishing agent "lanes" (no success/fail meaning).
+// Priority order per design system: accent -> primary -> info -> text-muted,
+// then muted/desaturated hex for additional lanes beyond the 4 kad tokens.
 
-const MAIN_COLOR = "#6366f1"; // indigo
+const MAIN_COLOR = "var(--kad-accent)";
 
 const SUBAGENT_PALETTE = [
-  "#10b981", // emerald
-  "#3b82f6", // blue
-  "#f59e0b", // amber
-  "#f43f5e", // rose
-  "#06b6d4", // cyan
-  "#f97316", // orange
-  "#a855f7", // purple
-  "#84cc16", // lime
+  "var(--kad-primary)", // navy
+  "var(--kad-info)", // teal
+  "var(--kad-text-muted)", // neutral gray-blue
+  "#8a5fc2", // muted violet
+  "#3f8f76", // muted teal-green
+  "#c07a3e", // muted amber-brown
+  "#7a8bb8", // muted slate-blue
+  "#b0618a", // muted mauve
 ];
 
 // ── Lane row ──────────────────────────────────────────────────────────────────
@@ -61,7 +64,7 @@ function LaneRow({ lane, color, maxCount, onShowTip, onHideTip }: LaneRowProps) 
     <div className="flex items-center gap-3 py-1.5 group">
       {/* Label column */}
       <div className="flex-shrink-0 w-[140px] text-right" title={displayName}>
-        <span className="text-xs font-medium text-gray-400 truncate block group-hover:text-gray-200 transition-colors">
+        <span className="text-xs font-medium text-kad-text-muted truncate block group-hover:text-kad-text-strong transition-colors">
           {displayName}
         </span>
       </div>
@@ -86,7 +89,7 @@ function LaneRow({ lane, color, maxCount, onShowTip, onHideTip }: LaneRowProps) 
           className="absolute top-0 bottom-0 flex items-center text-[11px] font-medium tabular-nums"
           style={{
             left: barPct > 15 ? "8px" : `calc(${barPct}% + 6px)`,
-            color: barPct > 15 ? "white" : "var(--color-gray-400)",
+            color: barPct > 15 ? "#ffffff" : "var(--kad-text-muted)",
           }}
         >
           {lane.count}
@@ -94,7 +97,7 @@ function LaneRow({ lane, color, maxCount, onShowTip, onHideTip }: LaneRowProps) 
       </div>
 
       {/* Timing range */}
-      <div className="flex-shrink-0 w-[72px] text-[11px] text-gray-600 tabular-nums">
+      <div className="flex-shrink-0 w-[72px] text-[11px] text-kad-text-muted tabular-nums">
         {startPct}%&ndash;{endPct}%
       </div>
     </div>
@@ -118,7 +121,7 @@ function buildLaneTooltip(
   const dot = document.createElement("span");
   dot.style.cssText = `display:inline-block;width:8px;height:8px;border-radius:9999px;background:${color}`;
   const title = document.createElement("p");
-  title.style.cssText = "font-size:12px;font-weight:600;color:#e2e8f0;margin:0";
+  title.style.cssText = "font-size:12px;font-weight:600;color:var(--kad-text-strong);margin:0";
   title.textContent = displayName;
   header.appendChild(dot);
   header.appendChild(title);
@@ -126,7 +129,7 @@ function buildLaneTooltip(
 
   const subtitle = document.createElement("p");
   subtitle.style.cssText =
-    "font-size:10px;color:#64748b;margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em";
+    "font-size:10px;color:var(--kad-text-muted);margin:0 0 8px;text-transform:uppercase;letter-spacing:0.05em";
   subtitle.textContent = t("concurrency.tooltip.lane");
   el.appendChild(subtitle);
 
@@ -135,10 +138,11 @@ function buildLaneTooltip(
     row.style.cssText =
       "display:flex;justify-content:space-between;gap:16px;font-size:11px;line-height:1.6";
     const lbl = document.createElement("span");
-    lbl.style.color = "#64748b";
+    lbl.style.color = "var(--kad-text-muted)";
     lbl.textContent = label;
     const val = document.createElement("span");
-    val.style.cssText = "color:#cbd5e1;font-weight:500;font-variant-numeric:tabular-nums";
+    val.style.cssText =
+      "color:var(--kad-text);font-weight:500;font-variant-numeric:tabular-nums";
     val.textContent = value;
     row.appendChild(lbl);
     row.appendChild(val);
@@ -151,12 +155,12 @@ function buildLaneTooltip(
 
   const desc = document.createElement("p");
   desc.style.cssText =
-    "font-size:11px;color:#94a3b8;line-height:1.45;border-top:1px solid #2a2a4a;padding-top:8px;margin:8px 0 0";
+    "font-size:11px;color:var(--kad-text-muted);line-height:1.45;border-top:1px solid var(--kad-border);padding-top:8px;margin:8px 0 0";
   desc.textContent = describeLaneTiming(lane.avgStart, lane.avgEnd, t);
   el.appendChild(desc);
 
   const hint = document.createElement("p");
-  hint.style.cssText = "font-size:10px;color:#64748b;line-height:1.45;margin:6px 0 0";
+  hint.style.cssText = "font-size:10px;color:var(--kad-text-muted);line-height:1.45;margin:6px 0 0";
   hint.textContent = t("concurrency.tooltip.barHint");
   el.appendChild(hint);
 }
@@ -169,7 +173,7 @@ function EmptyState() {
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="w-10 h-10 rounded-xl bg-surface-4 flex items-center justify-center mb-3">
         <svg
-          className="w-5 h-5 text-gray-600"
+          className="w-5 h-5 text-kad-text-muted"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -180,8 +184,8 @@ function EmptyState() {
           <rect x="3" y="16" width="15" height="4" rx="1" />
         </svg>
       </div>
-      <p className="text-sm font-medium text-gray-400">{t("concurrency.noData")}</p>
-      <p className="text-xs text-gray-600 mt-1">{t("concurrency.noDataDesc")}</p>
+      <p className="text-sm font-medium text-kad-text">{t("concurrency.noData")}</p>
+      <p className="text-xs text-kad-text-muted mt-1">{t("concurrency.noDataDesc")}</p>
     </div>
   );
 }
@@ -254,15 +258,15 @@ export function ConcurrencyTimeline({ data }: ConcurrencyTimelineProps) {
       <div className="flex items-center gap-3 mb-2">
         <div className="flex-shrink-0 w-[140px]" />
         <div className="flex-1 flex items-center justify-between">
-          <span className="text-[10px] text-gray-600 uppercase tracking-wider">
+          <span className="text-[10px] text-kad-text-muted uppercase tracking-wider">
             {t("concurrency.sessions")}
           </span>
-          <span className="text-[10px] text-gray-600 tabular-nums">
+          <span className="text-[10px] text-kad-text-muted tabular-nums">
             {maxCount}
             {t("concurrency.max")}
           </span>
         </div>
-        <div className="flex-shrink-0 w-[72px] text-[10px] text-gray-600 uppercase tracking-wider">
+        <div className="flex-shrink-0 w-[72px] text-[10px] text-kad-text-muted uppercase tracking-wider">
           {t("concurrency.timing")}
         </div>
       </div>
@@ -285,15 +289,16 @@ export function ConcurrencyTimeline({ data }: ConcurrencyTimelineProps) {
         ref={tipRef}
         role="tooltip"
         aria-hidden="true"
-        className="fixed z-50 px-3 py-2 rounded-lg shadow-2xl pointer-events-none"
+        className="fixed z-50 px-3 py-2 rounded-lg pointer-events-none"
         style={{
           display: "none",
           opacity: 0,
           left: 0,
           top: 0,
-          background: "#12121f",
-          border: "1px solid #2a2a4a",
-          color: "#e2e8f0",
+          background: "var(--kad-surface)",
+          border: "1px solid var(--kad-border)",
+          color: "var(--kad-text)",
+          boxShadow: "var(--kad-shadow-1)",
           minWidth: 240,
           maxWidth: 320,
           transition: "opacity 120ms ease-out",

@@ -17,14 +17,14 @@ const MIN_BUBBLE_R = 4;
 const MAX_BUBBLE_R = 32;
 
 const STATUS_COLOR: Record<string, string> = {
-  completed: "#22c55e",
-  error: "#ef4444",
-  active: "#6366f1",
-  abandoned: "#eab308",
+  completed: "var(--kad-success)",
+  error: "var(--kad-danger)",
+  active: "var(--kad-accent)",
+  abandoned: "var(--kad-warning)",
 };
 
 function statusColor(status: string): string {
-  return STATUS_COLOR[status] ?? "#6b7280";
+  return STATUS_COLOR[status] ?? "var(--kad-text-muted)";
 }
 
 // ── Duration formatting ───────────────────────────────────────────────────────
@@ -67,17 +67,24 @@ function Tooltip({ state }: { state: TooltipState }) {
 
   return (
     <div
-      className="fixed z-50 px-3 py-2 text-xs bg-[#12121f] border border-[#2a2a4a] rounded-lg shadow-xl text-gray-200 pointer-events-none whitespace-nowrap"
+      className="fixed z-50 px-3 py-2 text-xs rounded-lg pointer-events-none whitespace-nowrap"
       style={{
         left: nearRight ? state.x - 12 : state.x + 12,
         top: state.y - 10,
         transform: nearRight ? "translateX(-100%)" : undefined,
+        backgroundColor: "var(--kad-surface)",
+        border: "1px solid var(--kad-border-strong)",
+        boxShadow: "var(--kad-shadow-1)",
+        color: "var(--kad-text)",
       }}
     >
-      <p className="font-semibold text-gray-100 mb-1 truncate max-w-[180px]">
+      <p
+        className="font-semibold mb-1 truncate max-w-[180px]"
+        style={{ color: "var(--kad-text-strong)" }}
+      >
         {state.item.name ?? state.item.id.slice(0, 12)}
       </p>
-      <div className="flex flex-col gap-0.5 text-gray-400">
+      <div className="flex flex-col gap-0.5" style={{ color: "var(--kad-text-muted)" }}>
         <span>
           {t("complexity.tooltip.duration")} {formatDurationSec(state.item.duration)}
         </span>
@@ -96,7 +103,7 @@ function Tooltip({ state }: { state: TooltipState }) {
           </span>
         )}
       </div>
-      <div className="mt-1 pt-1 border-t border-[#2a2a4a]">
+      <div className="mt-1 pt-1" style={{ borderTop: "1px solid var(--kad-border-strong)" }}>
         <span className="font-medium" style={{ color: statusColor(state.item.status) }}>
           {t(`common:status.${state.item.status}`, { defaultValue: state.item.status })}
         </span>
@@ -119,7 +126,7 @@ function Legend() {
             className="w-3 h-3 rounded-full flex-shrink-0"
             style={{ backgroundColor: statusColor(s) }}
           />
-          <span className="text-xs text-gray-500">
+          <span className="text-xs text-kad-text-muted">
             {t(`common:status.${s}`, { defaultValue: s })}
           </span>
         </div>
@@ -136,7 +143,7 @@ function EmptyState() {
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="w-10 h-10 rounded-xl bg-surface-4 flex items-center justify-center mb-3">
         <svg
-          className="w-5 h-5 text-gray-600"
+          className="w-5 h-5 text-kad-text-muted"
           viewBox="0 0 24 24"
           fill="none"
           stroke="currentColor"
@@ -147,8 +154,8 @@ function EmptyState() {
           <circle cx="14" cy="17" r="4" />
         </svg>
       </div>
-      <p className="text-sm font-medium text-gray-400">{t("complexity.noData")}</p>
-      <p className="text-xs text-gray-600 mt-1">{t("complexity.noDataDesc")}</p>
+      <p className="text-sm font-medium text-kad-text-muted">{t("complexity.noData")}</p>
+      <p className="text-xs text-kad-text-faint mt-1">{t("complexity.noDataDesc")}</p>
     </div>
   );
 }
@@ -214,7 +221,7 @@ export function SessionComplexityScatter({ data, onSessionClick }: SessionComple
       .range([MIN_BUBBLE_R, MAX_BUBBLE_R]);
 
     // Grid lines
-    const gridColor = "#2a2a3d";
+    const gridColor = "var(--kad-border)";
 
     g.append("g")
       .attr("class", "grid-x")
@@ -255,9 +262,9 @@ export function SessionComplexityScatter({ data, onSessionClick }: SessionComple
           .tickFormat((d) => fmtXTick(d as number))
       )
       .call((sel) => {
-        sel.select(".domain").attr("stroke", "#363650");
-        sel.selectAll(".tick line").attr("stroke", "#363650");
-        sel.selectAll(".tick text").attr("fill", "#6b7280").attr("font-size", "11");
+        sel.select(".domain").attr("stroke", "var(--kad-border-strong)");
+        sel.selectAll(".tick line").attr("stroke", "var(--kad-border-strong)");
+        sel.selectAll(".tick text").attr("fill", "var(--kad-text-muted)").attr("font-size", "11");
       });
 
     // X axis label
@@ -265,7 +272,7 @@ export function SessionComplexityScatter({ data, onSessionClick }: SessionComple
       .attr("x", innerW / 2)
       .attr("y", innerH + 44)
       .attr("text-anchor", "middle")
-      .attr("fill", "#6b7280")
+      .attr("fill", "var(--kad-text-muted)")
       .attr("font-size", "11")
       .text(t("complexity.duration"));
 
@@ -273,9 +280,9 @@ export function SessionComplexityScatter({ data, onSessionClick }: SessionComple
     g.append("g")
       .call(d3.axisLeft(yScale).ticks(5).tickFormat(d3.format("d")))
       .call((sel) => {
-        sel.select(".domain").attr("stroke", "#363650");
-        sel.selectAll(".tick line").attr("stroke", "#363650");
-        sel.selectAll(".tick text").attr("fill", "#6b7280").attr("font-size", "11");
+        sel.select(".domain").attr("stroke", "var(--kad-border-strong)");
+        sel.selectAll(".tick line").attr("stroke", "var(--kad-border-strong)");
+        sel.selectAll(".tick text").attr("fill", "var(--kad-text-muted)").attr("font-size", "11");
       });
 
     // Y axis label
@@ -284,7 +291,7 @@ export function SessionComplexityScatter({ data, onSessionClick }: SessionComple
       .attr("x", -innerH / 2)
       .attr("y", -40)
       .attr("text-anchor", "middle")
-      .attr("fill", "#6b7280")
+      .attr("fill", "var(--kad-text-muted)")
       .attr("font-size", "11")
       .text(t("complexity.agentCount"));
 

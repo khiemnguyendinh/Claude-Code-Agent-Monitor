@@ -153,11 +153,11 @@ export function Workflows() {
       {/* Workflow-tool runs (issue #167) - fleets ingested from on-disk journals */}
       <div className="card p-4 space-y-3">
         <div>
-          <h2 className="text-sm font-semibold text-gray-200 flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-kad-text flex items-center gap-2">
             <Workflow className="w-4 h-4 text-violet-400" />
             {t("runs.title")}
           </h2>
-          <p className="text-xs text-gray-500 mt-0.5">{t("runs.subtitle")}</p>
+          <p className="text-xs text-kad-text-muted mt-0.5">{t("runs.subtitle")}</p>
         </div>
         <WorkflowRunsPanel statusFilter={statusFilter} />
       </div>
@@ -176,13 +176,13 @@ export function Workflows() {
         />
         {selectedNode && (
           <div className="mt-3 flex items-center gap-2">
-            <span className="text-xs text-gray-500">{t("filteredBy")}</span>
+            <span className="text-xs text-kad-text-muted">{t("filteredBy")}</span>
             <span className="badge bg-accent/15 text-accent border border-accent/20 text-xs">
               {selectedNode}
             </span>
             <button
               onClick={() => setSelectedNode(null)}
-              className="text-xs text-gray-500 hover:text-gray-300 underline"
+              className="text-xs text-kad-text-muted hover:text-kad-text underline"
             >
               {t("clearFilter")}
             </button>
@@ -326,14 +326,14 @@ function Section({
           <span className="w-5 h-5 rounded-md bg-accent/15 text-accent text-[11px] font-bold flex items-center justify-center flex-shrink-0">
             {number}
           </span>
-          <h2 className="text-sm font-semibold text-gray-100">{title}</h2>
+          <h2 className="text-sm font-semibold text-kad-text-strong">{title}</h2>
           <ChartInfoPopover infoKey={infoKey} title={title} />
         </div>
         {/* Quick descriptor; the full explanation lives in the ⓘ popover, so we
             keep this to a single clamped line (ellipsis + hover title) so a long
             translation never wraps and unbalances the header row. */}
         <span
-          className="hidden lg:block flex-shrink-0 max-w-[20rem] xl:max-w-sm truncate text-right text-[11px] text-gray-600"
+          className="hidden lg:block flex-shrink-0 max-w-[20rem] xl:max-w-sm truncate text-right text-[11px] text-kad-text-faint"
           title={subtitle}
         >
           {subtitle}
@@ -419,7 +419,7 @@ function ChartInfoPopover({ infoKey, title }: { infoKey: string; title: string }
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="flex items-center justify-center rounded-full p-0.5 -m-0.5 text-gray-600 hover:text-gray-400 transition-colors focus:outline-none focus:ring-1 focus:ring-accent/40"
+        className="flex items-center justify-center rounded-full p-0.5 -m-0.5 text-kad-text-faint hover:text-kad-text-muted transition-colors focus:outline-none focus:ring-1 focus:ring-accent/40"
       >
         <Info className="w-3.5 h-3.5" />
       </button>
@@ -427,27 +427,27 @@ function ChartInfoPopover({ infoKey, title }: { infoKey: string; title: string }
         <div
           ref={popoverRef}
           role="tooltip"
-          className="fixed z-50 p-3.5 bg-[#12121f] border border-[#2a2a4a] rounded-lg shadow-2xl text-[11px] text-gray-300 pointer-events-none"
-          style={{ left: coords.left, top: coords.top, width: POPOVER_W }}
+          className="fixed z-50 p-3.5 bg-kad-surface border border-kad-border rounded-lg text-[11px] text-kad-text pointer-events-none"
+          style={{ left: coords.left, top: coords.top, width: POPOVER_W, boxShadow: "var(--kad-shadow-1)" }}
         >
-          <p className="text-xs font-semibold text-gray-100 mb-2.5 pb-2 border-b border-[#2a2a4a]">
+          <p className="text-xs font-semibold text-kad-text-strong mb-2.5 pb-2 border-b border-kad-border">
             {title}
           </p>
 
-          <p className="font-semibold text-gray-200 uppercase tracking-wider text-[9px] mb-1">
+          <p className="font-semibold text-kad-text uppercase tracking-wider text-[9px] mb-1">
             {t("chartInfo.labels.what")}
           </p>
-          <p className="text-gray-400 leading-snug mb-2.5">{t(`chartInfo.${infoKey}.what`)}</p>
+          <p className="text-kad-text-muted leading-snug mb-2.5">{t(`chartInfo.${infoKey}.what`)}</p>
 
-          <p className="font-semibold text-gray-200 uppercase tracking-wider text-[9px] mb-1">
+          <p className="font-semibold text-kad-text uppercase tracking-wider text-[9px] mb-1">
             {t("chartInfo.labels.howToRead")}
           </p>
-          <p className="text-gray-400 leading-snug mb-2.5">{t(`chartInfo.${infoKey}.howToRead`)}</p>
+          <p className="text-kad-text-muted leading-snug mb-2.5">{t(`chartInfo.${infoKey}.howToRead`)}</p>
 
-          <p className="font-semibold text-gray-200 uppercase tracking-wider text-[9px] mb-1">
+          <p className="font-semibold text-kad-text uppercase tracking-wider text-[9px] mb-1">
             {t("chartInfo.labels.why")}
           </p>
-          <p className="text-gray-400 leading-snug">{t(`chartInfo.${infoKey}.why`)}</p>
+          <p className="text-kad-text-muted leading-snug">{t(`chartInfo.${infoKey}.why`)}</p>
         </div>
       )}
     </>
@@ -484,20 +484,20 @@ function PageHeader({
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-gray-100">{t("title")}</h1>
+            <h1 className="text-lg font-semibold text-kad-text-strong">{t("title")}</h1>
             {wsConnected ? (
               <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
                 {t("common:live")}
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-500/10 border border-gray-500/20 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+              <span className="flex items-center gap-1.5 text-[11px] text-kad-text-muted bg-kad-surface-2 border border-kad-border px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-kad-text-muted" />
                 {t("common:offline")}
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500">{t("subtitle")}</p>
+          <p className="text-xs text-kad-text-muted">{t("subtitle")}</p>
         </div>
       </div>
 
@@ -511,7 +511,7 @@ function PageHeader({
               className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 statusFilter === f.value
                   ? "bg-accent/15 text-accent"
-                  : "text-gray-500 hover:text-gray-300"
+                  : "text-kad-text-muted hover:text-kad-text"
               }`}
             >
               {f.label}
@@ -522,21 +522,21 @@ function PageHeader({
         {/* Actions */}
         <button
           onClick={onRefresh}
-          className="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-surface-3 transition-colors"
+          className="p-2 rounded-lg text-kad-text-muted hover:text-kad-text hover:bg-surface-3 transition-colors"
           title={t("refreshData")}
         >
           <RefreshCw className="w-4 h-4" />
         </button>
         <button
           onClick={onExport}
-          className="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-surface-3 transition-colors"
+          className="p-2 rounded-lg text-kad-text-muted hover:text-kad-text hover:bg-surface-3 transition-colors"
           title={t("exportJson")}
         >
           <Download className="w-4 h-4" />
         </button>
 
         {lastUpdated && (
-          <span className="text-[10px] text-gray-600 ml-1">
+          <span className="text-[10px] text-kad-text-faint ml-1">
             {t("common:updated")}
             {lastUpdated.toLocaleTimeString()}
           </span>

@@ -206,7 +206,9 @@ describe("AgentCard", () => {
   it("should not render subagent_type when null", () => {
     const { container } = renderCard(<AgentCard agent={makeAgent({ subagent_type: null })} />);
     // Only the name should be in the name container, no subagent type
-    expect(container.querySelectorAll(".text-\\[11px\\].text-gray-500.truncate")).toHaveLength(0);
+    expect(
+      container.querySelectorAll(".text-\\[11px\\].text-kad-text-muted.truncate")
+    ).toHaveLength(0);
   });
 
   it("should render task when present", () => {

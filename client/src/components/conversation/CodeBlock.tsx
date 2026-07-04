@@ -95,29 +95,27 @@ export function CodeBlock({
   const palette =
     tone === "danger"
       ? {
-          wrapper: "border-red-500/30 bg-red-500/5",
-          chrome: "bg-red-500/10 border-b border-red-500/20",
-          label: "text-red-300",
+          wrapper: "border-kad-danger/30 bg-kad-danger/5",
+          chrome: "bg-kad-danger/10 border-b border-kad-danger/20",
+          label: "text-kad-danger",
         }
       : tone === "success"
         ? {
-            wrapper: "border-emerald-500/30 bg-emerald-500/5",
-            chrome: "bg-emerald-500/10 border-b border-emerald-500/20",
-            label: "text-emerald-300",
+            wrapper: "border-kad-success/30 bg-kad-success/5",
+            chrome: "bg-kad-success/10 border-b border-kad-success/20",
+            label: "text-kad-success",
           }
         : {
             wrapper: "border-surface-3 bg-surface-4/50",
             chrome: "bg-surface-3/70 border-b border-surface-3",
-            label: "text-gray-400",
+            label: "text-kad-text-muted",
           };
 
   const preStyle: React.CSSProperties = {};
   if (maxHeight) preStyle.maxHeight = maxHeight;
 
   return (
-    <div
-      className={`group/code rounded-md border overflow-hidden shadow-[0_1px_0_rgba(255,255,255,0.02)_inset,0_2px_8px_-4px_rgba(0,0,0,0.4)] ${palette.wrapper}`}
-    >
+    <div className={`group/code rounded-md border overflow-hidden ${palette.wrapper}`}>
       {!compact && (
         <div className={`flex items-center gap-2 px-3 py-1.5 text-[11px] ${palette.chrome}`}>
           {/* Language pill */}
@@ -130,7 +128,7 @@ export function CodeBlock({
 
           {/* Filename + lang together when both are set */}
           {filename && !label && (
-            <span className="text-gray-600 font-mono lowercase">{langDisplay(lang)}</span>
+            <span className="text-kad-text-faint font-mono lowercase">{langDisplay(lang)}</span>
           )}
           {filename && label && (
             <span className={`font-mono uppercase tracking-wider ${palette.label}`}>· {label}</span>
@@ -139,7 +137,7 @@ export function CodeBlock({
           {/* Right side: line count + copy */}
           <div className="ml-auto flex items-center gap-3">
             {totalLines > 1 && (
-              <span className="text-gray-600 font-mono">
+              <span className="text-kad-text-faint font-mono">
                 {totalLines} {totalLines === 1 ? "line" : "lines"}
               </span>
             )}
@@ -147,7 +145,7 @@ export function CodeBlock({
               type="button"
               onClick={handleCopy}
               className={`inline-flex items-center gap-1 transition-colors ${
-                copied ? "text-emerald-300" : "text-gray-500 hover:text-gray-200"
+                copied ? "text-kad-success" : "text-kad-text-muted hover:text-kad-text"
               }`}
               aria-label="Copy code"
             >
@@ -174,7 +172,7 @@ export function CodeBlock({
                   {lineTokens.map((line, i) => (
                     <tr key={i} className="align-top">
                       <td
-                        className="select-none text-right pl-3 pr-3 text-gray-600 font-mono text-[11px] leading-[1.6] sticky left-0 bg-inherit"
+                        className="select-none text-right pl-3 pr-3 text-kad-text-faint font-mono text-[11px] leading-[1.6] sticky left-0 bg-inherit"
                         style={{ width: "1%", whiteSpace: "nowrap" }}
                       >
                         {i + 1}

@@ -344,9 +344,9 @@ export function ToolResponseView({
           {hunks.length > 0 && <UnifiedDiff hunks={hunks} />}
           {originalFile && (
             <details className="bg-surface-2/40 border border-border rounded overflow-hidden">
-              <summary className="cursor-pointer select-none px-3 py-1.5 text-[11px] text-gray-400 hover:text-gray-200 hover:bg-surface-2">
+              <summary className="cursor-pointer select-none px-3 py-1.5 text-[11px] text-kad-text-muted hover:text-kad-text hover:bg-surface-2">
                 <span className="font-semibold uppercase tracking-wide">original file</span>
-                <span className="text-gray-500 font-normal ml-2">
+                <span className="text-kad-text-muted font-normal ml-2">
                   ({originalFile.split(/\r?\n/).length} lines)
                 </span>
               </summary>

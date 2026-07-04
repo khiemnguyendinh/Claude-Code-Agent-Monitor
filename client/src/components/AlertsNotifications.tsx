@@ -347,8 +347,8 @@ export function AlertsNotifications() {
               onClick={() => setTab(tb.key)}
               className={`inline-flex items-center gap-2 text-xs font-medium px-3.5 py-2 rounded-lg transition-colors ${
                 active
-                  ? "bg-surface-4 text-gray-100 shadow-sm"
-                  : "text-gray-500 hover:text-gray-300 hover:bg-surface-3"
+                  ? "bg-surface-4 text-kad-text-strong"
+                  : "text-kad-text-muted hover:text-kad-text hover:bg-surface-3"
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -357,10 +357,10 @@ export function AlertsNotifications() {
                 <span
                   className={`text-[10px] font-semibold rounded-full px-1.5 min-w-[18px] text-center ${
                     tb.key === "activity"
-                      ? "text-amber-300 bg-amber-500/15"
+                      ? "text-amber-700 bg-amber-500/15"
                       : active
                         ? "text-accent bg-accent/15"
-                        : "text-gray-400 bg-surface-2"
+                        : "text-kad-text-muted bg-surface-2"
                   }`}
                 >
                   {tb.badge}
@@ -376,8 +376,8 @@ export function AlertsNotifications() {
         <div className="card p-4">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <h4 className="text-sm font-semibold text-gray-200">{t("rules.title")}</h4>
-              <p className="text-xs text-gray-500 mt-0.5">{ts("alertsHub.rulesHint")}</p>
+              <h4 className="text-sm font-semibold text-kad-text-strong">{t("rules.title")}</h4>
+              <p className="text-xs text-kad-text-muted mt-0.5">{ts("alertsHub.rulesHint")}</p>
             </div>
             <button
               onClick={() => {
@@ -394,7 +394,7 @@ export function AlertsNotifications() {
           {formOpen && (
             <div className="rounded-lg border border-border bg-surface-2 p-3 mb-3 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <label className="block text-xs text-gray-400">
+                <label className="block text-xs text-kad-text-muted">
                   <span className="inline-flex items-center gap-1">
                     {t("rules.form.name")}
                     <FieldHelp description={t("rules.help.name")} />
@@ -407,7 +407,7 @@ export function AlertsNotifications() {
                     className="input mt-1 w-full"
                   />
                 </label>
-                <label className="block text-xs text-gray-400">
+                <label className="block text-xs text-kad-text-muted">
                   <span className="inline-flex items-center gap-1">
                     {t("rules.form.type")}
                     <FieldHelp title={t("rules.form.type")} description={t("rules.help.type")} />
@@ -424,16 +424,18 @@ export function AlertsNotifications() {
                         </option>
                       ))}
                     </select>
-                    <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                    <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-kad-text-muted pointer-events-none" />
                   </div>
                 </label>
               </div>
 
-              <p className="text-[11px] text-gray-500">{t(`ruleTypeHints.${form.rule_type}`)}</p>
+              <p className="text-[11px] text-kad-text-muted">
+                {t(`ruleTypeHints.${form.rule_type}`)}
+              </p>
 
               {form.rule_type === "event_pattern" && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <label className="block text-xs text-gray-400">
+                  <label className="block text-xs text-kad-text-muted">
                     <span className="inline-flex items-center gap-1">
                       {t("rules.form.eventType")}
                       <FieldHelp
@@ -450,7 +452,7 @@ export function AlertsNotifications() {
                       className="input mt-1 w-full"
                     />
                   </label>
-                  <label className="block text-xs text-gray-400">
+                  <label className="block text-xs text-kad-text-muted">
                     <span className="inline-flex items-center gap-1">
                       {t("rules.form.toolName")}
                       <FieldHelp
@@ -467,7 +469,7 @@ export function AlertsNotifications() {
                       className="input mt-1 w-full"
                     />
                   </label>
-                  <label className="block text-xs text-gray-400">
+                  <label className="block text-xs text-kad-text-muted">
                     <span className="inline-flex items-center gap-1">
                       {t("rules.form.summaryContains")}
                       <FieldHelp
@@ -484,7 +486,7 @@ export function AlertsNotifications() {
                       className="input mt-1 w-full"
                     />
                   </label>
-                  <label className="block text-xs text-gray-400">
+                  <label className="block text-xs text-kad-text-muted">
                     <span className="inline-flex items-center gap-1">
                       {t("rules.form.count")}
                       <FieldHelp description={t("rules.help.count")} />
@@ -498,7 +500,7 @@ export function AlertsNotifications() {
                     />
                   </label>
                   {parseInt(form.count, 10) > 1 && (
-                    <label className="block text-xs text-gray-400">
+                    <label className="block text-xs text-kad-text-muted">
                       <span className="inline-flex items-center gap-1">
                         {t("rules.form.windowMinutes")}
                         <FieldHelp description={t("rules.help.window")} />
@@ -518,7 +520,7 @@ export function AlertsNotifications() {
               {(form.rule_type === "inactivity" || form.rule_type === "status_duration") && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {form.rule_type === "status_duration" && (
-                    <label className="block text-xs text-gray-400">
+                    <label className="block text-xs text-kad-text-muted">
                       <span className="inline-flex items-center gap-1">
                         {t("rules.form.agentStatus")}
                         <FieldHelp description={t("rules.help.status")} />
@@ -532,11 +534,11 @@ export function AlertsNotifications() {
                           <option value="working">working</option>
                           <option value="waiting">waiting</option>
                         </select>
-                        <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                        <ChevronDown className="w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 text-kad-text-muted pointer-events-none" />
                       </div>
                     </label>
                   )}
-                  <label className="block text-xs text-gray-400">
+                  <label className="block text-xs text-kad-text-muted">
                     <span className="inline-flex items-center gap-1">
                       {t("rules.form.minutes")}
                       <FieldHelp
@@ -560,7 +562,7 @@ export function AlertsNotifications() {
 
               {form.rule_type === "token_threshold" && (
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <label className="block text-xs text-gray-400">
+                  <label className="block text-xs text-kad-text-muted">
                     <span className="inline-flex items-center gap-1">
                       {t("rules.form.totalTokens")}
                       <FieldHelp description={t("rules.help.totalTokens")} />
@@ -577,7 +579,7 @@ export function AlertsNotifications() {
               )}
 
               <div className="flex flex-wrap items-end justify-between gap-3">
-                <label className="block text-xs text-gray-400">
+                <label className="block text-xs text-kad-text-muted">
                   <span className="mb-1.5 flex items-center gap-1">
                     {t("rules.form.cooldown")}
                     <FieldHelp description={t("rules.help.cooldown")} />
@@ -624,7 +626,7 @@ export function AlertsNotifications() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span
-                        className={`text-sm font-medium truncate ${rule.enabled ? "text-gray-200" : "text-gray-500 line-through"}`}
+                        className={`text-sm font-medium truncate ${rule.enabled ? "text-kad-text" : "text-kad-text-muted line-through"}`}
                       >
                         {rule.name}
                       </span>
@@ -632,7 +634,7 @@ export function AlertsNotifications() {
                         {t(`ruleTypes.${rule.rule_type}`)}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5 truncate">
+                    <p className="text-xs text-kad-text-muted mt-0.5 truncate">
                       {describeRule(rule, t)} ·{" "}
                       {t("rules.cooldown", { seconds: rule.cooldown_seconds })}
                     </p>
@@ -643,7 +645,7 @@ export function AlertsNotifications() {
                       className={`text-xs px-2.5 py-1.5 rounded-md border transition-colors ${
                         rule.enabled
                           ? "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
-                          : "border-border text-gray-500 hover:text-gray-300 hover:bg-surface-3"
+                          : "border-border text-kad-text-muted hover:text-kad-text hover:bg-surface-3"
                       }`}
                       title={rule.enabled ? t("rules.disable") : t("rules.enable")}
                     >
@@ -651,7 +653,7 @@ export function AlertsNotifications() {
                     </button>
                     <button
                       onClick={() => setConfirmRule(rule)}
-                      className="p-1.5 rounded-md text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      className="p-1.5 rounded-md text-kad-text-muted hover:text-red-600 hover:bg-red-500/10 transition-colors"
                       title={t("rules.delete")}
                       aria-label={t("rules.delete")}
                     >
@@ -672,7 +674,7 @@ export function AlertsNotifications() {
       {tab === "activity" && (
         <div className="card p-4">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
-            <h4 className="text-sm font-semibold text-gray-200">
+            <h4 className="text-sm font-semibold text-kad-text-strong">
               {t("feed.title")}
               {unacked > 0 && (
                 <span className="ml-2 text-[10px] font-semibold text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded-full px-2 py-0.5">
@@ -732,11 +734,11 @@ export function AlertsNotifications() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <BellRing
-                          className={`w-3.5 h-3.5 flex-shrink-0 ${alert.acknowledged_at ? "text-gray-500" : "text-amber-400"}`}
+                          className={`w-3.5 h-3.5 flex-shrink-0 ${alert.acknowledged_at ? "text-kad-text-muted" : "text-amber-600"}`}
                         />
-                        <span className="text-sm text-gray-200 truncate">{alert.message}</span>
+                        <span className="text-sm text-kad-text truncate">{alert.message}</span>
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5 font-mono">
+                      <p className="text-[11px] text-kad-text-muted mt-0.5 font-mono">
                         {timeAgo(alert.triggered_at)} · {alert.rule_name}
                         {alert.session_id && (
                           <>
@@ -754,7 +756,7 @@ export function AlertsNotifications() {
                     {!alert.acknowledged_at && (
                       <button
                         onClick={() => onAck(alert.id)}
-                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border text-gray-300 hover:text-gray-100 hover:bg-surface-3 transition-colors flex-shrink-0"
+                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-md border border-border text-kad-text hover:text-kad-text-strong hover:bg-surface-3 transition-colors flex-shrink-0"
                       >
                         <Check className="w-3.5 h-3.5" />
                         {t("feed.ack")}

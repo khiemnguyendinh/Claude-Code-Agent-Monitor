@@ -343,7 +343,7 @@ export function ConversationView({ sessionId, initialTranscriptId }: Conversatio
               <select
                 value={selectedTranscript || ""}
                 onChange={(e) => setSelectedTranscript(e.target.value || null)}
-                className="appearance-none bg-surface-2 border border-surface-3 rounded-lg px-3 py-1.5 pr-8 text-sm text-gray-300 focus:outline-none focus:border-violet-500/50 hover:border-violet-500/30 cursor-pointer transition-colors"
+                className="appearance-none bg-surface-2 border border-surface-3 rounded-lg px-3 py-1.5 pr-8 text-sm text-kad-text focus:outline-none focus:border-kad-accent/50 hover:border-kad-accent/30 cursor-pointer transition-colors"
               >
                 {transcripts.map((t) => (
                   <option key={t.id} value={t.id}>
@@ -351,10 +351,10 @@ export function ConversationView({ sessionId, initialTranscriptId }: Conversatio
                   </option>
                 ))}
               </select>
-              <ChevronDown className="w-3.5 h-3.5 text-gray-500 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <ChevronDown className="w-3.5 h-3.5 text-kad-text-muted absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
             </div>
           )}
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-gray-500 font-mono bg-surface-2 border border-surface-3 rounded-md px-2 py-1">
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-kad-text-muted font-mono bg-surface-2 border border-surface-3 rounded-md px-2 py-1">
             <MessagesSquare className="w-3 h-3" />
             {total} message{total !== 1 ? "s" : ""}
           </span>
@@ -364,7 +364,7 @@ export function ConversationView({ sessionId, initialTranscriptId }: Conversatio
             disabled={refreshing || loading}
             title="Refresh conversation"
             aria-label="Refresh conversation"
-            className="inline-flex items-center gap-1.5 text-[11px] text-gray-400 hover:text-gray-200 bg-surface-2 border border-surface-3 hover:border-violet-500/30 rounded-md px-2 py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 text-[11px] text-kad-text-muted hover:text-kad-text bg-surface-2 border border-surface-3 hover:border-kad-accent/30 rounded-md px-2 py-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <RefreshCw className={`w-3 h-3 ${refreshing ? "animate-spin" : ""}`} />
             Refresh
@@ -374,7 +374,7 @@ export function ConversationView({ sessionId, initialTranscriptId }: Conversatio
 
       {/* Error alert */}
       {error && (
-        <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-3 flex-shrink-0">
+        <div className="text-sm text-kad-danger bg-kad-danger/10 border border-kad-danger/20 rounded-lg px-4 py-3 flex-shrink-0">
           {error}
         </div>
       )}
@@ -389,29 +389,30 @@ export function ConversationView({ sessionId, initialTranscriptId }: Conversatio
         {/* History loading indicator */}
         {loadingHistory && (
           <div className="flex justify-center py-3">
-            <Loader2 className="w-4 h-4 text-gray-500 animate-spin" />
-            <span className="text-xs text-gray-500 ml-2">Loading history...</span>
+            <Loader2 className="w-4 h-4 text-kad-text-muted animate-spin" />
+            <span className="text-xs text-kad-text-muted ml-2">Loading history...</span>
           </div>
         )}
 
         {/* Scroll-up for history hint */}
         {hasMore && !loadingHistory && !loading && (
           <div className="flex justify-center py-2">
-            <span className="text-[11px] text-gray-600">↑ Scroll up for older messages</span>
+            <span className="text-[11px] text-kad-text-faint">↑ Scroll up for older messages</span>
           </div>
         )}
 
         {loading ? (
-          <div className="flex items-center justify-center py-12 text-gray-500 text-sm">
+          <div className="flex items-center justify-center py-12 text-kad-text-muted text-sm">
             Loading conversation...
           </div>
         ) : messages.length === 0 ? (
           <div className="mx-auto max-w-md py-12 text-center">
-            <p className="text-sm text-gray-400">No conversation records found.</p>
-            <p className="mt-2 text-xs leading-relaxed text-gray-500">
+            <p className="text-sm text-kad-text">No conversation records found.</p>
+            <p className="mt-2 text-xs leading-relaxed text-kad-text-muted">
               This session's metadata was imported, but its transcript file is no longer on disk.
               Claude Code automatically deletes inactive session transcripts after a retention
-              period (<code className="text-gray-400">cleanupPeriodDays</code>, default 30 days), so
+              period (<code className="text-kad-text-muted">cleanupPeriodDays</code>, default 30
+              days), so
               older conversations may already be gone. Sessions imported from now on are snapshotted
               and kept even after Claude Code prunes the originals.
             </p>
@@ -428,7 +429,8 @@ export function ConversationView({ sessionId, initialTranscriptId }: Conversatio
             scrollToBottom();
             setShowNewMsg(false);
           }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-violet-600 hover:bg-violet-500 text-white text-xs font-medium px-3 py-1.5 rounded-full shadow-lg transition-colors z-10"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 bg-kad-accent hover:bg-kad-accent-hover text-white text-xs font-medium px-3 py-1.5 rounded-full transition-colors z-10"
+          style={{ boxShadow: "var(--kad-shadow-1)" }}
         >
           <ArrowDown className="w-3 h-3" />
           New messages

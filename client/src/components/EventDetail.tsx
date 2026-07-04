@@ -231,8 +231,8 @@ function SummaryBlock({
     refs.length > 0 ? t("eventDetail.seeDetailsBelow", { fields: refs.join(" · ") }) : null;
   return (
     <div className="border border-border rounded overflow-hidden bg-surface-3/30">
-      <div className="px-3 py-1 border-b border-border bg-black/20">
-        <span className="text-gray-500 text-[10px] uppercase tracking-wide font-semibold">
+      <div className="px-3 py-1 border-b border-border bg-surface-2">
+        <span className="text-kad-text-muted text-[10px] uppercase tracking-wide font-semibold">
           {t("eventDetail.summary")}
         </span>
       </div>
@@ -241,19 +241,19 @@ function SummaryBlock({
           <span className="text-base leading-none" aria-hidden="true">
             {summary.icon}
           </span>
-          <span className="text-[12px] text-gray-100 font-medium break-words">
+          <span className="text-[12px] text-kad-text-strong font-medium break-words">
             {summary.headline}
           </span>
         </div>
         {summary.bullets.length > 0 && (
-          <ul className="list-disc pl-6 space-y-0.5 text-[11px] text-gray-400">
+          <ul className="list-disc pl-6 space-y-0.5 text-[11px] text-kad-text-muted">
             {summary.bullets.map((b, i) => (
               <li key={i}>{b}</li>
             ))}
           </ul>
         )}
         {hint && (
-          <div className="text-[11px] text-gray-500 italic pt-1 border-t border-border/40">
+          <div className="text-[11px] text-kad-text-muted italic pt-1 border-t border-border/40">
             ↓ {hint}
           </div>
         )}
@@ -285,7 +285,7 @@ function FieldRow({
     if (view) {
       return (
         <div className="grid grid-cols-[160px_1fr] gap-x-4 items-start text-[11px]">
-          <div className="text-gray-500 font-mono pt-2">{label}</div>
+          <div className="text-kad-text-muted font-mono pt-2">{label}</div>
           <div>{view}</div>
         </div>
       );
@@ -296,7 +296,7 @@ function FieldRow({
     if (view) {
       return (
         <div className="grid grid-cols-[160px_1fr] gap-x-4 items-start text-[11px]">
-          <div className="text-gray-500 font-mono pt-2">{label}</div>
+          <div className="text-kad-text-muted font-mono pt-2">{label}</div>
           <div>{view}</div>
         </div>
       );
@@ -306,8 +306,8 @@ function FieldRow({
   if (isInlineScalar(value)) {
     return (
       <div className="grid grid-cols-[160px_1fr] gap-x-4 items-start text-[11px]">
-        <div className="text-gray-500 font-mono pt-0.5">{label}</div>
-        <div className="text-gray-300 font-mono break-all">
+        <div className="text-kad-text-muted font-mono pt-0.5">{label}</div>
+        <div className="text-kad-text font-mono break-all">
           <ScalarValue value={value} />
         </div>
       </div>
@@ -316,7 +316,7 @@ function FieldRow({
 
   return (
     <div className="grid grid-cols-[160px_1fr] gap-x-4 items-start text-[11px]">
-      <div className="text-gray-500 font-mono pt-2">{label}</div>
+      <div className="text-kad-text-muted font-mono pt-2">{label}</div>
       <CodeView value={value} />
     </div>
   );
@@ -330,11 +330,11 @@ function isInlineScalar(value: unknown): boolean {
 }
 
 function ScalarValue({ value }: { value: unknown }) {
-  if (value == null) return <span className="text-gray-500 italic">null</span>;
+  if (value == null) return <span className="text-kad-text-muted italic">null</span>;
   if (typeof value === "boolean") {
     const color = value
-      ? "text-green-400 border-green-500/30 bg-green-500/10"
-      : "text-gray-400 border-gray-500/30 bg-gray-500/10";
+      ? "text-emerald-700 border-emerald-500/30 bg-emerald-500/10"
+      : "text-kad-text-muted border-kad-border-strong bg-surface-2";
     return (
       <span className={`inline-block px-2 py-0.5 rounded border ${color}`}>{String(value)}</span>
     );
@@ -348,14 +348,14 @@ function CodeView({ value }: { value: unknown }) {
   const text = typeof value === "string" ? value : safeStringify(value);
 
   return (
-    <div className="relative bg-black/70 border border-border rounded font-mono text-[11px] overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-black/40">
-        <span className="text-gray-500 text-[10px] uppercase tracking-wide">
+    <div className="relative bg-kad-surface-2 border border-border rounded font-mono text-[11px] overflow-hidden">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-surface-3">
+        <span className="text-kad-text-muted text-[10px] uppercase tracking-wide">
           {typeof value === "string" ? "text" : Array.isArray(value) ? "array" : "json"}
         </span>
         <CopyButton text={text} />
       </div>
-      <pre className="px-3 py-2 text-gray-200 whitespace-pre-wrap break-words max-h-96 overflow-auto">
+      <pre className="px-3 py-2 text-kad-text whitespace-pre-wrap break-words max-h-96 overflow-auto">
         {text}
       </pre>
     </div>

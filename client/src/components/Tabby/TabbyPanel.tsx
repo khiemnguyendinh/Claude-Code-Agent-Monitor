@@ -56,25 +56,26 @@ export function TabbyPanel({
 
   return (
     <div
-      className="w-72 overflow-hidden rounded-2xl border border-border-light bg-surface-2/95 shadow-2xl shadow-black/50 backdrop-blur-md animate-slide-up"
+      className="w-72 overflow-hidden rounded-2xl border border-border-light bg-surface-2/95 backdrop-blur-md animate-slide-up"
+      style={{ boxShadow: "var(--kad-shadow-1)" }}
       role="dialog"
       aria-label="Tabby companion"
     >
       {/* header */}
-      <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-gradient-to-r from-accent/10 to-transparent px-3.5 py-2.5">
+      <div className="flex items-center justify-between gap-2 border-b border-border/70 bg-kad-accent/10 px-3.5 py-2.5">
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-base leading-none" aria-hidden>
             🐾
           </span>
-          <span className="text-sm font-semibold text-gray-100">Tabby</span>
+          <span className="text-sm font-semibold text-kad-text-strong">Tabby</span>
           <span
             className={`ml-0.5 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
-              status.connected ? "bg-emerald-500/15 text-emerald-300" : "bg-red-500/15 text-red-300"
+              status.connected ? "bg-kad-success/15 text-kad-success" : "bg-kad-danger/15 text-kad-danger"
             }`}
           >
             <span
               className={`inline-block h-1.5 w-1.5 rounded-full ${
-                status.connected ? "bg-emerald-400" : "bg-red-500"
+                status.connected ? "bg-kad-success" : "bg-kad-danger"
               }`}
               aria-hidden
             />
@@ -82,7 +83,7 @@ export function TabbyPanel({
           </span>
         </div>
         <button
-          className="rounded-md p-1 text-gray-500 transition-colors hover:bg-surface-4 hover:text-gray-200"
+          className="rounded-md p-1 text-kad-text-muted transition-colors hover:bg-surface-4 hover:text-kad-text"
           onClick={onClose}
           aria-label="Close Tabby"
         >
@@ -144,7 +145,7 @@ export function TabbyPanel({
         {/* ask */}
         <form onSubmit={submit} className="flex items-center gap-1.5">
           <input
-            className="flex-1 rounded-lg border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-gray-200 placeholder-gray-500 transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
+            className="flex-1 rounded-lg border border-border bg-surface-1 px-2.5 py-1.5 text-xs text-kad-text placeholder-kad-text-muted transition-colors focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/30"
             placeholder="Ask Tabby… (e.g. any errors?)"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -159,7 +160,7 @@ export function TabbyPanel({
           </button>
         </form>
         {answer && (
-          <p className="mt-2 rounded-lg bg-surface-1/70 px-2.5 py-2 text-xs leading-relaxed text-gray-300">
+          <p className="mt-2 rounded-lg bg-surface-1/70 px-2.5 py-2 text-xs leading-relaxed text-kad-text">
             {answer}
           </p>
         )}
@@ -176,18 +177,18 @@ interface Tone {
 
 const TONE_MUTED: Tone = {
   wrap: "border-border bg-surface-1",
-  value: "text-gray-300",
-  icon: "text-gray-500",
+  value: "text-kad-text",
+  icon: "text-kad-text-muted",
 };
 
 const TONES: Record<string, Tone> = {
-  accent: { wrap: "border-accent/30 bg-accent/10", value: "text-gray-100", icon: "text-accent" },
+  accent: { wrap: "border-accent/30 bg-accent/10", value: "text-kad-text-strong", icon: "text-accent" },
   amber: {
-    wrap: "border-amber-500/30 bg-amber-500/10",
-    value: "text-amber-200",
-    icon: "text-amber-400",
+    wrap: "border-kad-warning/30 bg-kad-warning/10",
+    value: "text-kad-warning",
+    icon: "text-kad-warning",
   },
-  red: { wrap: "border-red-500/30 bg-red-500/10", value: "text-red-200", icon: "text-red-400" },
+  red: { wrap: "border-kad-danger/30 bg-kad-danger/10", value: "text-kad-danger", icon: "text-kad-danger" },
   muted: TONE_MUTED,
 };
 
@@ -209,7 +210,7 @@ function StatChip({
       <span className={`text-base font-semibold leading-none tabular-nums ${t.value}`}>
         {value}
       </span>
-      <span className="text-[9px] uppercase tracking-wider text-gray-500">{label}</span>
+      <span className="text-[9px] uppercase tracking-wider text-kad-text-muted">{label}</span>
     </div>
   );
 }
@@ -227,7 +228,7 @@ function ActionButton({
 }) {
   return (
     <button
-      className="flex items-center gap-1.5 rounded-lg bg-surface-1 px-2 py-1.5 text-xs text-gray-300 transition-colors hover:bg-surface-4 hover:text-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+      className="flex items-center gap-1.5 rounded-lg bg-surface-1 px-2 py-1.5 text-xs text-kad-text transition-colors hover:bg-surface-4 hover:text-kad-text-strong disabled:cursor-not-allowed disabled:opacity-40"
       onClick={onClick}
       disabled={disabled}
     >

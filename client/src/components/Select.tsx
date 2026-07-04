@@ -109,14 +109,15 @@ export function Select<T extends string>({
         disabled={disabled}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={onKey}
-        className="w-full flex items-center justify-between gap-2 bg-surface-2 border border-border rounded-md px-3 py-1.5 text-[11px] text-gray-100 focus:outline-none focus:border-accent/50 hover:bg-surface-3 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+        className="w-full flex items-center justify-between gap-2 bg-surface-2 border border-border rounded-md px-3 py-1.5 text-[11px] text-kad-text-strong focus:outline-none focus:border-accent/50 hover:bg-surface-3 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
       >
         <span className="truncate">{current?.label ?? "-"}</span>
-        <ChevronDown className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
+        <ChevronDown className="w-3.5 h-3.5 text-kad-text-muted flex-shrink-0" />
       </button>
       {open && (
         <div
-          className={`absolute z-30 left-0 right-0 rounded-md border border-border bg-surface-1 shadow-lg shadow-black/40 max-h-72 overflow-auto py-1 ${
+          style={{ boxShadow: "var(--kad-shadow-1)" }}
+          className={`absolute z-30 left-0 right-0 rounded-md border border-border bg-surface-1 max-h-72 overflow-auto py-1 ${
             openUp ? "bottom-full mb-1" : "top-full mt-1"
           }`}
         >
@@ -137,7 +138,7 @@ export function Select<T extends string>({
                 <div className="flex items-center gap-2">
                   <span
                     className={`text-[11px] flex-1 truncate ${
-                      isSelected ? "text-accent font-medium" : "text-gray-200"
+                      isSelected ? "text-accent font-medium" : "text-kad-text"
                     }`}
                   >
                     {opt.label}
@@ -145,7 +146,9 @@ export function Select<T extends string>({
                   {isSelected && <Check className="w-3 h-3 text-accent flex-shrink-0" />}
                 </div>
                 {opt.hint && (
-                  <div className="text-[10px] text-gray-500 truncate mt-0.5">{opt.hint}</div>
+                  <div className="text-[10px] text-kad-text-muted truncate mt-0.5">
+                    {opt.hint}
+                  </div>
                 )}
               </button>
             );

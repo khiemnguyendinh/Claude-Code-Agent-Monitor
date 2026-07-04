@@ -1,7 +1,7 @@
 {
-  "brand": "Bảng điều khiển Agent",
+  "brand": "Kstudy AI Department",
   "brandSub": "Giám sát Claude Code",
-  "dashboard": "Tổng quan",
+  "dashboard": "Agent Monitor",
   "agentBoard": "Bảng Kanban",
   "sessions": "Phiên",
   "activityFeed": "Luồng hoạt động",
@@ -12,8 +12,6 @@
   "run": "Chạy Claude",
   "settings": "Cài đặt",
   "language": "Ngôn ngữ",
-  "github": "GitHub",
-  "website": "Website",
   "expand": "Mở rộng thanh bên",
   "collapse": "Thu gọn thanh bên",
   "collapseShort": "Thu gọn",

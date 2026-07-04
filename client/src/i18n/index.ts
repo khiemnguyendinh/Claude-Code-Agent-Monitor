@@ -113,7 +113,9 @@ i18n
     },
     supportedLngs: ["en", "zh", "vi"],
     nonExplicitSupportedLngs: true,
-    fallbackLng: "en",
+    // Kstudy is a Vietnamese team — vi is the default for everyone until
+    // they explicitly pick something else (which then persists below).
+    fallbackLng: "vi",
     ns: [
       "common",
       "nav",
@@ -134,7 +136,13 @@ i18n
     defaultNS: "common",
     interpolation: { escapeValue: false },
     detection: {
-      order: ["localStorage", "navigator"],
+      // No "navigator" here on purpose: a first-time visitor whose OS/browser
+      // is set to English would otherwise land in English despite
+      // fallbackLng being "vi" (browser detection wins over fallback when it
+      // returns a supported language). Dropping it means the only two
+      // outcomes are "the user already chose a language" (localStorage) or
+      // "vi" (fallback) — never an accidental browser-locale guess.
+      order: ["localStorage"],
       caches: ["localStorage"],
       lookupLocalStorage: "i18nextLng",
     },

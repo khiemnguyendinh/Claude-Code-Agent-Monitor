@@ -17,19 +17,22 @@ const MARGIN = { top: 24, right: 140, bottom: 24, left: 140 };
 const NODE_WIDTH = 14;
 const NODE_PADDING = 18;
 const MIN_NODE_HEIGHT = 6;
-const LINK_OPACITY_DEFAULT = 0.15;
-const LINK_OPACITY_HOVER = 0.45;
+const LINK_OPACITY_DEFAULT = 0.35;
+const LINK_OPACITY_HOVER = 0.65;
 
+// Categorical mapping: first 4 reuse kad tokens (accent/primary/info/text-muted),
+// remaining 4 (Bash, Grep, Glob, Agent) use new muted/desaturated hex chosen to
+// stay visually distinct from each other and from the kad tokens above.
 const TOOL_COLORS: Record<string, string> = {
-  Read: "#3b82f6",
-  Write: "#22c55e",
-  Edit: "#eab308",
-  Bash: "#ef4444",
-  Grep: "#a855f7",
-  Glob: "#ec4899",
-  Agent: "#6366f1",
+  Read: "var(--kad-accent)", // #1a6ee8
+  Write: "var(--kad-primary)", // #1d237d
+  Edit: "var(--kad-info)", // #0e7490
+  Bash: "#a35a2f", // muted terracotta/brown
+  Grep: "#6d3fae", // muted purple
+  Glob: "#b0518a", // muted magenta/rose
+  Agent: "#3f7a5c", // muted teal-green
 };
-const COLOR_DEFAULT = "#64748b";
+const COLOR_DEFAULT = "var(--kad-text-muted)";
 
 function toolColor(name: string): string {
   // Strip the _source / _target suffix we add internally
@@ -285,30 +288,6 @@ export function ToolExecutionFlow({
 
     const root = svg.append("g").attr("transform", `translate(${MARGIN.left},${MARGIN.top})`);
 
-    // ── Gradient defs ──────────────────────────────────────────────────────
-    const defs = svg.append("defs");
-
-    (graph.links as SLink[]).forEach((link, i) => {
-      const sourceNode = link.source as SNode;
-      const targetNode = link.target as SNode;
-      const gradId = `link-grad-${i}`;
-
-      const grad = defs
-        .append("linearGradient")
-        .attr("id", gradId)
-        .attr("gradientUnits", "userSpaceOnUse")
-        .attr("x1", sourceNode.x1 ?? 0)
-        .attr("x2", targetNode.x0 ?? 0);
-
-      const srcColor = toolColor(sourceNode.id);
-      const tgtColor = toolColor(targetNode.id);
-
-      grad.append("stop").attr("offset", "0%").attr("stop-color", srcColor);
-      grad.append("stop").attr("offset", "100%").attr("stop-color", tgtColor);
-
-      (link as SLink & { _gradId: string })._gradId = gradId;
-    });
-
     // ── Links ──────────────────────────────────────────────────────────────
     const linkPath = sankeyLinkHorizontal();
 
@@ -330,10 +309,7 @@ export function ToolExecutionFlow({
       .data(graph.links as SLink[])
       .join("path")
       .attr("d", (d) => linkPath(d) ?? "")
-      .attr("stroke", (d, i) => {
-        const gradId = (graph.links[i] as SLink & { _gradId?: string })._gradId;
-        return gradId ? `url(#${gradId})` : toolColor((d.source as SNode).id);
-      })
+      .attr("stroke", (d) => toolColor((d.source as SNode).id))
       .attr("stroke-width", (d) => Math.max(1, d.width ?? 1))
       .attr("fill", "none")
       .attr("stroke-opacity", LINK_OPACITY_DEFAULT)
@@ -431,14 +407,18 @@ export function ToolExecutionFlow({
         .attr("text-anchor", anchor)
         .style("font-size", "12px")
         .style("font-family", "Inter, -apple-system, sans-serif")
-        .style("fill", "#e2e8f0")
+        .style("fill", "var(--kad-text-strong)")
         .style("pointer-events", "none")
         .style("user-select", "none");
 
       text.append("tspan").text(label).style("font-weight", "500");
 
       if (pct) {
-        text.append("tspan").text(pct).style("fill", "#64748b").style("font-size", "11px");
+        text
+          .append("tspan")
+          .text(pct)
+          .style("fill", "var(--kad-text-muted)")
+          .style("font-size", "11px");
       }
     });
 
@@ -460,7 +440,7 @@ export function ToolExecutionFlow({
     <div className="relative" ref={containerRef} onMouseLeave={hideTip}>
       {isEmpty ? (
         <div className="flex items-center justify-center" style={{ height: dimensions.height }}>
-          <span className="text-sm text-gray-500">{t("toolFlow.noData")}</span>
+          <span className="text-sm text-kad-text-muted">{t("toolFlow.noData")}</span>
         </div>
       ) : (
         <svg
@@ -478,17 +458,18 @@ export function ToolExecutionFlow({
         ref={tipRef}
         role="tooltip"
         aria-hidden="true"
-        className="fixed z-50 px-3 py-2 rounded-lg shadow-2xl pointer-events-none"
+        className="fixed z-50 px-3 py-2 rounded-lg pointer-events-none"
         style={{
           display: "none",
           opacity: 0,
           left: 0,
           top: 0,
-          background: "#12121f",
-          border: "1px solid #2a2a4a",
-          color: "#e2e8f0",
+          background: "var(--kad-surface)",
+          border: "1px solid var(--kad-border)",
+          color: "var(--kad-text)",
           minWidth: 240,
           maxWidth: 320,
+          boxShadow: "var(--kad-shadow-1)",
           transition: "opacity 120ms ease-out",
         }}
       />
@@ -509,10 +490,11 @@ function appendTipRow(parent: HTMLElement, label: string, value: string) {
   row.style.cssText =
     "display:flex;justify-content:space-between;gap:16px;font-size:11px;line-height:1.6";
   const lbl = document.createElement("span");
-  lbl.style.color = "#64748b";
+  lbl.style.color = "var(--kad-text-muted)";
   lbl.textContent = label;
   const val = document.createElement("span");
-  val.style.cssText = "color:#cbd5e1;font-weight:500;font-variant-numeric:tabular-nums";
+  val.style.cssText =
+    "color:var(--kad-text);font-weight:500;font-variant-numeric:tabular-nums";
   val.textContent = value;
   row.appendChild(lbl);
   row.appendChild(val);
@@ -533,13 +515,13 @@ function buildToolFlowTooltip(
     const name = localizeToolLabel(payload.rawName);
 
     const title = document.createElement("p");
-    title.style.cssText = "font-size:12px;font-weight:600;color:#e2e8f0;margin:0";
+    title.style.cssText = "font-size:12px;font-weight:600;color:var(--kad-text-strong);margin:0";
     title.textContent = name;
     el.appendChild(title);
 
     const subtitle = document.createElement("p");
     subtitle.style.cssText =
-      "font-size:10px;color:#64748b;margin:2px 0 8px;text-transform:uppercase;letter-spacing:0.05em";
+      "font-size:10px;color:var(--kad-text-muted);margin:2px 0 8px;text-transform:uppercase;letter-spacing:0.05em";
     subtitle.textContent = t("toolFlow.tooltip.node");
     el.appendChild(subtitle);
 
@@ -548,7 +530,7 @@ function buildToolFlowTooltip(
 
     const desc = document.createElement("p");
     desc.style.cssText =
-      "font-size:11px;color:#94a3b8;line-height:1.45;border-top:1px solid #2a2a4a;padding-top:8px;margin:8px 0 0";
+      "font-size:11px;color:var(--kad-text-muted);line-height:1.45;border-top:1px solid var(--kad-border);padding-top:8px;margin:8px 0 0";
     desc.textContent = t("toolFlow.tooltip.nodeDescFmt", { name });
     el.appendChild(desc);
     return;
@@ -559,9 +541,9 @@ function buildToolFlowTooltip(
   const tgt = localizeToolLabel(payload.target);
 
   const title = document.createElement("p");
-  title.style.cssText = "font-size:12px;font-weight:600;color:#e2e8f0;margin:0";
+  title.style.cssText = "font-size:12px;font-weight:600;color:var(--kad-text-strong);margin:0";
   const tspanArrow = document.createElement("span");
-  tspanArrow.style.color = "#64748b";
+  tspanArrow.style.color = "var(--kad-text-muted)";
   tspanArrow.textContent = " → ";
   title.appendChild(document.createTextNode(src));
   title.appendChild(tspanArrow);
@@ -570,7 +552,7 @@ function buildToolFlowTooltip(
 
   const subtitle = document.createElement("p");
   subtitle.style.cssText =
-    "font-size:10px;color:#64748b;margin:2px 0 8px;text-transform:uppercase;letter-spacing:0.05em";
+    "font-size:10px;color:var(--kad-text-muted);margin:2px 0 8px;text-transform:uppercase;letter-spacing:0.05em";
   subtitle.textContent = t("toolFlow.tooltip.link");
   el.appendChild(subtitle);
 
@@ -588,7 +570,7 @@ function buildToolFlowTooltip(
 
   const desc = document.createElement("p");
   desc.style.cssText =
-    "font-size:11px;color:#94a3b8;line-height:1.45;border-top:1px solid #2a2a4a;padding-top:8px;margin:8px 0 0";
+    "font-size:11px;color:var(--kad-text-muted);line-height:1.45;border-top:1px solid var(--kad-border);padding-top:8px;margin:8px 0 0";
   desc.textContent = t("toolFlow.tooltip.linkDescFmt", { source: src, target: tgt });
   el.appendChild(desc);
 }
@@ -596,14 +578,14 @@ function buildToolFlowTooltip(
 // ── Legend ────────────────────────────────────────────────────────────────────
 
 const LEGEND_ITEMS: Array<{ key: string; color: string }> = [
-  { key: "read", color: "#3b82f6" },
-  { key: "write", color: "#22c55e" },
-  { key: "edit", color: "#eab308" },
-  { key: "bash", color: "#ef4444" },
-  { key: "grep", color: "#a855f7" },
-  { key: "glob", color: "#ec4899" },
-  { key: "agent", color: "#6366f1" },
-  { key: "other", color: "#64748b" },
+  { key: "read", color: "var(--kad-accent)" },
+  { key: "write", color: "var(--kad-primary)" },
+  { key: "edit", color: "var(--kad-info)" },
+  { key: "bash", color: "#a35a2f" },
+  { key: "grep", color: "#6d3fae" },
+  { key: "glob", color: "#b0518a" },
+  { key: "agent", color: "#3f7a5c" },
+  { key: "other", color: "var(--kad-text-muted)" },
 ];
 
 function Legend() {
@@ -616,7 +598,7 @@ function Legend() {
             style={{ background: color, opacity: 0.9 }}
             className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
           />
-          <span className="text-xs text-gray-400">{t(`toolLegend.${key}`)}</span>
+          <span className="text-xs text-kad-text-muted">{t(`toolLegend.${key}`)}</span>
         </div>
       ))}
     </div>

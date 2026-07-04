@@ -14,12 +14,12 @@
 /* ── palette ── */
 .tabby-head,
 .tabby-body {
-  fill: url(#tabbyFur);
+  fill: var(--kad-primary);
   stroke: #8b93f9;
   stroke-width: 2;
 }
 .tabby-ear {
-  fill: url(#tabbyFur);
+  fill: var(--kad-primary);
   stroke: #8b93f9;
   stroke-width: 2;
   stroke-linejoin: round;
@@ -67,7 +67,7 @@
   fill: #f7849f;
 }
 .tabby-tail {
-  fill: url(#tabbyFur);
+  fill: var(--kad-primary);
   stroke: #8b93f9;
   stroke-width: 2;
   stroke-linejoin: round;
@@ -94,7 +94,7 @@
   stroke: #8b93f9;
 }
 .tabby-halo {
-  fill: url(#tabbyHalo);
+  fill: var(--kad-accent);
   opacity: 0.18;
 }
 .tabby-sparkle path {
@@ -340,7 +340,7 @@
   transform: scale(1.06);
 }
 .tabby-avatar-btn:focus-visible {
-  outline: 2px solid #818cf8;
+  outline: 2px solid var(--kad-accent);
   outline-offset: 3px;
 }
 .tabby-avatar-btn[data-dragging="1"] {
@@ -361,7 +361,7 @@
   gap: 0.5rem;
 }
 .tabby-avatar-btn:focus-visible {
-  outline: 2px solid #818cf8;
+  outline: 2px solid var(--kad-accent);
   outline-offset: 3px;
 }
 .tabby-error-dot {
@@ -378,19 +378,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px solid #0c0c14;
+  border: 2px solid var(--kad-bg);
 }
 .tabby-bubble {
   max-width: 16rem;
-  background: #1a1a28;
-  border: 1px solid #363650;
-  color: #e8e8f0;
+  background: var(--kad-surface);
+  border: 1px solid var(--kad-border);
+  color: var(--kad-text);
   font-size: 0.8125rem;
   line-height: 1.2rem;
   padding: 0.5rem 0.75rem;
   border-radius: 0.75rem;
   border-bottom-right-radius: 0.25rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  /* Legitimate floating chat-bubble overlay — the one permitted elevation. */
+  box-shadow: var(--kad-shadow-1);
 }
 .tabby-bubble-enter {
   animation: tabby-bubble-in 0.22s ease-out;

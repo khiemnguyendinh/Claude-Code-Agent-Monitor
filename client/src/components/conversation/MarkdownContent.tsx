@@ -227,7 +227,7 @@ function renderInline(text: string, baseKey = ""): React.ReactNode[] {
     const codeM = rest.match(/^`([^`\n]+)`/);
     if (codeM) {
       push(
-        <code className="rounded bg-surface-4 border border-surface-3 px-1.5 py-0.5 font-mono text-[12.5px] text-amber-200">
+        <code className="rounded bg-surface-4 border border-surface-3 px-1.5 py-0.5 font-mono text-[12.5px] text-kad-warning">
           {codeM[1]}
         </code>
       );
@@ -239,7 +239,7 @@ function renderInline(text: string, baseKey = ""): React.ReactNode[] {
     const boldM = rest.match(/^(\*\*|__)(.+?)\1/);
     if (boldM) {
       push(
-        <strong className="font-semibold text-gray-50">
+        <strong className="font-semibold text-kad-text-strong">
           {renderInline(boldM[2]!, `${baseKey}-b${n}`)}
         </strong>
       );
@@ -250,9 +250,7 @@ function renderInline(text: string, baseKey = ""): React.ReactNode[] {
     // Italic: *...* or _..._
     const italicM = rest.match(/^(\*|_)([^*_\n]+?)\1/);
     if (italicM) {
-      push(
-        <em className="italic text-gray-200">{renderInline(italicM[2]!, `${baseKey}-i${n}`)}</em>
-      );
+      push(<em className="italic text-kad-text">{renderInline(italicM[2]!, `${baseKey}-i${n}`)}</em>);
       i += italicM[0].length;
       continue;
     }
@@ -261,7 +259,7 @@ function renderInline(text: string, baseKey = ""): React.ReactNode[] {
     const strikeM = rest.match(/^~~(.+?)~~/);
     if (strikeM) {
       push(
-        <span className="line-through text-gray-500">
+        <span className="line-through text-kad-text-muted">
           {renderInline(strikeM[1]!, `${baseKey}-s${n}`)}
         </span>
       );
@@ -277,7 +275,7 @@ function renderInline(text: string, baseKey = ""): React.ReactNode[] {
           href={linkM[2]!}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-violet-300 hover:text-violet-200 underline underline-offset-2 decoration-violet-400/40 hover:decoration-violet-300/70"
+          className="text-kad-info hover:text-kad-info/80 underline underline-offset-2 decoration-kad-info/40 hover:decoration-kad-info/70"
         >
           {renderInline(linkM[1]!, `${baseKey}-l${n}`)}
         </a>
@@ -294,7 +292,7 @@ function renderInline(text: string, baseKey = ""): React.ReactNode[] {
           href={urlM[0]}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-violet-300 hover:text-violet-200 underline underline-offset-2 decoration-violet-400/40 hover:decoration-violet-300/70 break-all"
+          className="text-kad-info hover:text-kad-info/80 underline underline-offset-2 decoration-kad-info/40 hover:decoration-kad-info/70 break-all"
         >
           {urlM[0]}
         </a>
@@ -319,11 +317,11 @@ function renderListItem(item: string, key: string): React.ReactNode {
       <span className="inline-flex items-baseline gap-2">
         <span
           className={`inline-block w-3 h-3 rounded-sm border flex-shrink-0 translate-y-0.5 ${
-            checked ? "bg-emerald-500/40 border-emerald-400/60" : "bg-surface-4 border-surface-3"
+            checked ? "bg-kad-success/40 border-kad-success/60" : "bg-surface-4 border-surface-3"
           }`}
           aria-hidden="true"
         />
-        <span className={checked ? "text-gray-500 line-through" : ""}>
+        <span className={checked ? "text-kad-text-muted line-through" : ""}>
           {renderInline(taskMatch[2]!, key)}
         </span>
       </span>
@@ -339,12 +337,12 @@ interface MarkdownContentProps {
 }
 
 const HEADING_STYLES = [
-  "text-[18px] font-semibold text-gray-50 mt-2 pb-1 border-b border-surface-3",
-  "text-[16px] font-semibold text-gray-50 mt-2",
-  "text-[15px] font-semibold text-gray-100",
-  "text-sm font-semibold text-gray-100",
-  "text-sm font-medium text-gray-200",
-  "text-xs font-medium text-gray-300 uppercase tracking-wider",
+  "text-[18px] font-semibold text-kad-text-strong mt-2 pb-1 border-b border-surface-3",
+  "text-[16px] font-semibold text-kad-text-strong mt-2",
+  "text-[15px] font-semibold text-kad-text",
+  "text-sm font-semibold text-kad-text",
+  "text-sm font-medium text-kad-text-muted",
+  "text-xs font-medium text-kad-text-muted uppercase tracking-wider",
 ];
 
 export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
@@ -352,7 +350,7 @@ export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
   const gap = dense ? "space-y-1.5" : "space-y-2.5";
 
   return (
-    <div className={`text-sm text-gray-300 leading-relaxed ${gap}`}>
+    <div className={`text-sm text-kad-text leading-relaxed ${gap}`}>
       {blocks.map((b, idx) => {
         switch (b.kind) {
           case "code":
@@ -372,10 +370,10 @@ export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
               return (
                 <ol
                   key={idx}
-                  className="list-decimal pl-5 space-y-1 marker:text-gray-500 marker:font-mono marker:text-xs"
+                  className="list-decimal pl-5 space-y-1 marker:text-kad-text-muted marker:font-mono marker:text-xs"
                 >
                   {b.items.map((item, i) => (
-                    <li key={i} className="text-sm text-gray-300">
+                    <li key={i} className="text-sm text-kad-text">
                       {renderListItem(item, `li${idx}-${i}`)}
                     </li>
                   ))}
@@ -383,9 +381,9 @@ export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
               );
             }
             return (
-              <ul key={idx} className="list-disc pl-5 space-y-1 marker:text-violet-400/60">
+              <ul key={idx} className="list-disc pl-5 space-y-1 marker:text-kad-info/70">
                 {b.items.map((item, i) => (
-                  <li key={i} className="text-sm text-gray-300">
+                  <li key={i} className="text-sm text-kad-text">
                     {renderListItem(item, `li${idx}-${i}`)}
                   </li>
                 ))}
@@ -396,7 +394,7 @@ export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
             return (
               <blockquote
                 key={idx}
-                className="relative border-l-2 border-violet-400/50 pl-3 pr-2 py-1 text-gray-400 italic bg-violet-500/[0.04] rounded-r"
+                className="relative border-l-2 border-kad-info/50 pl-3 pr-2 py-1 text-kad-text-muted italic bg-kad-info/[0.04] rounded-r"
               >
                 {renderInline(b.text, `q${idx}`)}
               </blockquote>
@@ -404,10 +402,7 @@ export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
 
           case "hr":
             return (
-              <hr
-                key={idx}
-                className="border-0 h-px bg-gradient-to-r from-transparent via-surface-3 to-transparent my-2"
-              />
+              <hr key={idx} className="border-0 h-px bg-kad-border my-2" />
             );
 
           case "table": {
@@ -424,7 +419,7 @@ export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
                       {b.header.map((cell, i) => (
                         <th
                           key={i}
-                          className={`px-3 py-1.5 font-semibold text-gray-200 border-b border-surface-3 ${alignClass(b.aligns[i] ?? null)}`}
+                          className={`px-3 py-1.5 font-semibold text-kad-text border-b border-surface-3 ${alignClass(b.aligns[i] ?? null)}`}
                         >
                           {renderInline(cell, `th${idx}-${i}`)}
                         </th>
@@ -440,7 +435,7 @@ export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
                         {row.map((cell, ci) => (
                           <td
                             key={ci}
-                            className={`px-3 py-1.5 text-gray-300 align-top ${alignClass(b.aligns[ci] ?? null)}`}
+                            className={`px-3 py-1.5 text-kad-text align-top ${alignClass(b.aligns[ci] ?? null)}`}
                           >
                             {renderInline(cell, `td${idx}-${ri}-${ci}`)}
                           </td>
@@ -455,7 +450,7 @@ export function MarkdownContent({ text, dense = false }: MarkdownContentProps) {
 
           case "para":
             return (
-              <p key={idx} className="text-sm text-gray-300 whitespace-pre-wrap break-words">
+              <p key={idx} className="text-sm text-kad-text whitespace-pre-wrap break-words">
                 {renderInline(b.text, `p${idx}`)}
               </p>
             );

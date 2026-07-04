@@ -81,8 +81,8 @@ export function Tip({ raw, children, maxWidth = 320, block = false }: TipProps) 
         createPortal(
           <div
             ref={tipRef}
-            style={tipStyle}
-            className="px-2.5 py-1.5 text-[11px] leading-relaxed font-mono text-gray-100 bg-[#12121f] border border-[#2a2a4a] rounded-lg shadow-xl pointer-events-none whitespace-pre-wrap break-words"
+            style={{ ...tipStyle, boxShadow: "var(--kad-shadow-1)" }}
+            className="px-2.5 py-1.5 text-[11px] leading-relaxed font-mono text-kad-text-strong bg-kad-surface-2 border border-kad-border-strong rounded-lg pointer-events-none whitespace-pre-wrap break-words"
           >
             {raw}
           </div>,

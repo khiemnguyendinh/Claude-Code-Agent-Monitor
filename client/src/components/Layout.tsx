@@ -4,9 +4,9 @@
  * @author Son Nguyen <hoangson091104@gmail.com>
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Outlet } from "react-router-dom";
-import { Sidebar, SIDEBAR_STORAGE_KEY, loadCollapsed } from "./Sidebar";
+import { AppSidebar, SIDEBAR_STORAGE_KEY, loadCollapsed } from "./AppSidebar";
 import { UpdateNotifier } from "./UpdateNotifier";
 import { Tabby } from "./Tabby/Tabby";
 
@@ -16,6 +16,18 @@ interface LayoutProps {
 
 export function Layout({ wsConnected }: LayoutProps) {
   const [collapsed, setCollapsed] = useState(loadCollapsed);
+
+  // 2026-07-04 retheme: /he-thong/* now shares the KAD light theme, so this
+  // no longer needs to diverge from index.html's default body bg — but it
+  // still explicitly (re)sets it on mount/unmount so overscroll-bounce never
+  // flashes a stale color if that default ever changes again.
+  useEffect(() => {
+    const prev = document.body.style.backgroundColor;
+    document.body.style.backgroundColor = "#fafbfe";
+    return () => {
+      document.body.style.backgroundColor = prev;
+    };
+  }, []);
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
@@ -31,7 +43,7 @@ export function Layout({ wsConnected }: LayoutProps) {
     <div className="min-h-screen bg-surface-0">
       <UpdateNotifier />
       <Tabby />
-      <Sidebar wsConnected={wsConnected} collapsed={collapsed} onToggle={toggle} />
+      <AppSidebar wsConnected={wsConnected} collapsed={collapsed} onToggle={toggle} />
       <main
         className="min-h-screen min-w-0 transition-[margin-left,width] duration-200"
         style={{

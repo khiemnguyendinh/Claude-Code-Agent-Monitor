@@ -40,7 +40,7 @@ export function Checkbox({
         {checked && <Check className="h-3 w-3 text-white" strokeWidth={3} />}
       </span>
       {label != null && (
-        <span className={labelClassName ?? "text-xs text-gray-400 group-hover:text-gray-300"}>
+        <span className={labelClassName ?? "text-xs text-kad-text-muted group-hover:text-kad-text"}>
           {label}
         </span>
       )}

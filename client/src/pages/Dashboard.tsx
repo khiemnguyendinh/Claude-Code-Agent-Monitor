@@ -221,27 +221,27 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Server className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">Runtime</span>
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">Runtime</span>
             </div>
-            <span className="text-[10px] font-mono text-gray-500">
+            <span className="text-[10px] font-mono text-kad-text-muted">
               {info.server.cpus} cores · {info.server.arch}
             </span>
           </div>
 
           <div className="space-y-2.5">
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400 w-28 flex-shrink-0">Uptime</span>
-              <span className="text-xs text-gray-200 font-mono ml-auto">
+              <span className="text-xs text-kad-text-muted w-28 flex-shrink-0">Uptime</span>
+              <span className="text-xs text-kad-text font-mono ml-auto">
                 {formatUptime(info.server.uptime)}
               </span>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400 w-28 flex-shrink-0">CPU (1/5/15m)</span>
+              <span className="text-xs text-kad-text-muted w-28 flex-shrink-0">CPU (1/5/15m)</span>
               <div className="flex gap-1 ml-auto">
                 {(info.server.cpu_load || []).slice(0, 3).map((load, i) => (
                   <span
                     key={i}
-                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${i === 0 && load > info.server.cpus ? "bg-red-500/20 text-red-400" : "bg-surface-3 text-gray-300"}`}
+                    className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${i === 0 && load > info.server.cpus ? "bg-red-500/20 text-red-400" : "bg-surface-3 text-kad-text"}`}
                   >
                     {load.toFixed(2)}
                   </span>
@@ -249,8 +249,8 @@ function SystemHealthTab() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-gray-400 w-28 flex-shrink-0">Node RSS</span>
-              <span className="text-xs text-gray-200 font-mono ml-auto">
+              <span className="text-xs text-kad-text-muted w-28 flex-shrink-0">Node RSS</span>
+              <span className="text-xs text-kad-text font-mono ml-auto">
                 {formatBytes(info.server.memory.rss)}
               </span>
             </div>
@@ -263,8 +263,8 @@ function SystemHealthTab() {
             >
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px]">
-                  <span className="text-gray-500">Host Memory</span>
-                  <span className="text-gray-400 font-mono">{memUsedPct.toFixed(0)}%</span>
+                  <span className="text-kad-text-muted">Host Memory</span>
+                  <span className="text-kad-text-muted font-mono">{memUsedPct.toFixed(0)}%</span>
                 </div>
                 <div className="w-full bg-surface-3 rounded-full h-2">
                   <div
@@ -280,8 +280,8 @@ function SystemHealthTab() {
             >
               <div className="space-y-1">
                 <div className="flex justify-between text-[10px]">
-                  <span className="text-gray-500">V8 Heap</span>
-                  <span className="text-gray-400 font-mono">{heapUsedPct.toFixed(0)}%</span>
+                  <span className="text-kad-text-muted">V8 Heap</span>
+                  <span className="text-kad-text-muted font-mono">{heapUsedPct.toFixed(0)}%</span>
                 </div>
                 <div className="w-full bg-surface-3 rounded-full h-2">
                   <div
@@ -299,7 +299,7 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Database className="w-4 h-4 text-blue-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">Storage</span>
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">Storage</span>
             </div>
             <Tip
               raw={`Write velocity (events):\n5 min: ${info.db.load_stats?.m5 ?? 0}\n15 min: ${info.db.load_stats?.m15 ?? 0}\n1 hr: ${info.db.load_stats?.h1 ?? 0}`}
@@ -312,8 +312,8 @@ function SystemHealthTab() {
           </div>
 
           <div className="flex items-center gap-3">
-            <span className="text-xs text-gray-400 w-28 flex-shrink-0">Database</span>
-            <span className="text-xs text-gray-200 font-mono ml-auto">
+            <span className="text-xs text-kad-text-muted w-28 flex-shrink-0">Database</span>
+            <span className="text-xs text-kad-text font-mono ml-auto">
               {formatBytes(info.db.size)} · {info.db.pragmas?.journal_mode?.toUpperCase() || "WAL"}
             </span>
           </div>
@@ -329,16 +329,16 @@ function SystemHealthTab() {
                 viewBox="0 0 96 96"
                 className="flex-shrink-0 cursor-default"
               >
-                <circle cx="48" cy="48" r="38" fill="none" stroke="#1e1e2e" strokeWidth="14" />
+                <circle cx="48" cy="48" r="38" fill="none" stroke="var(--kad-border)" strokeWidth="14" />
                 {(() => {
                   const r = 38,
                     cx = 48,
                     cy = 48,
                     circumference = 2 * Math.PI * r;
                   const segments = [
-                    { pct: sessPct, color: "#60a5fa" },
-                    { pct: agentPct, color: "#8b5cf6" },
-                    { pct: eventPct, color: "#34d399" },
+                    { pct: sessPct, color: "var(--kad-accent)" },
+                    { pct: agentPct, color: "var(--kad-primary)" },
+                    { pct: eventPct, color: "var(--kad-success)" },
                   ];
                   let offset = circumference / 4;
                   return segments.map((seg, i) => {
@@ -367,7 +367,7 @@ function SystemHealthTab() {
                   y="46"
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  className="fill-gray-300"
+                  className="fill-kad-text"
                   fontSize="12"
                   fontWeight="700"
                   fontFamily="monospace"
@@ -379,7 +379,7 @@ function SystemHealthTab() {
                   y="60"
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  className="fill-gray-600"
+                  className="fill-kad-text-muted"
                   fontSize="8"
                 >
                   total
@@ -391,19 +391,19 @@ function SystemHealthTab() {
                 {
                   label: "Sessions",
                   value: info.db.counts?.sessions ?? 0,
-                  color: "#60a5fa",
+                  color: "var(--kad-accent)",
                   pct: sessPct,
                 },
                 {
                   label: "Agents",
                   value: info.db.counts?.agents ?? 0,
-                  color: "#8b5cf6",
+                  color: "var(--kad-primary)",
                   pct: agentPct,
                 },
                 {
                   label: "Events",
                   value: info.db.counts?.events ?? 0,
-                  color: "#34d399",
+                  color: "var(--kad-success)",
                   pct: eventPct,
                 },
               ].map((item) => (
@@ -417,8 +417,8 @@ function SystemHealthTab() {
                       className="w-2.5 h-2.5 rounded-sm flex-shrink-0"
                       style={{ backgroundColor: item.color }}
                     />
-                    <span className="text-gray-400">{item.label}</span>
-                    <span className="text-gray-500 ml-auto pl-3 font-mono">
+                    <span className="text-kad-text-muted">{item.label}</span>
+                    <span className="text-kad-text-muted ml-auto pl-3 font-mono">
                       {Math.round(item.pct)}%
                     </span>
                   </div>
@@ -433,12 +433,12 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">Health Score</span>
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">Health Score</span>
             </div>
             <Tip
               raw={`Composite Index formula:\n0.4 × Success Rate (${successRate.toFixed(1)}%)\n+ 0.25 × Cache Hit (${cacheHitRate.toFixed(1)}%)\n+ 0.25 × (100 − Error Rate) (${(100 - errorRate).toFixed(1)}%)\n+ 0.10 × (100 − Heap%) (${(100 - heapUsedPct).toFixed(1)}%)\n= ${healthScore.toFixed(1)}`}
             >
-              <span className="text-[10px] text-gray-500 cursor-help border-b border-dashed border-gray-700">
+              <span className="text-[10px] text-kad-text-muted cursor-help border-b border-dashed border-kad-border-strong">
                 ⓘ Formula
               </span>
             </Tip>
@@ -450,13 +450,19 @@ function SystemHealthTab() {
               raw={`Score: ${healthScore.toFixed(1)} / 100\n\n• Success Rate (40%): ${successRate.toFixed(1)}%\n• Cache Hit (25%): ${cacheHitRate.toFixed(1)}%\n• Error Avoidance (25%): ${(100 - errorRate).toFixed(1)}%\n• Memory Health (10%): ${(100 - heapUsedPct).toFixed(1)}%`}
             >
               <svg width="120" height="120" viewBox="0 0 120 120" className="cursor-default">
-                <circle cx="60" cy="60" r="48" fill="none" stroke="#1e1e2e" strokeWidth="10" />
+                <circle cx="60" cy="60" r="48" fill="none" stroke="var(--kad-border)" strokeWidth="10" />
                 <circle
                   cx="60"
                   cy="60"
                   r="48"
                   fill="none"
-                  stroke={healthScore >= 90 ? "#34d399" : healthScore >= 70 ? "#fbbf24" : "#f87171"}
+                  stroke={
+                    healthScore >= 90
+                      ? "var(--kad-success)"
+                      : healthScore >= 70
+                        ? "var(--kad-warning)"
+                        : "var(--kad-danger)"
+                  }
                   strokeWidth="10"
                   strokeLinecap="round"
                   strokeDasharray={`${healthScore * 3.016} ${301.6 - healthScore * 3.016}`}
@@ -468,7 +474,7 @@ function SystemHealthTab() {
                   y="57"
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  className="fill-gray-100"
+                  className="fill-kad-text-strong"
                   fontSize="24"
                   fontWeight="800"
                   fontFamily="monospace"
@@ -480,7 +486,7 @@ function SystemHealthTab() {
                   y="76"
                   textAnchor="middle"
                   dominantBaseline="middle"
-                  className="fill-gray-600"
+                  className="fill-kad-text-muted"
                   fontSize="9"
                   fontWeight="500"
                 >
@@ -497,7 +503,7 @@ function SystemHealthTab() {
               raw={`Cache Hit Rate: ${cacheHitRate.toFixed(1)}%\nHits: ${info.transcript_cache?.hits ?? 0}\nMisses: ${info.transcript_cache?.misses ?? 0}`}
             >
               <div className="text-center cursor-default">
-                <p className="text-[9px] text-gray-600 uppercase">Cache</p>
+                <p className="text-[9px] text-kad-text-muted uppercase">Cache</p>
                 <p className="text-xs font-mono font-bold text-blue-400">
                   {cacheHitRate.toFixed(0)}%
                 </p>
@@ -508,7 +514,7 @@ function SystemHealthTab() {
               raw={`Error Rate: ${errorRate.toFixed(2)}%\n<5% = healthy, 5-15% = warning, >15% = critical`}
             >
               <div className="text-center cursor-default">
-                <p className="text-[9px] text-gray-600 uppercase">Errors</p>
+                <p className="text-[9px] text-kad-text-muted uppercase">Errors</p>
                 <p
                   className={`text-xs font-mono font-bold ${errorRate < 5 ? "text-emerald-400" : errorRate < 15 ? "text-amber-400" : "text-red-400"}`}
                 >
@@ -521,7 +527,7 @@ function SystemHealthTab() {
               raw={`Transcript compactions: ${workflow.compaction?.totalCompactions ?? 0}\nReduces context window by summarizing turns.`}
             >
               <div className="text-center cursor-default">
-                <p className="text-[9px] text-gray-600 uppercase">Compact</p>
+                <p className="text-[9px] text-kad-text-muted uppercase">Compact</p>
                 <p className="text-xs font-mono font-bold text-violet-400">
                   {workflow.compaction?.totalCompactions ?? 0}
                 </p>
@@ -532,7 +538,7 @@ function SystemHealthTab() {
               raw={`Tokens recovered: ${(workflow.compaction?.tokensRecovered ?? 0).toLocaleString()}\nFreed by compaction.`}
             >
               <div className="text-center cursor-default">
-                <p className="text-[9px] text-gray-600 uppercase">Saved</p>
+                <p className="text-[9px] text-kad-text-muted uppercase">Saved</p>
                 <p className="text-xs font-mono font-bold text-emerald-400">
                   {((workflow.compaction?.tokensRecovered ?? 0) / 1000).toFixed(1)}K
                 </p>
@@ -549,9 +555,9 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Bot className="w-4 h-4 text-blue-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">Token Usage</span>
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">Token Usage</span>
             </div>
-            <span className="text-[10px] font-mono text-gray-500">
+            <span className="text-[10px] font-mono text-kad-text-muted">
               {(totalTokens / 1000).toFixed(1)}K total
             </span>
           </div>
@@ -576,7 +582,7 @@ function SystemHealthTab() {
                 >
                   <div className="flex items-center gap-3 cursor-default">
                     <span
-                      className="text-xs text-gray-400 w-28 truncate flex-shrink-0"
+                      className="text-xs text-kad-text-muted w-28 truncate flex-shrink-0"
                       title={formatModelName(m.model) ?? m.model}
                     >
                       {formatModelName(m.model) ?? m.model}
@@ -587,7 +593,7 @@ function SystemHealthTab() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-500 w-12 text-right flex-shrink-0 font-mono">
+                    <span className="text-xs text-kad-text-muted w-12 text-right flex-shrink-0 font-mono">
                       {pct.toFixed(1)}%
                     </span>
                   </div>
@@ -595,7 +601,7 @@ function SystemHealthTab() {
               );
             })}
             {modelStats.length === 0 && (
-              <p className="text-xs text-gray-600 text-center py-4">No model data</p>
+              <p className="text-xs text-kad-text-muted text-center py-4">No model data</p>
             )}
           </div>
         </div>
@@ -605,9 +611,9 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <BarChart3 className="w-4 h-4 text-violet-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">Concurrency</span>
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">Concurrency</span>
             </div>
-            <span className="text-[10px] font-mono text-gray-500">{lanes.length} intervals</span>
+            <span className="text-[10px] font-mono text-kad-text-muted">{lanes.length} intervals</span>
           </div>
 
           {/* Sparkline-style bar chart matching Analytics sparkline */}
@@ -621,12 +627,12 @@ function SystemHealthTab() {
                   maxLaneCount > 0 ? Math.max(4, Math.round((lane.count / maxLaneCount) * 100)) : 4;
                 const color =
                   lane.count > 5
-                    ? "#f87171"
+                    ? "var(--kad-danger)"
                     : lane.count > 2
-                      ? "#fbbf24"
+                      ? "var(--kad-warning)"
                       : lane.count > 0
-                        ? "#34d399"
-                        : "#1e1e2e";
+                        ? "var(--kad-success)"
+                        : "var(--kad-border)";
                 return (
                   <div
                     key={i}
@@ -640,7 +646,7 @@ function SystemHealthTab() {
                 );
               })}
               {lanes.length === 0 && (
-                <p className="text-xs text-gray-600 text-center w-full self-center">
+                <p className="text-xs text-kad-text-muted text-center w-full self-center">
                   No concurrency data
                 </p>
               )}
@@ -650,8 +656,8 @@ function SystemHealthTab() {
           <div className="grid grid-cols-3 gap-3 border-t border-border/40 pt-3">
             <Tip block raw={`Peak: ${maxLaneCount} sessions running simultaneously.`}>
               <div className="text-center cursor-default">
-                <p className="text-[9px] text-gray-600 uppercase">Peak</p>
-                <p className="text-sm font-mono font-bold text-gray-200">{maxLaneCount}</p>
+                <p className="text-[9px] text-kad-text-muted uppercase">Peak</p>
+                <p className="text-sm font-mono font-bold text-kad-text">{maxLaneCount}</p>
               </div>
             </Tip>
             <Tip
@@ -659,7 +665,7 @@ function SystemHealthTab() {
               raw={`${lanes.filter((l) => l.count > 0).length} of ${lanes.length} intervals have active sessions.`}
             >
               <div className="text-center cursor-default">
-                <p className="text-[9px] text-gray-600 uppercase">Active</p>
+                <p className="text-[9px] text-kad-text-muted uppercase">Active</p>
                 <p className="text-sm font-mono font-bold text-emerald-400">
                   {lanes.filter((l) => l.count > 0).length}
                 </p>
@@ -667,7 +673,7 @@ function SystemHealthTab() {
             </Tip>
             <Tip block raw={`Average concurrency across all intervals.`}>
               <div className="text-center cursor-default">
-                <p className="text-[9px] text-gray-600 uppercase">Avg</p>
+                <p className="text-[9px] text-kad-text-muted uppercase">Avg</p>
                 <p className="text-sm font-mono font-bold text-blue-400">
                   {lanes.length > 0
                     ? (lanes.reduce((s, l) => s + l.count, 0) / lanes.length).toFixed(1)
@@ -686,9 +692,9 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Zap className="w-4 h-4 text-amber-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">Tool Usage</span>
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">Tool Usage</span>
             </div>
-            <span className="text-[10px] font-mono text-gray-500">top {topTools.length}</span>
+            <span className="text-[10px] font-mono text-kad-text-muted">top {topTools.length}</span>
           </div>
 
           <div className="space-y-2">
@@ -712,7 +718,7 @@ function SystemHealthTab() {
                 >
                   <div className="flex items-center gap-3 cursor-default">
                     <span
-                      className="text-xs text-gray-400 w-28 truncate flex-shrink-0"
+                      className="text-xs text-kad-text-muted w-28 truncate flex-shrink-0"
                       title={tool.tool_name}
                     >
                       {tool.tool_name}
@@ -723,7 +729,7 @@ function SystemHealthTab() {
                         style={{ width: `${pct}%` }}
                       />
                     </div>
-                    <span className="text-xs text-gray-500 w-10 text-right flex-shrink-0 font-mono">
+                    <span className="text-xs text-kad-text-muted w-10 text-right flex-shrink-0 font-mono">
                       {tool.count > 999 ? `${(tool.count / 1000).toFixed(1)}K` : tool.count}
                     </span>
                   </div>
@@ -731,7 +737,7 @@ function SystemHealthTab() {
               );
             })}
             {topTools.length === 0 && (
-              <p className="text-xs text-gray-600 text-center py-6">No tool data yet</p>
+              <p className="text-xs text-kad-text-muted text-center py-6">No tool data yet</p>
             )}
           </div>
         </div>
@@ -741,7 +747,7 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <GitBranch className="w-4 h-4 text-violet-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">
                 Subagent Effectiveness
               </span>
             </div>
@@ -762,7 +768,7 @@ function SystemHealthTab() {
                   raw={`${item.subagent_type || "default"}\nSuccess: ${item.successRate.toFixed(1)}%\nTotal: ${item.total} · OK: ${item.completed} · Errors: ${item.errors}`}
                 >
                   <div className="flex items-center gap-3 cursor-default">
-                    <span className="text-xs text-gray-400 w-28 truncate flex-shrink-0">
+                    <span className="text-xs text-kad-text-muted w-28 truncate flex-shrink-0">
                       {item.subagent_type || "default"}
                     </span>
                     <div className="flex-1 bg-surface-3 rounded-full h-2">
@@ -781,7 +787,7 @@ function SystemHealthTab() {
               );
             })}
             {effectiveness.length === 0 && (
-              <p className="text-xs text-gray-600 text-center py-6">No subagent data yet</p>
+              <p className="text-xs text-kad-text-muted text-center py-6">No subagent data yet</p>
             )}
           </div>
         </div>
@@ -794,10 +800,10 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Plug className="w-4 h-4 text-amber-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">Integration</span>
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">Integration</span>
             </div>
             <span
-              className={`text-[10px] font-mono px-2 py-0.5 rounded ${info.hooks.installed ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-surface-3 text-gray-500 border border-border"}`}
+              className={`text-[10px] font-mono px-2 py-0.5 rounded ${info.hooks.installed ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-surface-3 text-kad-text-muted border border-border"}`}
             >
               {info.hooks.installed ? "Active" : "Offline"}
             </span>
@@ -813,9 +819,9 @@ function SystemHealthTab() {
                 >
                   <div className="flex items-center gap-3 bg-surface-2/50 px-3 py-2 rounded-lg border border-border/30 cursor-default">
                     <div
-                      className={`w-2 h-2 rounded-full flex-shrink-0 ${active ? "bg-emerald-400" : "bg-gray-600"}`}
+                      className={`w-2 h-2 rounded-full flex-shrink-0 ${active ? "bg-emerald-400" : "bg-kad-text-faint"}`}
                     />
-                    <span className="text-xs text-gray-300 truncate font-mono">
+                    <span className="text-xs text-kad-text truncate font-mono">
                       {cwd.split("/").pop() || cwd}
                     </span>
                   </div>
@@ -824,8 +830,8 @@ function SystemHealthTab() {
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-6 border border-dashed border-border/40 rounded-lg">
-              <Search className="w-4 h-4 text-gray-600 mb-2" />
-              <p className="text-xs text-gray-500">No project hooks registered</p>
+              <Search className="w-4 h-4 text-kad-text-muted mb-2" />
+              <p className="text-xs text-kad-text-muted">No project hooks registered</p>
             </div>
           )}
 
@@ -837,7 +843,7 @@ function SystemHealthTab() {
               <Activity className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
               <div>
                 <p className="text-[10px] text-emerald-400 font-medium">WebSocket Active</p>
-                <p className="text-[10px] text-gray-500">
+                <p className="text-[10px] text-kad-text-muted">
                   {info.server.ws_connections} connection
                   {info.server.ws_connections !== 1 ? "s" : ""}
                 </p>
@@ -851,9 +857,9 @@ function SystemHealthTab() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <Cpu className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs text-gray-500 uppercase tracking-wider">Platform</span>
+              <span className="text-xs text-kad-text-muted uppercase tracking-wider">Platform</span>
             </div>
-            <span className="text-[10px] font-mono text-gray-500">{info.server.node_version}</span>
+            <span className="text-[10px] font-mono text-kad-text-muted">{info.server.node_version}</span>
           </div>
 
           <div className="space-y-2">
@@ -877,16 +883,16 @@ function SystemHealthTab() {
               { label: "Platform", value: `${info.server.platform} / ${info.server.arch}` },
             ].map((row) => (
               <div key={row.label} className="flex items-center gap-3">
-                <span className="text-xs text-gray-400 w-28 flex-shrink-0">{row.label}</span>
-                <span className="text-xs text-gray-200 font-mono ml-auto">{row.value}</span>
+                <span className="text-xs text-kad-text-muted w-28 flex-shrink-0">{row.label}</span>
+                <span className="text-xs text-kad-text font-mono ml-auto">{row.value}</span>
               </div>
             ))}
           </div>
 
           <Tip block raw={info.db.path}>
             <div className="flex items-center gap-2 bg-surface-2/50 px-3 py-2 rounded-lg border border-border/30 cursor-default">
-              <HardDrive className="w-3 h-3 text-gray-500 flex-shrink-0" />
-              <span className="text-[10px] text-gray-400 font-mono truncate">{info.db.path}</span>
+              <HardDrive className="w-3 h-3 text-kad-text-muted flex-shrink-0" />
+              <span className="text-[10px] text-kad-text-muted font-mono truncate">{info.db.path}</span>
             </div>
           </Tip>
         </div>
@@ -1083,7 +1089,7 @@ export function Dashboard() {
     return (
       <div className="text-center py-20">
         <p className="text-red-400 mb-2">{t("failedConnect")}</p>
-        <p className="text-sm text-gray-500">{error}</p>
+        <p className="text-sm text-kad-text-muted">{error}</p>
         <button onClick={load} className="btn-primary mt-4">
           {t("common:retry")}
         </button>
@@ -1100,20 +1106,20 @@ export function Dashboard() {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-lg font-semibold text-gray-100">{t("title")}</h1>
+              <h1 className="text-lg font-semibold text-kad-text-strong">{t("title")}</h1>
               {wsConnected ? (
                 <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
                   {t("common:live")}
                 </span>
               ) : (
-                <span className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-500/10 border border-gray-500/20 px-2 py-0.5 rounded-full">
-                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                <span className="flex items-center gap-1.5 text-[11px] text-kad-text-muted bg-kad-text-muted/10 border border-kad-text-muted/20 px-2 py-0.5 rounded-full">
+                  <span className="w-1.5 h-1.5 rounded-full bg-kad-text-faint" />
                   {t("common:offline")}
                 </span>
               )}
             </div>
-            <p className="text-xs text-gray-500">{t("subtitle")}</p>
+            <p className="text-xs text-kad-text-muted">{t("subtitle")}</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -1123,8 +1129,8 @@ export function Dashboard() {
               onClick={() => setActiveTab("monitor")}
               className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${
                 activeTab === "monitor"
-                  ? "bg-accent/15 text-accent shadow-sm"
-                  : "text-gray-500 hover:text-gray-300"
+                  ? "bg-accent/15 text-accent"
+                  : "text-kad-text-muted hover:text-kad-text"
               }`}
             >
               <Activity className="w-3.5 h-3.5" /> Monitor
@@ -1133,8 +1139,8 @@ export function Dashboard() {
               onClick={() => setActiveTab("health")}
               className={`px-2.5 py-1.5 rounded-md text-xs font-medium transition-all flex items-center gap-2 ${
                 activeTab === "health"
-                  ? "bg-accent/15 text-accent shadow-sm"
-                  : "text-gray-500 hover:text-gray-300"
+                  ? "bg-accent/15 text-accent"
+                  : "text-kad-text-muted hover:text-kad-text"
               }`}
             >
               <Server className="w-3.5 h-3.5" /> Health
@@ -1207,7 +1213,7 @@ export function Dashboard() {
             {/* Active agents */}
             <div ref={agentsContainerRef} className="min-w-0 overflow-y-auto pr-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-gray-300">{t("activeAgentsSection")}</h3>
+                <h3 className="text-sm font-medium text-kad-text">{t("activeAgentsSection")}</h3>
                 <button onClick={() => navigate("/kanban")} className="btn-ghost text-xs">
                   {t("viewBoard")} <ArrowRight className="w-3 h-3" />
                 </button>
@@ -1249,7 +1255,7 @@ export function Dashboard() {
                             {hasChildren && (
                               <button
                                 onClick={toggleExpanded}
-                                className="p-1 text-gray-500 hover:text-gray-300 transition-colors flex-shrink-0"
+                                className="p-1 text-kad-text-muted hover:text-kad-text transition-colors flex-shrink-0"
                                 aria-label={isExpanded ? "Collapse subagents" : "Expand subagents"}
                                 aria-expanded={isExpanded}
                               >
@@ -1373,7 +1379,7 @@ export function Dashboard() {
             {/* Recent activity */}
             <div ref={activityContainerRef} className="min-w-0 overflow-y-auto pl-6">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-sm font-medium text-gray-300">{t("recentActivity")}</h3>
+                <h3 className="text-sm font-medium text-kad-text">{t("recentActivity")}</h3>
                 <button onClick={() => navigate("/activity")} className="btn-ghost text-xs">
                   {t("viewAll")} <ArrowRight className="w-3 h-3" />
                 </button>
@@ -1406,7 +1412,7 @@ export function Dashboard() {
                                 : "waiting"
                         }
                       />
-                      <span className="text-sm text-gray-300 truncate flex-1">
+                      <span className="text-sm text-kad-text truncate flex-1">
                         {event.summary || event.event_type}
                       </span>
                       {(() => {
@@ -1416,7 +1422,7 @@ export function Dashboard() {
                         const isAuto = /^Session [0-9a-f]{8}$/i.test(sname);
                         return (
                           <span
-                            className="text-[11px] text-gray-500 truncate max-w-[9rem] flex-shrink-0"
+                            className="text-[11px] text-kad-text-muted truncate max-w-[9rem] flex-shrink-0"
                             title={event.session_id}
                           >
                             {sname && !isAuto ? (
@@ -1428,11 +1434,11 @@ export function Dashboard() {
                         );
                       })()}
                       {event.tool_name && (
-                        <span className="text-[11px] text-gray-500 font-mono">
+                        <span className="text-[11px] text-kad-text-muted font-mono">
                           {event.tool_name}
                         </span>
                       )}
-                      <span className="text-[11px] text-gray-600 flex-shrink-0">
+                      <span className="text-[11px] text-kad-text-muted flex-shrink-0">
                         {timeAgo(event.created_at)}
                       </span>
                     </div>

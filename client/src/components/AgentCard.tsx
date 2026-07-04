@@ -119,7 +119,7 @@ export function AgentCard({ agent, session, label, onClick }: AgentCardProps) {
     if (onClick) {
       onClick();
     } else {
-      navigate(`/sessions/${agent.session_id}`);
+      navigate(`/he-thong/sessions/${agent.session_id}`);
     }
   }
 
@@ -144,24 +144,26 @@ export function AgentCard({ agent, session, label, onClick }: AgentCardProps) {
             {isMain ? <Bot className="w-3.5 h-3.5" /> : <GitBranch className="w-3.5 h-3.5" />}
           </div>
           <div className="min-w-0 overflow-hidden">
-            <p className="text-sm font-medium text-gray-200 truncate">
+            <p className="text-sm font-medium text-kad-text truncate">
               {/* Auto-generated main-agent titles (e.g. "Main Agent - Session
                   229d93fd" or "Main Agent - work - e3f8e613") swap the
                   placeholder for the real session name when one exists; custom
                   (sub)agent names are left untouched. */}
               {isMain ? mainAgentDisplayName(agent.name, realSessionName) : agent.name}
             </p>
-            {subtitle && <p className="text-[11px] text-gray-500 truncate">{subtitle}</p>}
+            {subtitle && <p className="text-[11px] text-kad-text-muted truncate">{subtitle}</p>}
           </div>
         </div>
         <AgentStatusBadge status={status} />
       </div>
 
       {agent.task && (
-        <p className="text-xs text-gray-400 mb-3 line-clamp-2 leading-relaxed">{agent.task}</p>
+        <p className="text-xs text-kad-text-muted mb-3 line-clamp-2 leading-relaxed">
+          {agent.task}
+        </p>
       )}
 
-      <div className="flex items-center gap-3 text-[11px] text-gray-500 min-w-0 overflow-hidden flex-wrap">
+      <div className="flex items-center gap-3 text-[11px] text-kad-text-muted min-w-0 overflow-hidden flex-wrap">
         {agent.current_tool && (
           <span className="flex items-center gap-1 flex-shrink-0">
             <Wrench className="w-3 h-3" />
@@ -191,7 +193,7 @@ export function AgentCard({ agent, session, label, onClick }: AgentCardProps) {
               {t("ran")}
               {formatDuration(agent.started_at, agent.ended_at)}
             </span>
-            <span className="text-gray-600 flex-shrink-0">{timeAgo(agent.ended_at)}</span>
+            <span className="text-kad-text-muted flex-shrink-0">{timeAgo(agent.ended_at)}</span>
           </>
         ) : (
           <span className="flex items-center gap-1 flex-shrink-0">

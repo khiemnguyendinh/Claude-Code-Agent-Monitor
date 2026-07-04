@@ -1,27 +1,31 @@
 /**
- * @file Sidebar.tsx
- * @description Defines the Sidebar component that provides navigation links to different sections of the application, displays the connection status, and includes a toggle button for collapsing or expanding the sidebar. The component uses React Router's NavLink for navigation and Lucide icons for visual representation. The collapsed state of the sidebar is stored in localStorage to persist user preferences across sessions.
- * @author Son Nguyen <hoangson091104@gmail.com>
+ * @file AppSidebar.tsx
+ * @description Single shared left sidebar for the whole app — used by both
+ * the KAD shell (Tổng quan/Công việc/Đội ngũ/Kho học liệu) and the /he-thong
+ * shell (Hệ Thống/Analytics/Setting). There is intentionally only ONE
+ * sidebar component now; KadSidebar.tsx has been retired so the two route
+ * trees can never visually drift apart again. Nav labels are hardcoded
+ * Vietnamese/English per Khiêm's 2026-07-04 spec (not run through i18n —
+ * same rule KAD's own sidebar always used), while the language switcher,
+ * connection status and update-check footer stay fully localized since
+ * they're shared chrome, not primary navigation.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { NavLink } from "react-router-dom";
+import { Link, NavLink } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
-  LayoutDashboard,
+  LayoutGrid,
   Columns3,
-  FolderOpen,
-  Activity,
+  Users,
+  BookOpen,
+  LayoutDashboard,
   BarChart3,
-  Workflow,
-  Boxes,
-  Play,
-  Settings,
+  Settings as SettingsIcon,
+  UserPlus,
   Wifi,
   WifiOff,
-  Github,
-  Globe,
   PanelLeftClose,
   PanelLeftOpen,
   Languages,
@@ -42,17 +46,33 @@ function isUpdatePayload(x: unknown): x is UpdateStatusPayload {
   return typeof x === "object" && x !== null && "git_repo" in x && "update_available" in x;
 }
 
-const NAV_KEYS = [
-  { to: "/", icon: LayoutDashboard, key: "nav:dashboard" },
-  { to: "/kanban", icon: Columns3, key: "nav:agentBoard" },
-  { to: "/sessions", icon: FolderOpen, key: "nav:sessions" },
-  { to: "/activity", icon: Activity, key: "nav:activityFeed" },
-  { to: "/analytics", icon: BarChart3, key: "nav:analytics" },
-  { to: "/workflows", icon: Workflow, key: "nav:workflows" },
-  { to: "/cc-config", icon: Boxes, key: "nav:ccConfig" },
-  { to: "/run", icon: Play, key: "nav:run" },
-  { to: "/settings", icon: Settings, key: "nav:settings" },
-] as const;
+interface NavEntry {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+  end?: boolean;
+}
+
+// Flat top-level items (spec 2026-07-04): Tổng quan / Công việc / Đội ngũ /
+// Kho học liệu. "Công việc" now points straight at the real Kanban board
+// (/he-thong/kanban), which itself carries the merged "Công việc | Báo cáo"
+// tab bar — see KanbanBoard.tsx. "Đội ngũ" carries its own 5-tab bar
+// (DoiNgu/index.tsx) with "Workflow" folded in as the 5th tab.
+const MAIN_NAV: NavEntry[] = [
+  { to: "/", label: "Tổng quan", icon: LayoutGrid, end: true },
+  { to: "/he-thong/kanban", label: "Công việc", icon: Columns3 },
+  { to: "/doi-ngu", label: "Đội ngũ", icon: Users },
+  { to: "/hoc-lieu", label: "Kho học liệu", icon: BookOpen },
+];
+
+// "Hệ thống" group: Hệ Thống (root monitor dashboard) / Analytics (3-tab:
+// Analytics | Activity Feed | Sessions) / Setting (3-tab: CC Config | Run |
+// Settings). See Analytics.tsx and Settings.tsx for the tab bars.
+const SYSTEM_NAV: NavEntry[] = [
+  { to: "/he-thong", label: "Hệ Thống", icon: LayoutDashboard, end: true },
+  { to: "/he-thong/analytics", label: "Analytics", icon: BarChart3 },
+  { to: "/he-thong/settings", label: "Setting", icon: SettingsIcon },
+];
 
 const STORAGE_KEY = "sidebar-collapsed";
 const STATS_STORAGE_KEY = "sidebar-connection-stats";
@@ -122,18 +142,17 @@ function normalizeLanguage(language: string): SupportedLanguage {
   if (base === "zh" || base === "vi" || base === "en") {
     return base;
   }
-  return "en";
+  return "vi";
 }
 
-interface SidebarProps {
+interface AppSidebarProps {
   wsConnected: boolean;
   collapsed: boolean;
   onToggle: () => void;
 }
 
-export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
+export function AppSidebar({ wsConnected, collapsed, onToggle }: AppSidebarProps) {
   const { t, i18n } = useTranslation();
-  const websiteLabel = "sonnguyenhoang.com";
   // Track whether nav items are clipped by overflow so we can render
   // chevron affordances pointing toward the hidden items. Recomputed on
   // scroll, resize, and any structural change (e.g. collapse toggle).
@@ -347,19 +366,31 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
         collapsed ? "w-[4.25rem]" : "w-60"
       }`}
     >
-      {/* Brand */}
-      <div className="px-3 py-4 border-b border-border flex-shrink-0">
-        <div className={`flex items-center ${collapsed ? "justify-center" : "gap-3 px-2"}`}>
-          <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center flex-shrink-0">
-            <Activity className="w-4 h-4 text-accent" />
-          </div>
+      {/* Brand — one logo, one name, everywhere. */}
+      <div className="h-16 px-3 border-b border-border flex-shrink-0 flex items-center">
+        <div className={`flex items-center min-w-0 ${collapsed ? "justify-center w-full" : "gap-2.5 px-1"}`}>
+          <img src="/kad/kstudy-icon.png" alt="" className="w-6 h-6 rounded-md flex-shrink-0" />
           {!collapsed && (
-            <div className="min-w-0">
-              <h1 className="text-sm font-semibold text-gray-100 truncate">{t("nav:brand")}</h1>
-              <p className="text-[11px] text-gray-500">{t("nav:brandSub")}</p>
-            </div>
+            <span className="kad-label text-kad-text-strong font-semibold truncate">
+              Kstudy AI Department
+            </span>
           )}
         </div>
+      </div>
+
+      {/* Giao việc — quick-create CTA, điều hướng thẳng trang chat trắng
+          spec/ui/07 (same target as the ⌘K "Giao việc mới" command). */}
+      <div className="px-3 pt-3 flex-shrink-0">
+        <Link
+          to="/cong-viec/moi"
+          title="Giao việc"
+          className={`h-9 flex items-center gap-2 rounded-lg bg-accent text-white kad-label font-semibold transition-colors hover:bg-accent-hover ${
+            collapsed ? "justify-center px-0" : "px-3"
+          }`}
+        >
+          <UserPlus className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
+          {!collapsed && <span className="truncate">Giao việc</span>}
+        </Link>
       </div>
 
       {/* Nav - only this section scrolls when its items overflow; the rest of
@@ -368,29 +399,53 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
           user knows there's more to reach without inspecting the scrollbar. */}
       <div className="flex-1 min-h-0 relative flex">
         <nav ref={navRef} className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-3 space-y-1">
-          {NAV_KEYS.map(({ to, icon: Icon, key }) => {
-            const label = t(key);
-            return (
-              <NavLink
-                key={to}
-                to={to}
-                end={to === "/"}
-                title={collapsed ? label : undefined}
-                className={({ isActive }) =>
-                  `flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
-                    collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
-                  } ${
-                    isActive
-                      ? "bg-accent/10 text-accent border border-accent/20"
-                      : "text-gray-400 hover:text-gray-200 hover:bg-surface-3 border border-transparent"
-                  }`
-                }
-              >
-                <Icon className="w-4 h-4 flex-shrink-0" />
-                {!collapsed && <span>{label}</span>}
-              </NavLink>
-            );
-          })}
+          {MAIN_NAV.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              title={collapsed ? label : undefined}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                  collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
+                } ${
+                  isActive
+                    ? "bg-kad-surface-2 text-kad-primary"
+                    : "text-kad-text-muted hover:text-kad-text hover:bg-kad-surface-2/60"
+                }`
+              }
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              {!collapsed && <span>{label}</span>}
+            </NavLink>
+          ))}
+
+          {collapsed ? (
+            <div className="my-2 border-t border-border" />
+          ) : (
+            <p className="kad-overline text-kad-text-faint px-3 pt-4 pb-1.5">Hệ thống</p>
+          )}
+
+          {SYSTEM_NAV.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              title={collapsed ? label : undefined}
+              className={({ isActive }) =>
+                `flex items-center gap-3 rounded-lg text-sm font-medium transition-colors duration-150 ${
+                  collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
+                } ${
+                  isActive
+                    ? "bg-kad-surface-2 text-kad-primary"
+                    : "text-kad-text-muted hover:text-kad-text hover:bg-kad-surface-2/60"
+                }`
+              }
+            >
+              <Icon className="w-4 h-4 flex-shrink-0" />
+              {!collapsed && <span>{label}</span>}
+            </NavLink>
+          ))}
         </nav>
         {!collapsed && navOverflow.up && (
           <button
@@ -398,7 +453,7 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
             onClick={() => scrollNavBy(-160)}
             aria-label={t("nav:scrollUp")}
             title={t("nav:scrollUp")}
-            className="absolute top-1.5 right-[7px] z-10 inline-flex items-center justify-center w-6 h-6 rounded-md border border-border bg-surface-2/90 text-gray-300 hover:text-gray-50 hover:bg-surface-3 shadow-md backdrop-blur-sm transition-colors animate-fade-in"
+            className="absolute top-1.5 right-[7px] z-10 inline-flex items-center justify-center w-6 h-6 rounded-md border border-border bg-surface-2/90 text-kad-text-muted hover:text-kad-text hover:bg-surface-3 backdrop-blur-sm transition-colors animate-fade-in"
           >
             <ChevronUp className="w-3.5 h-3.5" aria-hidden />
           </button>
@@ -409,7 +464,7 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
             onClick={() => scrollNavBy(160)}
             aria-label={t("nav:scrollDown")}
             title={t("nav:scrollDown")}
-            className="absolute bottom-1.5 right-[7px] z-10 inline-flex items-center justify-center w-6 h-6 rounded-md border border-border bg-surface-2/90 text-gray-300 hover:text-gray-50 hover:bg-surface-3 shadow-md backdrop-blur-sm transition-colors animate-fade-in"
+            className="absolute bottom-1.5 right-[7px] z-10 inline-flex items-center justify-center w-6 h-6 rounded-md border border-border bg-surface-2/90 text-kad-text-muted hover:text-kad-text hover:bg-surface-3 backdrop-blur-sm transition-colors animate-fade-in"
           >
             <ChevronDown className="w-3.5 h-3.5" aria-hidden />
           </button>
@@ -421,7 +476,7 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
         {collapsed ? (
           <button
             onClick={toggleLang}
-            className="w-full h-9 rounded-lg border border-border bg-surface-2 text-gray-300 hover:bg-surface-3 hover:text-gray-100 transition-colors flex flex-col items-center justify-center gap-0.5"
+            className="w-full h-9 rounded-lg border border-border bg-surface-2 text-kad-text-muted hover:bg-surface-3 hover:text-kad-text transition-colors flex flex-col items-center justify-center gap-0.5"
             title={switchLanguageTitle}
             aria-label={switchLanguageTitle}
           >
@@ -432,7 +487,7 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
           </button>
         ) : (
           <div className="rounded-lg border border-border bg-surface-2 p-2">
-            <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+            <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-kad-text-muted">
               {t("nav:language")}
             </p>
             <div className="mt-2 grid grid-cols-3 gap-1">
@@ -445,10 +500,10 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
                     aria-pressed={active}
                     aria-label={t(`nav:languageNames.${language}`)}
                     title={t(`nav:languageNames.${language}`)}
-                    className={`rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors ${
+                    className={`rounded-md px-2 py-1.5 text-[11px] font-semibold transition-colors border ${
                       active
-                        ? "bg-accent/20 text-accent border border-accent/30"
-                        : "bg-surface-1 text-gray-400 border border-border hover:bg-surface-3 hover:text-gray-200"
+                        ? "bg-kad-surface-2 text-kad-primary border-transparent"
+                        : "bg-surface-1 text-kad-text-muted border-border hover:bg-surface-2 hover:text-kad-text"
                     }`}
                   >
                     {t(`nav:languageShort.${language}`)}
@@ -466,8 +521,8 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
           onClick={onToggle}
           className={`w-full h-10 rounded-lg border border-border bg-surface-2 transition-colors ${
             collapsed
-              ? "flex items-center justify-center text-gray-400 hover:text-gray-200 hover:bg-surface-3"
-              : "flex items-center gap-2.5 px-3 text-gray-300 hover:text-gray-100 hover:bg-surface-3"
+              ? "flex items-center justify-center text-kad-text-muted hover:text-kad-text hover:bg-surface-3"
+              : "flex items-center gap-2.5 px-3 text-kad-text-muted hover:text-kad-text hover:bg-surface-3"
           }`}
           title={collapsed ? t("nav:expand") : t("nav:collapse")}
           aria-label={collapsed ? t("nav:expand") : t("nav:collapse")}
@@ -505,7 +560,7 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
           >
             <span
               className={`inline-flex items-center gap-2 ${
-                wsConnected ? "text-emerald-400" : "text-gray-500"
+                wsConnected ? "text-emerald-600" : "text-kad-text-muted"
               }`}
             >
               {wsConnected ? (
@@ -519,7 +574,7 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
                 </span>
               )}
             </span>
-            {!collapsed && <span className="text-[11px] font-medium text-gray-600">v1.0.0</span>}
+            {!collapsed && <span className="text-[11px] font-medium text-kad-text-muted">v2.0</span>}
           </div>
         </button>
         {collapsed ? (
@@ -531,10 +586,10 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
             aria-label={checkTitle}
             className={`relative w-8 h-8 mx-auto flex items-center justify-center rounded-lg border bg-surface-2 transition-colors disabled:opacity-60 ${
               updateAvailable
-                ? "border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10"
+                ? "border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
                 : checkError
-                  ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
-                  : "border-border text-gray-400 hover:text-gray-200 hover:bg-surface-3"
+                  ? "border-amber-500/40 text-amber-700 hover:bg-amber-500/10"
+                  : "border-border text-kad-text-muted hover:text-kad-text hover:bg-surface-3"
             }`}
           >
             <RefreshCw className={`w-3.5 h-3.5 ${checking ? "animate-spin" : ""}`} aria-hidden />
@@ -550,10 +605,10 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
             title={checkTitle}
             className={`w-full rounded-lg border bg-surface-2 px-2.5 py-2 text-xs transition-colors disabled:opacity-60 flex items-center justify-between gap-2 ${
               updateAvailable
-                ? "border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/10"
+                ? "border-emerald-500/40 text-emerald-600 hover:bg-emerald-500/10"
                 : checkError
-                  ? "border-amber-500/40 text-amber-300 hover:bg-amber-500/10"
-                  : "border-border text-gray-300 hover:text-gray-100 hover:bg-surface-3"
+                  ? "border-amber-500/40 text-amber-700 hover:bg-amber-500/10"
+                  : "border-border text-kad-text-muted hover:text-kad-text hover:bg-surface-3"
             }`}
           >
             <span className="inline-flex items-center gap-2 truncate">
@@ -567,58 +622,6 @@ export function Sidebar({ wsConnected, collapsed, onToggle }: SidebarProps) {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 flex-shrink-0" />
             )}
           </button>
-        )}
-        {!collapsed && (
-          <div className="space-y-1.5">
-            <a
-              href="https://github.com/hoangsonww"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-xs text-gray-300 hover:text-gray-200 hover:bg-surface-3 hover:border-border transition-colors"
-              title={t("nav:github")}
-            >
-              <span className="w-6 h-6 rounded-md bg-surface-3 flex items-center justify-center">
-                <Github className="w-3.5 h-3.5 flex-shrink-0" />
-              </span>
-              <span className="font-medium">{t("nav:github")}</span>
-            </a>
-            <a
-              href="https://sonnguyenhoang.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="group flex items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-xs text-gray-300 hover:text-gray-200 hover:bg-surface-3 hover:border-border transition-colors"
-              title={websiteLabel}
-            >
-              <span className="w-6 h-6 rounded-md bg-surface-3 flex items-center justify-center">
-                <Globe className="w-3.5 h-3.5 flex-shrink-0" />
-              </span>
-              <span className="font-medium text-gray-300 truncate">{websiteLabel}</span>
-            </a>
-          </div>
-        )}
-        {collapsed && (
-          <div className="flex flex-col items-center gap-2 pt-0.5">
-            <a
-              href="https://github.com/hoangsonww"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-8 h-8 rounded-md border border-transparent flex items-center justify-center text-gray-400 hover:text-gray-300 hover:bg-surface-3 hover:border-border transition-colors"
-              title={t("nav:github")}
-              aria-label={t("nav:github")}
-            >
-              <Github className="w-3.5 h-3.5" />
-            </a>
-            <a
-              href="https://sonnguyenhoang.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-8 h-8 rounded-md border border-transparent flex items-center justify-center text-gray-400 hover:text-gray-300 hover:bg-surface-3 hover:border-border transition-colors"
-              title={websiteLabel}
-              aria-label={websiteLabel}
-            >
-              <Globe className="w-3.5 h-3.5" />
-            </a>
-          </div>
         )}
       </div>
 
@@ -739,14 +742,17 @@ function ConnectionStatusModal({
         if (e.target === e.currentTarget) close();
       }}
     >
-      <div className="w-full max-w-md card shadow-2xl animate-slide-up overflow-hidden flex flex-col max-h-[85vh]">
+      <div
+        className="w-full max-w-md card animate-slide-up overflow-hidden flex flex-col max-h-[85vh]"
+        style={{ boxShadow: "var(--kad-shadow-1)" }}
+      >
         <div className="flex items-start justify-between gap-3 px-5 py-4 border-b border-border">
           <div className="flex items-center gap-3 min-w-0">
             <div
               className={`w-9 h-9 rounded-lg border flex items-center justify-center flex-shrink-0 ${
                 wsConnected
-                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
-                  : "bg-surface-3 border-border text-gray-400"
+                  ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-600"
+                  : "bg-surface-3 border-border text-kad-text-muted"
               }`}
             >
               {wsConnected ? (
@@ -758,13 +764,13 @@ function ConnectionStatusModal({
             <div className="min-w-0">
               <h2
                 id="connection-status-title"
-                className="text-base font-semibold text-gray-50 truncate tracking-tight leading-tight"
+                className="text-base font-semibold text-kad-text-strong truncate tracking-tight leading-tight"
               >
                 {t("nav:connectionDetails")}
               </h2>
               <p
                 className={`text-[11px] font-medium inline-flex items-center gap-1.5 leading-tight ${
-                  wsConnected ? "text-emerald-400" : "text-gray-500"
+                  wsConnected ? "text-emerald-600" : "text-kad-text-muted"
                 }`}
               >
                 {wsConnected && (
@@ -781,7 +787,7 @@ function ConnectionStatusModal({
             type="button"
             onClick={close}
             aria-label={t("nav:close")}
-            className="p-1.5 -m-1 rounded-lg text-gray-500 hover:text-gray-200 hover:bg-surface-4 transition-colors flex-shrink-0"
+            className="p-1.5 -m-1 rounded-lg text-kad-text-muted hover:text-kad-text hover:bg-surface-4 transition-colors flex-shrink-0"
           >
             <X className="w-4 h-4" />
           </button>
@@ -839,7 +845,7 @@ function ConnectionStatusModal({
           {/* Top event types */}
           <Section title={t("nav:topEventTypes")} icon={BarChart3}>
             {topTypes.length === 0 ? (
-              <p className="text-xs text-gray-500 italic">{t("nav:noEventsYet")}</p>
+              <p className="text-xs text-kad-text-muted italic">{t("nav:noEventsYet")}</p>
             ) : (
               <div className="space-y-1.5">
                 {topTypes.map(([type, count]) => (
@@ -852,7 +858,7 @@ function ConnectionStatusModal({
           {/* Recent activity */}
           <Section title={t("nav:recentActivity")} icon={Clock}>
             {recentEvents.length === 0 ? (
-              <p className="text-xs text-gray-500 italic">{t("nav:noEventsYet")}</p>
+              <p className="text-xs text-kad-text-muted italic">{t("nav:noEventsYet")}</p>
             ) : (
               <ul className="space-y-1">
                 {recentEvents.map((evt, i) => (
@@ -860,8 +866,8 @@ function ConnectionStatusModal({
                     key={`${evt.at}-${i}`}
                     className="flex items-center justify-between gap-3 text-[11px] font-mono px-2 py-1 rounded bg-surface-2/50"
                   >
-                    <span className="text-gray-200 truncate">{evt.type}</span>
-                    <span className="text-gray-500 flex-shrink-0">{formatRelative(evt.at, t)}</span>
+                    <span className="text-kad-text truncate">{evt.type}</span>
+                    <span className="text-kad-text-muted flex-shrink-0">{formatRelative(evt.at, t)}</span>
                   </li>
                 ))}
               </ul>
@@ -870,11 +876,11 @@ function ConnectionStatusModal({
         </div>
 
         <div className="flex items-center justify-between gap-2 px-5 py-3 border-t border-border bg-surface-2/40">
-          <span className="text-[10px] text-gray-500">{t("nav:statsPersisted")}</span>
+          <span className="text-[10px] text-kad-text-muted">{t("nav:statsPersisted")}</span>
           <button
             type="button"
             onClick={onResetStats}
-            className="text-[11px] font-medium text-gray-400 hover:text-gray-100 hover:bg-surface-3 px-2 py-1 rounded transition-colors"
+            className="text-[11px] font-medium text-kad-text-muted hover:text-kad-text hover:bg-surface-3 px-2 py-1 rounded transition-colors"
           >
             {t("nav:resetStats")}
           </button>
@@ -900,7 +906,7 @@ function Section({
         <span className="w-5 h-5 rounded-md bg-accent/15 border border-accent/25 flex items-center justify-center flex-shrink-0">
           <Icon className="w-3 h-3 text-accent" aria-hidden />
         </span>
-        <h3 className="text-[13px] font-semibold text-gray-100 tracking-tight">{title}</h3>
+        <h3 className="text-[13px] font-semibold text-kad-text-strong tracking-tight">{title}</h3>
       </div>
       {children}
     </section>
@@ -910,12 +916,12 @@ function Section({
 function KpiTile({ label, value, unit }: { label: string; value: string; unit: string }) {
   return (
     <div className="rounded-lg border border-border bg-surface-2 px-2.5 py-2">
-      <div className="text-[9px] font-semibold uppercase tracking-wider text-gray-500 truncate">
+      <div className="text-[9px] font-semibold uppercase tracking-wider text-kad-text-muted truncate">
         {label}
       </div>
       <div className="mt-0.5 flex items-baseline gap-1 truncate">
-        <span className="text-base font-semibold text-gray-100 font-mono">{value}</span>
-        <span className="text-[10px] font-medium text-gray-500 truncate">{unit}</span>
+        <span className="text-base font-semibold text-kad-text-strong font-mono">{value}</span>
+        <span className="text-[10px] font-medium text-kad-text-muted truncate">{unit}</span>
       </div>
     </div>
   );
@@ -924,10 +930,10 @@ function KpiTile({ label, value, unit }: { label: string; value: string; unit: s
 function DetailRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="flex items-start justify-between gap-3 text-xs">
-      <span className="text-gray-500 font-medium uppercase tracking-wider text-[10px] pt-0.5">
+      <span className="text-kad-text-muted font-medium uppercase tracking-wider text-[10px] pt-0.5">
         {label}
       </span>
-      <span className={`text-gray-200 text-right break-all min-w-0 ${mono ? "font-mono" : ""}`}>
+      <span className={`text-kad-text text-right break-all min-w-0 ${mono ? "font-mono" : ""}`}>
         {value}
       </span>
     </div>
@@ -950,8 +956,8 @@ function TypeBar({
   return (
     <div className="text-[11px]">
       <div className="flex items-center justify-between gap-2 mb-0.5">
-        <span className="font-mono text-gray-200 truncate">{type}</span>
-        <span className="text-gray-500 flex-shrink-0 font-mono">
+        <span className="font-mono text-kad-text truncate">{type}</span>
+        <span className="text-kad-text-muted flex-shrink-0 font-mono">
           {count} · {sharePct}%
         </span>
       </div>
@@ -985,18 +991,14 @@ function Sparkline({
   });
   const linePath = points.length > 0 ? `M ${points.join(" L ")}` : "";
   const areaPath = points.length > 0 ? `M 0,${H} L ${points.join(" L ")} L ${W},${H} Z` : "";
-  const stroke = connected ? "#34d399" : "#6b7280";
+  const stroke = connected ? "var(--kad-success)" : "var(--kad-text-muted)";
 
   return (
     <div className="rounded-lg border border-border bg-surface-2 p-2.5">
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="w-full h-14" aria-hidden>
-        <defs>
-          <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={stroke} stopOpacity="0.35" />
-            <stop offset="100%" stopColor={stroke} stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {areaPath && <path d={areaPath} fill="url(#spark-fill)" />}
+        {/* Flat area fill (no gradient) — a single low opacity instead of a
+            fade-to-transparent, per the "no gradients" rule. */}
+        {areaPath && <path d={areaPath} fill={stroke} fillOpacity={0.12} />}
         {linePath && (
           <path
             d={linePath}
@@ -1009,7 +1011,7 @@ function Sparkline({
           />
         )}
       </svg>
-      <div className="flex items-center justify-between mt-1.5 text-[10px] text-gray-500 font-mono">
+      <div className="flex items-center justify-between mt-1.5 text-[10px] text-kad-text-muted font-mono">
         <span>−60s</span>
         <span>{avgLabel}</span>
         <span>{"now"}</span>

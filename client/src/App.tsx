@@ -4,7 +4,7 @@
  * @author Son Nguyen <hoangson091104@gmail.com>
  */
 
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { useCallback } from "react";
 import { Layout } from "./components/Layout";
 import { SplashScreen } from "./components/SplashScreen";
@@ -23,6 +23,31 @@ import { useWebSocket } from "./hooks/useWebSocket";
 import { useNotifications } from "./hooks/useNotifications";
 import { eventBus } from "./lib/eventBus";
 import type { WSMessage } from "./lib/types";
+import { KadShell } from "./kad/components/KadShell";
+import { TongQuan } from "./kad/pages/TongQuan";
+import { MucTieuChienLuoc } from "./kad/pages/MucTieuChienLuoc";
+import { CongViecMoi } from "./kad/pages/CongViecMoi";
+import { TuDongHoa } from "./kad/pages/TuDongHoa";
+import { TraoDoiCongViec } from "./kad/pages/TraoDoiCongViec";
+import { DoiNgu } from "./kad/pages/DoiNgu";
+import { HocLieu } from "./kad/pages/HocLieu";
+import { BaoCao } from "./kad/pages/BaoCao";
+
+// Old top-level paths the monitor used before KAD claimed "/" for Tổng quan.
+// Kept as redirects (not deletions) so existing bookmarks/tabs still land
+// somewhere useful instead of 404ing — spec/05-ui-spec.md §5 only requires
+// the monitor pages themselves to stay untouched, not their old URLs.
+const LEGACY_MONITOR_REDIRECTS: Array<{ from: string; to: string }> = [
+  { from: "/kanban", to: "/he-thong/kanban" },
+  { from: "/sessions", to: "/he-thong/sessions" },
+  { from: "/sessions/:id", to: "/he-thong/sessions/:id" },
+  { from: "/activity", to: "/he-thong/activity" },
+  { from: "/analytics", to: "/he-thong/analytics" },
+  { from: "/workflows", to: "/he-thong/workflows" },
+  { from: "/cc-config", to: "/he-thong/cc-config" },
+  { from: "/run", to: "/he-thong/run" },
+  { from: "/settings", to: "/he-thong/settings" },
+];
 
 export default function App() {
   const onMessage = useCallback((msg: WSMessage) => {
@@ -37,7 +62,28 @@ export default function App() {
       <SplashScreen />
       <BrowserRouter>
         <Routes>
-          <Route element={<Layout wsConnected={connected} />}>
+          {/* KAD ("Kstudy Flat") — Tổng quan / Công việc / Đội ngũ + kho phụ.
+              New screens per plans/260703-2330-kad-v2-build/spec/ui/*.md. */}
+          <Route element={<KadShell wsConnected={connected} />}>
+            <Route index element={<TongQuan />} />
+            <Route path="muc-tieu-chien-luoc" element={<MucTieuChienLuoc />} />
+            {/* 2026-07-04: board "Công việc" (5 cột task KAD) đã gộp vào trang
+                Kanban (/he-thong/kanban) để bỏ trùng lặp — xem
+                spec/ui/08-gop-cong-viec-kanban.md. "/cong-viec" giờ redirect
+                sang đó; luồng Giao việc giữ nguyên ở /cong-viec/moi (hero
+                composer) và /cong-viec/:id (trao đổi). */}
+            <Route path="cong-viec" element={<Navigate to="/he-thong/kanban" replace />} />
+            <Route path="cong-viec/moi" element={<CongViecMoi />} />
+            <Route path="cong-viec/tu-dong-hoa" element={<TuDongHoa />} />
+            <Route path="cong-viec/:id" element={<TraoDoiCongViec />} />
+            <Route path="doi-ngu" element={<DoiNgu />} />
+            <Route path="hoc-lieu" element={<HocLieu />} />
+            <Route path="bao-cao" element={<BaoCao />} />
+          </Route>
+
+          {/* Monitor gốc — pages/functionality untouched, only reparented
+              under /he-thong/* (dark theme preserved on purpose). */}
+          <Route path="he-thong" element={<Layout wsConnected={connected} />}>
             <Route index element={<Dashboard />} />
             <Route path="kanban" element={<KanbanBoard />} />
             <Route path="sessions" element={<Sessions />} />
@@ -50,6 +96,11 @@ export default function App() {
             <Route path="settings" element={<Settings />} />
             <Route path="*" element={<NotFound />} />
           </Route>
+
+          {LEGACY_MONITOR_REDIRECTS.map(({ from, to }) => (
+            <Route key={from} path={from} element={<Navigate to={to} replace />} />
+          ))}
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </BrowserRouter>
     </>

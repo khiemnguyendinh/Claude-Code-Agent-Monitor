@@ -136,7 +136,7 @@ export function DateTimePicker({
               ? "bg-accent text-white font-medium"
               : isToday
                 ? "bg-surface-3 text-accent font-medium"
-                : "hover:bg-surface-2 text-gray-300 hover:text-white"
+                : "hover:bg-surface-2 text-kad-text hover:text-kad-text-strong"
           }`}
       >
         {i}
@@ -158,18 +158,24 @@ export function DateTimePicker({
         title={title}
         className={`flex items-center gap-2 bg-surface-2 border ${isOpen ? "border-accent" : "border-border"} rounded px-2 py-1.5 min-w-[150px] text-xs focus:outline-none focus:border-accent transition-colors w-full text-left`}
       >
-        <Calendar className="w-3.5 h-3.5 text-gray-400 shrink-0" />
-        <span className={`flex-1 truncate ${!dateObj ? "text-gray-500" : "text-gray-200"}`}>
+        <Calendar className="w-3.5 h-3.5 text-kad-text-muted shrink-0" />
+        <span
+          className={`flex-1 truncate ${!dateObj ? "text-kad-text-muted" : "text-kad-text"}`}
+        >
           {dateObj ? formatDisplay(dateObj) : placeholder}
         </span>
         {dateObj && (
-          <X className="w-3 h-3 text-gray-500 hover:text-white shrink-0" onClick={clearValue} />
+          <X
+            className="w-3 h-3 text-kad-text-muted hover:text-kad-text-strong shrink-0"
+            onClick={clearValue}
+          />
         )}
       </button>
 
       {isOpen && (
         <div
-          className={`absolute top-full mt-1 ${alignment === "right" ? "right-0" : "left-0"} z-50 bg-surface-1 border border-border rounded-lg shadow-xl p-3 w-[220px] flex flex-col gap-3`}
+          style={{ boxShadow: "var(--kad-shadow-1)" }}
+          className={`absolute top-full mt-1 ${alignment === "right" ? "right-0" : "left-0"} z-50 bg-surface-1 border border-border rounded-lg p-3 w-[220px] flex flex-col gap-3`}
         >
           {/* Calendar Header */}
           <div className="flex items-center justify-between">
@@ -178,11 +184,11 @@ export function DateTimePicker({
               onClick={() =>
                 setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))
               }
-              className="p-1 hover:bg-surface-2 rounded text-gray-400 hover:text-white"
+              className="p-1 hover:bg-surface-2 rounded text-kad-text-muted hover:text-kad-text-strong"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="text-xs font-medium text-gray-200">
+            <span className="text-xs font-medium text-kad-text">
               {viewDate.toLocaleString(undefined, { month: "long", year: "numeric" })}
             </span>
             <button
@@ -190,7 +196,7 @@ export function DateTimePicker({
               onClick={() =>
                 setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))
               }
-              className="p-1 hover:bg-surface-2 rounded text-gray-400 hover:text-white"
+              className="p-1 hover:bg-surface-2 rounded text-kad-text-muted hover:text-kad-text-strong"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -200,7 +206,10 @@ export function DateTimePicker({
           <div>
             <div className="grid grid-cols-7 gap-1 mb-1">
               {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
-                <div key={day} className="w-6 text-center text-[10px] font-medium text-gray-500">
+                <div
+                  key={day}
+                  className="w-6 text-center text-[10px] font-medium text-kad-text-muted"
+                >
                   {day}
                 </div>
               ))}
@@ -210,7 +219,7 @@ export function DateTimePicker({
 
           {/* Time Picker */}
           <div className="pt-3 border-t border-border flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-gray-400">
+            <div className="flex items-center gap-1.5 text-kad-text-muted">
               <Clock className="w-3.5 h-3.5" />
               <span className="text-[11px] font-medium">Time</span>
             </div>
@@ -218,7 +227,7 @@ export function DateTimePicker({
               type="time"
               value={timeValue}
               onChange={handleTimeChange}
-              className="bg-surface-2 border border-border rounded px-2 py-1 text-xs text-gray-200 focus:outline-none focus:border-accent w-[85px] time-input-custom"
+              className="bg-surface-2 border border-border rounded px-2 py-1 text-xs text-kad-text focus:outline-none focus:border-accent w-[85px] time-input-custom"
             />
           </div>
         </div>

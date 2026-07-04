@@ -32,28 +32,24 @@ function fmtTokens(n: number): string {
 
 const FAMILY_COLORS = {
   opus: {
-    grad: ["#7c3aed", "#a855f7"] as [string, string],
-    stroke: "#a855f7",
-    text: "#e9d5ff",
-    badge: "rgba(168,85,247,0.15)",
+    stroke: "var(--kad-accent)",
+    text: "var(--kad-accent)",
+    badge: "rgba(26,110,232,0.15)",
   },
   sonnet: {
-    grad: ["#1d4ed8", "#3b82f6"] as [string, string],
-    stroke: "#3b82f6",
-    text: "#bfdbfe",
-    badge: "rgba(59,130,246,0.15)",
+    stroke: "var(--kad-primary)",
+    text: "var(--kad-primary)",
+    badge: "rgba(29,35,125,0.15)",
   },
   haiku: {
-    grad: ["#065f46", "#10b981"] as [string, string],
-    stroke: "#10b981",
-    text: "#a7f3d0",
-    badge: "rgba(16,185,129,0.15)",
+    stroke: "var(--kad-info)",
+    text: "var(--kad-info)",
+    badge: "rgba(14,116,144,0.15)",
   },
   other: {
-    grad: ["#374151", "#6b7280"] as [string, string],
-    stroke: "#6b7280",
-    text: "#d1d5db",
-    badge: "rgba(107,114,128,0.15)",
+    stroke: "var(--kad-text-muted)",
+    text: "var(--kad-text-muted)",
+    badge: "rgba(107,114,153,0.15)",
   },
 } as const;
 
@@ -107,22 +103,6 @@ function renderFlow(
   root.selectAll("*").remove();
   root.attr("viewBox", `0 0 ${chartW} ${chartH}`).attr("preserveAspectRatio", "xMidYMid meet");
 
-  const defs = root.append("defs");
-
-  // Gradient defs per family
-  (["opus", "sonnet", "haiku", "other"] as const).forEach((fam) => {
-    const colors = FAMILY_COLORS[fam];
-    const grad = defs
-      .append("linearGradient")
-      .attr("id", `flow-grad-${fam}`)
-      .attr("x1", "0%")
-      .attr("y1", "0%")
-      .attr("x2", "100%")
-      .attr("y2", "100%");
-    grad.append("stop").attr("offset", "0%").attr("stop-color", colors.grad[0]);
-    grad.append("stop").attr("offset", "100%").attr("stop-color", colors.grad[1]);
-  });
-
   const g = root.append("g");
 
   // Column labels
@@ -131,7 +111,7 @@ function renderFlow(
     .attr("x", PADDING.left + NODE_W / 2)
     .attr("y", labelY)
     .attr("text-anchor", "middle")
-    .attr("fill", "#6b7280")
+    .attr("fill", "var(--kad-text-muted)")
     .attr("font-size", 11)
     .attr("font-family", "Inter, sans-serif")
     .attr("letter-spacing", "0.08em")
@@ -141,7 +121,7 @@ function renderFlow(
     .attr("x", PADDING.left + NODE_W + COL_GAP + NODE_W / 2)
     .attr("y", labelY)
     .attr("text-anchor", "middle")
-    .attr("fill", "#6b7280")
+    .attr("fill", "var(--kad-text-muted)")
     .attr("font-size", 11)
     .attr("font-family", "Inter, sans-serif")
     .attr("letter-spacing", "0.08em")
@@ -165,9 +145,9 @@ function renderFlow(
     g.append("path")
       .attr("d", `M${x1},${y1} C${cx},${y1} ${cx},${y2} ${x2},${y2}`)
       .attr("fill", "none")
-      .attr("stroke", "#2a2a3d")
+      .attr("stroke", "var(--kad-border-strong)")
       .attr("stroke-width", 1.5)
-      .attr("opacity", 0.7);
+      .attr("opacity", 0.8);
   });
 
   // Draw nodes
@@ -194,12 +174,12 @@ function renderFlow(
       .attr("stroke-width", 1)
       .attr("opacity", 0.25);
 
-    // Main rect with gradient
+    // Main rect - flat family color wash
     ng.append("rect")
       .attr("width", NODE_W)
       .attr("height", NODE_H)
       .attr("rx", NODE_RX)
-      .attr("fill", `url(#flow-grad-${node.family})`)
+      .attr("fill", colors.stroke)
       .attr("fill-opacity", 0.18)
       .attr("stroke", colors.stroke)
       .attr("stroke-width", 1);
@@ -237,7 +217,7 @@ function renderFlow(
       ng.append("text")
         .attr("x", 12)
         .attr("y", 66)
-        .attr("fill", "#6b7280")
+        .attr("fill", "var(--kad-text-muted)")
         .attr("font-size", 9.5)
         .attr("font-family", "Inter, sans-serif")
         .text(t("modelDelegation.tokensCount", { tokens: fmtTokens(node.totalTokens) }));
@@ -249,7 +229,7 @@ function renderFlow(
         .attr("x", NODE_W - 10)
         .attr("y", 66)
         .attr("text-anchor", "end")
-        .attr("fill", "#6b7280")
+        .attr("fill", "var(--kad-text-muted)")
         .attr("font-size", 9.5)
         .attr("font-family", "Inter, sans-serif")
         .text(t("modelDelegation.sessionsCount", { count: node.sessionCount }));
@@ -348,7 +328,7 @@ export function ModelDelegationFlow({ data }: ModelDelegationFlowProps) {
 
   if (!hasData) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-500">
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-kad-text-muted">
         <svg
           width="40"
           height="40"
@@ -379,17 +359,18 @@ export function ModelDelegationFlow({ data }: ModelDelegationFlowProps) {
         ref={tipRef}
         role="tooltip"
         aria-hidden="true"
-        className="fixed z-50 px-3 py-2 rounded-lg shadow-2xl pointer-events-none"
+        className="fixed z-50 px-3 py-2 rounded-lg pointer-events-none"
         style={{
           display: "none",
           opacity: 0,
           left: 0,
           top: 0,
-          background: "#12121f",
-          border: "1px solid #2a2a4a",
-          color: "#e2e8f0",
+          background: "var(--kad-surface)",
+          border: "1px solid var(--kad-border)",
+          color: "var(--kad-text)",
           minWidth: 240,
           maxWidth: 320,
+          boxShadow: "var(--kad-shadow-1)",
           transition: "opacity 120ms ease-out",
         }}
       />
@@ -435,13 +416,13 @@ function buildModelDelegationTooltip(
       : t("modelDelegation.tooltip.subagentModel");
 
   const title = document.createElement("p");
-  title.style.cssText = "font-size:12px;font-weight:600;color:#e2e8f0;margin:0";
+  title.style.cssText = "font-size:12px;font-weight:600;color:var(--kad-text-strong);margin:0";
   title.textContent = node.label;
   el.appendChild(title);
 
   const subtitle = document.createElement("p");
   subtitle.style.cssText =
-    "font-size:10px;color:#64748b;margin:2px 0 8px;text-transform:uppercase;letter-spacing:0.05em";
+    "font-size:10px;color:var(--kad-text-muted);margin:2px 0 8px;text-transform:uppercase;letter-spacing:0.05em";
   subtitle.textContent = `${sideLabel} · ${node.family}`;
   el.appendChild(subtitle);
 
@@ -450,10 +431,11 @@ function buildModelDelegationTooltip(
     row.style.cssText =
       "display:flex;justify-content:space-between;gap:16px;font-size:11px;line-height:1.6";
     const lbl = document.createElement("span");
-    lbl.style.color = "#64748b";
+    lbl.style.color = "var(--kad-text-muted)";
     lbl.textContent = label;
     const val = document.createElement("span");
-    val.style.cssText = "color:#cbd5e1;font-weight:500;font-variant-numeric:tabular-nums";
+    val.style.cssText =
+      "color:var(--kad-text);font-weight:500;font-variant-numeric:tabular-nums";
     val.textContent = value;
     row.appendChild(lbl);
     row.appendChild(val);
@@ -469,12 +451,12 @@ function buildModelDelegationTooltip(
 
   const desc = document.createElement("p");
   desc.style.cssText =
-    "font-size:11px;color:#94a3b8;line-height:1.45;border-top:1px solid #2a2a4a;padding-top:8px;margin:8px 0 0";
+    "font-size:11px;color:var(--kad-text-muted);line-height:1.45;border-top:1px solid var(--kad-border);padding-top:8px;margin:8px 0 0";
   desc.textContent = describeFamily(node.family, t);
   el.appendChild(desc);
 
   const hint = document.createElement("p");
-  hint.style.cssText = "font-size:11px;color:#64748b;line-height:1.45;margin:6px 0 0";
+  hint.style.cssText = "font-size:11px;color:var(--kad-text-muted);line-height:1.45;margin:6px 0 0";
   hint.textContent =
     node.side === "main"
       ? t("modelDelegation.tooltip.lines.main")

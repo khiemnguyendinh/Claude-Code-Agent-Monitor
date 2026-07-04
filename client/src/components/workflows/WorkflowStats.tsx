@@ -22,9 +22,9 @@ function formatDurationSec(sec: number): string {
 }
 
 function successRateColor(rate: number): string {
-  if (rate > 90) return "text-emerald-400";
-  if (rate > 70) return "text-yellow-400";
-  return "text-red-400";
+  if (rate > 90) return "text-kad-success";
+  if (rate > 70) return "text-kad-warning";
+  return "text-kad-danger";
 }
 
 // ── Deterministic interpreters - return an i18n key + params ─────────────────
@@ -174,7 +174,7 @@ function InfoPopover({ calculationKey, interp, valueDisplay, metricPhraseKey }: 
         onMouseLeave={() => setOpen(false)}
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
-        className="flex items-center justify-center rounded-full p-0.5 -m-0.5 text-gray-600 hover:text-gray-300 focus:outline-none focus:ring-1 focus:ring-accent/40"
+        className="flex items-center justify-center rounded-full p-0.5 -m-0.5 text-kad-text-muted hover:text-kad-text focus:outline-none focus:ring-1 focus:ring-accent/40"
       >
         <Info className="w-4 h-4" />
       </button>
@@ -182,27 +182,34 @@ function InfoPopover({ calculationKey, interp, valueDisplay, metricPhraseKey }: 
         <div
           ref={popoverRef}
           role="tooltip"
-          className="fixed z-50 p-3 bg-[#12121f] border border-[#2a2a4a] rounded-lg shadow-2xl text-[11px] text-gray-300 pointer-events-none"
-          style={{ left: coords.left, top: coords.top, width: POPOVER_W }}
+          className="fixed z-50 p-3 rounded-lg text-[11px] text-kad-text-muted pointer-events-none"
+          style={{
+            left: coords.left,
+            top: coords.top,
+            width: POPOVER_W,
+            background: "var(--kad-surface)",
+            border: "1px solid var(--kad-border)",
+            boxShadow: "var(--kad-shadow-1)",
+          }}
         >
-          <div className="flex items-baseline gap-2 mb-2 pb-2 border-b border-[#2a2a4a]">
-            <span className="text-base font-semibold text-gray-100 tabular-nums">
+          <div className="flex items-baseline gap-2 mb-2 pb-2 border-b border-kad-border">
+            <span className="text-base font-semibold text-kad-text-strong tabular-nums">
               {valueDisplay}
             </span>
-            <span className="text-[10px] uppercase tracking-wider text-gray-500">
+            <span className="text-[10px] uppercase tracking-wider text-kad-text-muted">
               {metricPhrase}
             </span>
           </div>
 
-          <p className="font-semibold text-gray-200 uppercase tracking-wider text-[9px] mb-1">
+          <p className="font-semibold text-kad-text uppercase tracking-wider text-[9px] mb-1">
             {t("stats.tooltip.howCalc")}
           </p>
-          <p className="text-gray-400 leading-snug mb-2.5">{t(calculationKey)}</p>
+          <p className="text-kad-text-muted leading-snug mb-2.5">{t(calculationKey)}</p>
 
-          <p className="font-semibold text-gray-200 uppercase tracking-wider text-[9px] mb-1">
+          <p className="font-semibold text-kad-text uppercase tracking-wider text-[9px] mb-1">
             {t("stats.tooltip.whatItMeans")}
           </p>
-          <p className="text-gray-400 leading-snug">{valueMeans}</p>
+          <p className="text-kad-text-muted leading-snug">{valueMeans}</p>
         </div>
       )}
     </>
@@ -233,7 +240,7 @@ function StatCard({
   return (
     <div className="bg-surface-2 border border-border rounded-xl p-4 flex flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider leading-none">
+        <span className="text-[10px] font-semibold text-kad-text-muted uppercase tracking-wider leading-none">
           {label}
         </span>
         <Icon className={`w-4 h-4 flex-shrink-0 ${accentClass}`} />
@@ -277,7 +284,7 @@ export function WorkflowStats({ stats }: WorkflowStatsProps) {
         label={t("stats.avgAgentDepth")}
         value={stats.avgDepth.toFixed(1)}
         icon={GitFork}
-        accentClass="text-indigo-400"
+        accentClass="text-accent"
         calculationKey="stats.tooltip.calc.depth"
         interp={interpAvgDepth(stats.avgDepth)}
         metricPhraseKey="stats.tooltip.phrase.depth"
@@ -286,7 +293,7 @@ export function WorkflowStats({ stats }: WorkflowStatsProps) {
         label={t("stats.avgSubagentsPerSession")}
         value={stats.avgSubagents.toFixed(1)}
         icon={Users}
-        accentClass="text-blue-400"
+        accentClass="text-kad-primary"
         calculationKey="stats.tooltip.calc.subagents"
         interp={interpAvgSubagents(stats.avgSubagents)}
         metricPhraseKey="stats.tooltip.phrase.subagents"
@@ -304,7 +311,7 @@ export function WorkflowStats({ stats }: WorkflowStatsProps) {
         label={t("stats.mostCommonFlow")}
         value={topFlowLabel}
         icon={ArrowRightLeft}
-        accentClass="text-violet-400"
+        accentClass="text-kad-info"
         calculationKey="stats.tooltip.calc.topFlow"
         interp={interpTopFlow(topFlow?.source ?? null, topFlow?.target ?? null)}
         metricPhraseKey="stats.tooltip.phrase.topFlow"
@@ -313,7 +320,7 @@ export function WorkflowStats({ stats }: WorkflowStatsProps) {
         label={t("stats.avgCompactions")}
         value={stats.avgCompactions.toFixed(1)}
         icon={Layers}
-        accentClass="text-cyan-400"
+        accentClass="text-kad-text-muted"
         calculationKey="stats.tooltip.calc.compactions"
         interp={interpAvgCompactions(stats.avgCompactions)}
         metricPhraseKey="stats.tooltip.phrase.compactions"
@@ -322,7 +329,7 @@ export function WorkflowStats({ stats }: WorkflowStatsProps) {
         label={t("stats.avgDuration")}
         value={formatDurationSec(stats.avgDurationSec)}
         icon={Clock}
-        accentClass="text-amber-400"
+        accentClass="text-[#8a5fc2]"
         calculationKey="stats.tooltip.calc.duration"
         interp={interpAvgDuration(stats.avgDurationSec)}
         metricPhraseKey="stats.tooltip.phrase.duration"

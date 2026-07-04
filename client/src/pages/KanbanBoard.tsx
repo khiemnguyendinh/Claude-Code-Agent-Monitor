@@ -10,9 +10,17 @@
 
 import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { RefreshCw, Columns3, ChevronDown, HelpCircle } from "lucide-react";
+import { RefreshCw, Columns3, ChevronDown, ChevronUp, HelpCircle } from "lucide-react";
 import { api } from "../lib/api";
 import { eventBus } from "../lib/eventBus";
+import { Tabs } from "../kad/components/Tabs";
+import { BaoCao } from "../kad/pages/BaoCao";
+import { AGENTS, PROJECTS } from "../kad/mockData";
+import { SegmentedProgress } from "../kad/components/Progress";
+import { KadStoreProvider } from "../kad/store";
+import { KadToastProvider } from "../kad/components/Toast";
+import { PeekDrawerHost, usePeek } from "../kad/components/PeekDrawer";
+import { LiveFlowSection } from "../kad/components/LiveFlowSection";
 import { AgentCard } from "../components/AgentCard";
 import { SessionCard } from "../components/SessionCard";
 import { EmptyState } from "../components/EmptyState";
@@ -56,7 +64,8 @@ function loadView(): BoardView {
   } catch {
     /* ignore */
   }
-  return "agents";
+  // Default tab is "sessions" (Khiêm's call) when nothing is stored yet.
+  return "sessions";
 }
 
 function persistView(view: BoardView): void {
@@ -67,7 +76,12 @@ function persistView(view: BoardView): void {
   }
 }
 
-export function KanbanBoard() {
+// 2026-07-04: "Công việc" in the unified sidebar points straight at this
+// route. Per Khiêm's spec it now carries a top-level tab bar merging in the
+// old standalone "Báo cáo" (KAD) page as a second tab, so the outer
+// `KanbanBoard` export below is just a thin tab shell — all the pre-existing
+// board logic lives unchanged in `KanbanBoardInner`.
+function KanbanBoardInner() {
   const { t } = useTranslation("kanban");
   const [view, setViewState] = useState<BoardView>(loadView);
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -197,20 +211,20 @@ export function KanbanBoard() {
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-gray-100 truncate">{t("title")}</h1>
+            <h1 className="text-lg font-semibold text-kad-text-strong truncate">{t("title")}</h1>
             {wsConnected ? (
               <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
                 {t("common:live")}
               </span>
             ) : (
-              <span className="flex items-center gap-1.5 text-[11px] text-gray-400 bg-gray-500/10 border border-gray-500/20 px-2 py-0.5 rounded-full">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+              <span className="flex items-center gap-1.5 text-[11px] text-kad-text-muted bg-kad-surface-2 border border-kad-border px-2 py-0.5 rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-kad-text-muted" />
                 {t("common:offline")}
               </span>
             )}
           </div>
-          <p className="text-xs text-gray-500 truncate">{subtitle}</p>
+          <p className="text-xs text-kad-text-muted truncate">{subtitle}</p>
         </div>
       </div>
       <div className="flex items-center gap-2 flex-shrink-0">
@@ -323,6 +337,143 @@ export function KanbanBoard() {
   );
 }
 
+const CONG_VIEC_TABS = [
+  { key: "cong-viec", label: "Công việc" },
+  { key: "kanban", label: "Kanban" },
+  { key: "bao-cao", label: "Báo cáo" },
+];
+const CONG_VIEC_TAB_KEY = "cong-viec-page-tab";
+
+function loadCongViecTab(): string {
+  try {
+    const stored = localStorage.getItem(CONG_VIEC_TAB_KEY);
+    if (stored === "cong-viec" || stored === "kanban" || stored === "bao-cao") return stored;
+  } catch {
+    /* ignore */
+  }
+  return "cong-viec";
+}
+
+// 2026-07-04 (spec/ui/08): trang Công việc (/he-thong/kanban) tách 3 tab theo
+// yêu cầu Khiêm — "Công việc" (Tiến độ dự án + Đang chạy trực tiếp) | "Kanban"
+// (board phiên/agent thật) | "Báo cáo". Bọc KadStore/Toast/PeekDrawerHost để
+// khay chi tiết (peek dự án / công việc) chạy ngay trong /he-thong (Layout gốc
+// không mount provider KAD). Store là instance riêng cho trang này — mock nên
+// đồng seed với KAD shell, chấp nhận được ở giai đoạn chưa có backend.
+export function KanbanBoard() {
+  const [tab, setTab] = useState<string>(loadCongViecTab);
+
+  const changeTab = (key: string) => {
+    setTab(key);
+    try {
+      localStorage.setItem(CONG_VIEC_TAB_KEY, key);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <KadStoreProvider>
+      <KadToastProvider>
+        <PeekDrawerHost>
+          <div className="animate-fade-in">
+            <Tabs items={CONG_VIEC_TABS} active={tab} onChange={changeTab} />
+            <div className="mt-6">
+              {tab === "cong-viec" ? (
+                <CongViecTab />
+              ) : tab === "kanban" ? (
+                <KanbanBoardInner />
+              ) : (
+                <BaoCao />
+              )}
+            </div>
+          </div>
+        </PeekDrawerHost>
+      </KadToastProvider>
+    </KadStoreProvider>
+  );
+}
+
+// Tab "Công việc": Tiến độ dự án (mock projects) + Đang chạy trực tiếp (live
+// flow, chuyển từ Đội ngũ > Tổ chức). Bấm 1 dự án / 1 phiên đang chạy → mở khay
+// chi tiết bên phải (peek), nhờ PeekDrawerHost bọc ở KanbanBoard.
+function CongViecTab() {
+  const { openPeek } = usePeek();
+  const mainAgent = AGENTS.find((a) => a.agentType === "main");
+  return (
+    <div className="space-y-6">
+      <ProjectProgressStrip />
+      <LiveFlowSection mainAgent={mainAgent} onOpenTask={(taskId) => openPeek({ type: "task", id: taskId })} />
+    </div>
+  );
+}
+
+// ── Tiến độ dự án ─────────────────────────────────────────────────────────
+// Nằm trong tab "Công việc". Bấm 1 dự án → mở khay chi tiết (peek) bên phải —
+// dùng chung PeekContent.ProjectPeek với KAD shell nhờ KanbanBoard bọc
+// PeekDrawerHost. Dữ liệu PROJECTS mock; bản chuẩn đọc /api/kad/projects
+// (spec/ui/08).
+const PROGRESS_COLLAPSE_KEY = "kanban-progress-collapsed";
+
+function ProjectProgressStrip() {
+  const { openPeek } = usePeek();
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(PROGRESS_COLLAPSE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggle = () =>
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem(PROGRESS_COLLAPSE_KEY, String(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+
+  if (PROJECTS.length === 0) return null;
+
+  return (
+    <div>
+      <div className="bg-surface-1 border border-border rounded-xl p-4">
+        <button type="button" onClick={toggle} className="w-full flex items-center justify-between">
+          <span className="text-sm font-semibold text-kad-text-strong">Tiến độ dự án</span>
+          {collapsed ? (
+            <ChevronDown className="w-4 h-4 text-kad-text-muted" />
+          ) : (
+            <ChevronUp className="w-4 h-4 text-kad-text-muted" />
+          )}
+        </button>
+        {!collapsed && (
+          <div className="mt-3 max-h-[280px] overflow-y-auto space-y-3">
+            {PROJECTS.map((project) => (
+              <button
+                key={project.id}
+                type="button"
+                onClick={() => openPeek({ type: "project", id: project.id })}
+                className="w-full flex items-center gap-3 text-left hover:opacity-90 transition-opacity"
+              >
+                <span className="text-sm text-kad-text truncate w-44 flex-shrink-0">{project.title}</span>
+                <span className="flex-1 min-w-[160px]">
+                  <SegmentedProgress steps={project.steps} height={6} showLabels pulseDoing />
+                </span>
+                <span className="text-xs font-semibold text-kad-text-strong flex-shrink-0 w-10 text-right">
+                  {project.itemsTotal > 0 ? Math.round((project.itemsDone / project.itemsTotal) * 100) : 0}%
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface ViewToggleProps {
   view: BoardView;
   onChange: (next: BoardView) => void;
@@ -333,7 +484,7 @@ function ViewToggle({ view, onChange }: ViewToggleProps) {
   const baseClass =
     "px-3 py-1.5 text-xs font-medium transition-colors first:rounded-l-lg last:rounded-r-lg";
   const activeClass = "bg-accent/15 text-accent";
-  const inactiveClass = "text-gray-400 hover:text-gray-200 hover:bg-surface-3";
+  const inactiveClass = "text-kad-text-muted hover:text-kad-text hover:bg-surface-3";
 
   return (
     <div
@@ -404,7 +555,7 @@ function Column({
           {t(labelKey)}
         </span>
         {tooltip && <ColumnHelp text={tooltip} />}
-        <span className="ml-auto text-[11px] text-gray-600 bg-surface-3 px-2 py-0.5 rounded-full">
+        <span className="ml-auto text-[11px] text-kad-text-faint bg-surface-3 px-2 py-0.5 rounded-full">
           {count}
         </span>
       </div>
@@ -416,7 +567,7 @@ function Column({
             {remaining > 0 && (
               <button
                 onClick={onShowMore}
-                className="w-full py-2 text-[11px] text-gray-500 hover:text-gray-300 flex items-center justify-center gap-1 transition-colors"
+                className="w-full py-2 text-[11px] text-kad-text-muted hover:text-kad-text flex items-center justify-center gap-1 transition-colors"
               >
                 <ChevronDown className="w-3 h-3" />
                 {t("common:showMore", { count: remaining })}
@@ -424,7 +575,7 @@ function Column({
             )}
           </>
         ) : (
-          <div className="flex items-center justify-center h-24 text-xs text-gray-600">
+          <div className="flex items-center justify-center h-24 text-xs text-kad-text-faint">
             {emptyLabel}
           </div>
         )}
@@ -457,11 +608,12 @@ function ColumnHelp({ text }: { text: string }) {
       onFocus={() => setShow(true)}
       onBlur={() => setShow(false)}
     >
-      <HelpCircle className="w-3 h-3 text-gray-500 hover:text-gray-300 transition-colors" />
+      <HelpCircle className="w-3 h-3 text-kad-text-muted hover:text-kad-text transition-colors" />
       {show && (
         <span
           role="tooltip"
-          className="absolute left-0 top-full mt-1.5 w-64 px-3 py-2 text-[11px] leading-relaxed text-gray-200 bg-surface-3 border border-border rounded-md shadow-xl z-50 pointer-events-none whitespace-pre-line"
+          className="absolute left-0 top-full mt-1.5 w-64 px-3 py-2 text-[11px] leading-relaxed text-kad-text bg-surface-3 border border-border rounded-md z-50 pointer-events-none whitespace-pre-line"
+          style={{ boxShadow: "var(--kad-shadow-1)" }}
         >
           {text}
         </span>

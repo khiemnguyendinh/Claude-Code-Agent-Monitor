@@ -88,7 +88,7 @@ function renderInput(toolUse: TranscriptContent) {
       <div className="space-y-2">
         <CodeBlock code={obj.command} lang="bash" label="Command" />
         {typeof obj.description === "string" && (
-          <p className="text-xs text-gray-500 italic px-1">{obj.description}</p>
+          <p className="text-xs text-kad-text-muted italic px-1">{obj.description}</p>
         )}
       </div>
     );
@@ -111,11 +111,11 @@ function renderInput(toolUse: TranscriptContent) {
     const lang = langFromPath(obj.file_path);
     return (
       <div className="space-y-2">
-        <div className="flex items-center gap-1.5 text-xs text-gray-400">
-          <FileText className="w-3.5 h-3.5 text-violet-400" />
+        <div className="flex items-center gap-1.5 text-xs text-kad-text-muted">
+          <FileText className="w-3.5 h-3.5 text-kad-info" />
           <span className="font-mono">{obj.file_path}</span>
           {obj.replace_all === true && (
-            <span className="text-[10px] uppercase tracking-wider text-amber-300/80 bg-amber-500/10 border border-amber-500/20 rounded px-1.5 py-0.5">
+            <span className="text-[10px] uppercase tracking-wider text-kad-warning bg-kad-warning/10 border border-kad-warning/20 rounded px-1.5 py-0.5">
               replace all
             </span>
           )}
@@ -133,11 +133,11 @@ function renderInput(toolUse: TranscriptContent) {
   // Read: just show the path with offset/limit
   if (tool === "read" && typeof obj.file_path === "string") {
     return (
-      <div className="flex items-center gap-1.5 text-xs text-gray-300 bg-surface-4/40 border border-surface-3 rounded-md px-3 py-2">
-        <FileText className="w-3.5 h-3.5 text-sky-400 flex-shrink-0" />
+      <div className="flex items-center gap-1.5 text-xs text-kad-text bg-surface-4/40 border border-surface-3 rounded-md px-3 py-2">
+        <FileText className="w-3.5 h-3.5 text-kad-info flex-shrink-0" />
         <span className="font-mono break-all">{obj.file_path}</span>
         {(typeof obj.offset === "number" || typeof obj.limit === "number") && (
-          <span className="text-gray-500 font-mono ml-auto flex-shrink-0">
+          <span className="text-kad-text-muted font-mono ml-auto flex-shrink-0">
             {typeof obj.offset === "number" ? `:${obj.offset}` : ""}
             {typeof obj.limit === "number" ? `+${obj.limit}` : ""}
           </span>
@@ -151,27 +151,27 @@ function renderInput(toolUse: TranscriptContent) {
     return (
       <div className="space-y-1.5">
         <div className="flex items-center gap-2 text-xs">
-          <span className="text-gray-500 font-mono uppercase tracking-wider text-[10px]">
+          <span className="text-kad-text-muted font-mono uppercase tracking-wider text-[10px]">
             Pattern
           </span>
-          <code className="font-mono text-cyan-300 bg-surface-4 border border-surface-3 rounded px-1.5 py-0.5">
+          <code className="font-mono text-kad-info bg-surface-4 border border-surface-3 rounded px-1.5 py-0.5">
             {obj.pattern}
           </code>
         </div>
         {typeof obj.path === "string" && (
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-gray-500 font-mono uppercase tracking-wider text-[10px]">
+            <span className="text-kad-text-muted font-mono uppercase tracking-wider text-[10px]">
               Path
             </span>
-            <code className="font-mono text-gray-300">{obj.path}</code>
+            <code className="font-mono text-kad-text">{obj.path}</code>
           </div>
         )}
         {typeof obj.glob === "string" && (
           <div className="flex items-center gap-2 text-xs">
-            <span className="text-gray-500 font-mono uppercase tracking-wider text-[10px]">
+            <span className="text-kad-text-muted font-mono uppercase tracking-wider text-[10px]">
               Glob
             </span>
-            <code className="font-mono text-gray-300">{obj.glob}</code>
+            <code className="font-mono text-kad-text">{obj.glob}</code>
           </div>
         )}
       </div>
@@ -185,7 +185,8 @@ function renderInput(toolUse: TranscriptContent) {
 /** Render the result pane: detect diff/json/text. */
 function renderResult(toolResult: TranscriptContent, toolName: string) {
   const text = toolResult.output ?? "";
-  if (text.length === 0) return <div className="text-xs text-gray-500 italic px-1">(empty)</div>;
+  if (text.length === 0)
+    return <div className="text-xs text-kad-text-muted italic px-1">(empty)</div>;
 
   const isError = !!toolResult.is_error;
   const tool = toolName.toLowerCase();
@@ -219,8 +220,8 @@ export function ToolCallBlock({ toolUse, toolResult }: ToolCallBlockProps) {
   const style = styleForTool(toolUse.name);
   const Icon = style.Icon;
 
-  const wrapperBorder = isError ? "border-red-500/30" : style.border;
-  const wrapperBg = isError ? "bg-red-500/5" : "bg-surface-2/60";
+  const wrapperBorder = isError ? "border-kad-danger/30" : style.border;
+  const wrapperBg = isError ? "bg-kad-danger/5" : "bg-surface-2/60";
 
   return (
     <div
@@ -232,7 +233,7 @@ export function ToolCallBlock({ toolUse, toolResult }: ToolCallBlockProps) {
         className="w-full flex items-center gap-2.5 px-3 py-2 text-left hover:bg-surface-3/40 transition-colors"
       >
         <ChevronRight
-          className={`w-3.5 h-3.5 text-gray-500 flex-shrink-0 transition-transform duration-150 ${
+          className={`w-3.5 h-3.5 text-kad-text-muted flex-shrink-0 transition-transform duration-150 ${
             expanded ? "rotate-90" : ""
           }`}
         />
@@ -245,23 +246,26 @@ export function ToolCallBlock({ toolUse, toolResult }: ToolCallBlockProps) {
           {toolUse.name}
         </span>
         {summary && (
-          <span className="text-gray-500 text-xs font-mono truncate min-w-0" title={summary}>
+          <span
+            className="text-kad-text-muted text-xs font-mono truncate min-w-0"
+            title={summary}
+          >
             {summary}
           </span>
         )}
         <span className="ml-auto flex-shrink-0">
           {isError ? (
-            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-red-300 bg-red-500/15 border border-red-500/20 rounded px-1.5 py-0.5">
+            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-kad-danger bg-kad-danger/15 border border-kad-danger/20 rounded px-1.5 py-0.5">
               <AlertCircle className="w-3 h-3" />
               error
             </span>
           ) : hasResult ? (
-            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-emerald-300/80 bg-emerald-500/10 border border-emerald-500/20 rounded px-1.5 py-0.5">
+            <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-kad-success bg-kad-success/10 border border-kad-success/20 rounded px-1.5 py-0.5">
               <CheckCircle2 className="w-3 h-3" />
               ok
             </span>
           ) : (
-            <span className="text-gray-600 text-[10px] uppercase tracking-wider font-mono">
+            <span className="text-kad-text-faint text-[10px] uppercase tracking-wider font-mono">
               pending
             </span>
           )}

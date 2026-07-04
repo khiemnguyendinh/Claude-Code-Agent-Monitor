@@ -95,7 +95,7 @@ function suggestionForPattern(pattern: WorkflowPattern, t: TFn): string {
 
 function StepPill({ label }: { label: string }) {
   return (
-    <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-500/15 text-indigo-300 border border-indigo-500/20 whitespace-nowrap">
+    <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-accent-muted text-accent border border-accent/20 whitespace-nowrap">
       {label}
     </span>
   );
@@ -112,12 +112,12 @@ function StepFlow({ steps }: { steps: string[] }) {
         <span key={idx} className="flex items-center gap-1">
           <StepPill label={step} />
           {(idx < visible.length - 1 || overflow > 0) && (
-            <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-gray-600" />
+            <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-kad-text-faint" />
           )}
         </span>
       ))}
       {overflow > 0 && (
-        <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-gray-700/50 text-gray-400 border border-gray-600/20 whitespace-nowrap">
+        <span className="inline-flex items-center px-2 py-1 rounded-lg text-xs font-medium bg-surface-2 text-kad-text-muted border border-border whitespace-nowrap">
           {t("common:plusMore", { count: overflow })}
         </span>
       )}
@@ -129,8 +129,8 @@ function PatternFrequency({ count, percentage }: { count: number; percentage: nu
   const { t } = useTranslation("workflows");
   return (
     <div className="flex-shrink-0 text-right">
-      <p className="text-sm font-semibold text-gray-100">{count.toLocaleString()}</p>
-      <p className="text-xs text-gray-500">
+      <p className="text-sm font-semibold text-kad-text-strong">{count.toLocaleString()}</p>
+      <p className="text-xs text-kad-text-muted">
         {percentage.toFixed(1)}% {t("common:ofSessions", { defaultValue: "of sessions" })}
       </p>
     </div>
@@ -153,8 +153,8 @@ function PatternItem({ pattern, rank, isSelected, onClick }: PatternItemProps) {
       className={[
         "rounded-lg border transition-colors duration-150 overflow-hidden",
         isSelected
-          ? "bg-indigo-500/10 border-indigo-500/30"
-          : "bg-surface-2 border-transparent hover:bg-white/5 hover:border-white/10",
+          ? "bg-accent-muted border-accent/30"
+          : "bg-surface-2 border-transparent hover:bg-surface-3 hover:border-border",
       ].join(" ")}
     >
       <button
@@ -165,11 +165,11 @@ function PatternItem({ pattern, rank, isSelected, onClick }: PatternItemProps) {
         className="w-full flex items-center gap-3 px-4 py-3 text-left"
       >
         {/* Rank / icon */}
-        <div className="flex-shrink-0 w-7 h-7 rounded-md bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center">
+        <div className="flex-shrink-0 w-7 h-7 rounded-md bg-accent-muted border border-accent/20 flex items-center justify-center">
           {rank <= 3 ? (
-            <span className="text-xs font-bold text-indigo-400">{rank}</span>
+            <span className="text-xs font-bold text-accent">{rank}</span>
           ) : (
-            <Icon className="w-3.5 h-3.5 text-indigo-400" />
+            <Icon className="w-3.5 h-3.5 text-accent" />
           )}
         </div>
 
@@ -183,7 +183,7 @@ function PatternItem({ pattern, rank, isSelected, onClick }: PatternItemProps) {
 
         {/* Click affordance - visible only when not yet expanded so users know the row is interactive. */}
         {!isSelected && (
-          <Info className="hidden sm:block w-3.5 h-3.5 text-gray-600 flex-shrink-0" />
+          <Info className="hidden sm:block w-3.5 h-3.5 text-kad-text-faint flex-shrink-0" />
         )}
       </button>
 
@@ -199,21 +199,21 @@ function PatternDetail({ pattern }: { pattern: WorkflowPattern }) {
   const suggestion = suggestionForPattern(pattern, t);
 
   return (
-    <div className="border-t border-indigo-500/20 bg-surface-1/40 px-4 py-3.5 space-y-3.5">
+    <div className="border-t border-accent/20 bg-surface-1 px-4 py-3.5 space-y-3.5">
       {/* Full step sequence (no truncation) */}
       <div>
-        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-2">
+        <p className="text-[10px] font-semibold text-kad-text-muted uppercase tracking-wider mb-2">
           {t("patterns.detail.stepsHeading")}
         </p>
         <div className="flex items-center flex-wrap gap-1.5">
           {pattern.steps.map((step, i) => (
             <span key={i} className="flex items-center gap-1.5">
-              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-500/15 text-indigo-200 border border-indigo-500/25">
-                <span className="text-indigo-400/70 mr-1.5 text-[10px] font-bold">{i + 1}</span>
+              <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-accent-muted text-accent border border-accent/25">
+                <span className="text-accent/70 mr-1.5 text-[10px] font-bold">{i + 1}</span>
                 {step}
               </span>
               {i < pattern.steps.length - 1 && (
-                <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-gray-600" />
+                <ChevronRight className="w-3.5 h-3.5 flex-shrink-0 text-kad-text-faint" />
               )}
             </span>
           ))}
@@ -239,20 +239,20 @@ function PatternDetail({ pattern }: { pattern: WorkflowPattern }) {
 
       {/* Narrative - what this means */}
       <div>
-        <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
-          <Info className="w-3 h-3 text-indigo-400" />
+        <p className="text-[10px] font-semibold text-kad-text-muted uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+          <Info className="w-3 h-3 text-accent" />
           {t("patterns.detail.narrativeHeading")}
         </p>
-        <p className="text-xs text-gray-300 leading-relaxed">{narrative}</p>
+        <p className="text-xs text-kad-text leading-relaxed">{narrative}</p>
       </div>
 
       {/* Suggestion */}
-      <div className="bg-indigo-500/5 border border-indigo-500/15 rounded-md px-3 py-2.5">
-        <p className="text-[10px] font-semibold text-indigo-300 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+      <div className="bg-accent-muted border border-accent/15 rounded-md px-3 py-2.5">
+        <p className="text-[10px] font-semibold text-accent uppercase tracking-wider mb-1 flex items-center gap-1.5">
           <Lightbulb className="w-3 h-3" />
           {t("patterns.detail.suggestionHeading")}
         </p>
-        <p className="text-xs text-gray-300 leading-relaxed">{suggestion}</p>
+        <p className="text-xs text-kad-text leading-relaxed">{suggestion}</p>
       </div>
     </div>
   );
@@ -261,8 +261,10 @@ function PatternDetail({ pattern }: { pattern: WorkflowPattern }) {
 function DetailStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="bg-surface-2 border border-border rounded-md px-2.5 py-2">
-      <p className="text-sm font-semibold text-gray-100 tabular-nums">{value}</p>
-      <p className="text-[10px] text-gray-500 uppercase tracking-wider mt-0.5 truncate">{label}</p>
+      <p className="text-sm font-semibold text-kad-text-strong tabular-nums">{value}</p>
+      <p className="text-[10px] text-kad-text-muted uppercase tracking-wider mt-0.5 truncate">
+        {label}
+      </p>
     </div>
   );
 }
@@ -270,18 +272,18 @@ function DetailStat({ label, value }: { label: string; value: string }) {
 function SoloSessionItem({ count, percentage }: { count: number; percentage: number }) {
   const { t } = useTranslation("workflows");
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-lg border bg-yellow-500/5 border-yellow-500/20">
-      <div className="flex-shrink-0 w-7 h-7 rounded-md bg-yellow-500/10 border border-yellow-500/20 flex items-center justify-center">
-        <Zap className="w-3.5 h-3.5 text-yellow-400" />
+    <div className="flex items-center gap-3 px-4 py-3 rounded-lg border bg-[var(--kad-warning)]/5 border-[var(--kad-warning)]/20">
+      <div className="flex-shrink-0 w-7 h-7 rounded-md bg-[var(--kad-warning)]/10 border border-[var(--kad-warning)]/20 flex items-center justify-center">
+        <Zap className="w-3.5 h-3.5 text-[var(--kad-warning)]" />
       </div>
       <div className="flex-1 min-w-0">
-        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-yellow-500/15 text-yellow-300 border border-yellow-500/20">
+        <span className="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium bg-[var(--kad-warning)]/15 text-[var(--kad-warning)] border border-[var(--kad-warning)]/20">
           {t("patterns.solo")}
         </span>
       </div>
       <div className="flex-shrink-0 text-right">
-        <p className="text-sm font-semibold text-gray-100">{count.toLocaleString()}</p>
-        <p className="text-xs text-gray-500">
+        <p className="text-sm font-semibold text-kad-text-strong">{count.toLocaleString()}</p>
+        <p className="text-xs text-kad-text-muted">
           {percentage.toFixed(1)}% {t("common:ofSessions", { defaultValue: "of sessions" })}
         </p>
       </div>
@@ -294,10 +296,10 @@ function EmptyPatterns() {
   return (
     <div className="flex flex-col items-center justify-center py-12 text-center">
       <div className="w-10 h-10 rounded-xl bg-surface-4 flex items-center justify-center mb-3">
-        <Zap className="w-5 h-5 text-gray-600" />
+        <Zap className="w-5 h-5 text-kad-text-faint" />
       </div>
-      <p className="text-sm font-medium text-gray-400">{t("patterns.noData")}</p>
-      <p className="text-xs text-gray-600 mt-1">{t("patterns.noDataDesc")}</p>
+      <p className="text-sm font-medium text-kad-text-muted">{t("patterns.noData")}</p>
+      <p className="text-xs text-kad-text-faint mt-1">{t("patterns.noDataDesc")}</p>
     </div>
   );
 }
@@ -325,7 +327,7 @@ export function WorkflowPatterns({ data, onPatternClick }: WorkflowPatternsProps
 
   return (
     <div className="card p-5">
-      <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-4">
+      <h2 className="text-sm font-semibold text-kad-text-muted uppercase tracking-wider mb-4">
         {t("patterns.label")}
       </h2>
 

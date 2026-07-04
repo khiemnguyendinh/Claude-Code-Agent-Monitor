@@ -1,7 +1,7 @@
 {
-  "brand": "Agent Dashboard",
+  "brand": "Kstudy AI Department",
   "brandSub": "Claude Code Monitor",
-  "dashboard": "Dashboard",
+  "dashboard": "Agent Monitor",
   "agentBoard": "Kanban Board",
   "sessions": "Sessions",
   "activityFeed": "Activity Feed",
@@ -12,8 +12,6 @@
   "run": "Run Claude",
   "settings": "Settings",
   "language": "Language",
-  "github": "GitHub",
-  "website": "Website",
   "expand": "Expand sidebar",
   "collapse": "Collapse sidebar",
   "collapseShort": "Collapse",
