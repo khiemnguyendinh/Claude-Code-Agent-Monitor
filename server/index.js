@@ -62,6 +62,7 @@ const ccConfigRouter = require("./routes/cc-config");
 const runRouter = require("./routes/run");
 const alertsRouter = require("./routes/alerts");
 const webhooksRouter = require("./routes/webhooks");
+const kad = require("./routes/kad");
 
 function createApp() {
   const app = express();
@@ -90,6 +91,7 @@ function createApp() {
   app.use("/api/run", runRouter);
   app.use("/api/alerts", alertsRouter);
   app.use("/api/webhooks", webhooksRouter);
+  app.use("/api/kad", kad.router); // KAD v2 domain (workspace/orchestration)
   app.get("/api/openapi.json", (_req, res) => {
     res.json(openApiSpec);
   });
@@ -185,6 +187,12 @@ function startServer(app, port) {
       const mode = isProduction ? "production" : "development";
       const shown = boundLoopback ? "localhost" : host;
       console.log(`Agent Dashboard server running on http://${shown}:${port} (${mode})`);
+      // KAD v2 runtime: migrations (via repo load) + job worker + MCP callback base.
+      try {
+        kad.initKad({ apiBase: process.env.KAD_API_BASE || `http://127.0.0.1:${port}` });
+      } catch (e) {
+        console.warn("[kad] init failed:", e && e.message);
+      }
       if (!boundLoopback) {
         console.warn(
           `⚠️  Dashboard bound to ${host} — reachable from the network. ` +

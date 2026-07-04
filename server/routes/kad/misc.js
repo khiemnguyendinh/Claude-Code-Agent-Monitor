@@ -1,0 +1,58 @@
+/**
+ * @file server/routes/kad/misc.js — Agents, Reports overview, Notifications,
+ * Audit (spec 03). Mounted at /api/kad.
+ */
+const express = require("express");
+const repo = require("../../lib/kad/repo");
+
+const router = express.Router();
+const err = (res, code, message, status = 400) => res.status(status).json({ error: { code, message } });
+
+function deptId(req) {
+  if (req.query.department) return req.query.department;
+  const d = repo.catalog.getDepartmentBySlug("rd");
+  return d ? d.id : null;
+}
+
+router.get("/agents", (req, res) => {
+  const id = deptId(req);
+  res.json(id ? repo.catalog.listAgents(id, { status: req.query.status }) : []);
+});
+
+router.get("/agents/:id", (req, res) => {
+  const a = repo.catalog.getAgent(req.params.id);
+  if (!a) return err(res, "ENOTFOUND", "agent not found", 404);
+  res.json(a);
+});
+
+// Trimmed overview shipped from Phase 2 (spec 03): tasks_by_status, pending
+// approvals, active runs.
+router.get("/reports/overview", (req, res) => {
+  const id = deptId(req);
+  const tasks = repo.tasks.listTasks({ department_id: id, limit: 500 });
+  const byStatus = {};
+  for (const t of tasks) byStatus[t.status] = (byStatus[t.status] || 0) + 1;
+  res.json({
+    department_id: id,
+    tasks_by_status: byStatus,
+    pending_approvals: repo.approvals.listPending({ department_id: id }).length,
+    active_runs: repo.runs.countActive(),
+    pending_jobs: repo.jobs.pendingCount(),
+  });
+});
+
+router.get("/notifications", (req, res) => {
+  res.json(repo.notifications.listNotifications({ department_id: deptId(req), unread: req.query.unread === "1" }));
+});
+
+router.post("/notifications/:id/read", (req, res) => {
+  const n = repo.notifications.markRead(req.params.id);
+  if (!n) return err(res, "ENOTFOUND", "notification not found", 404);
+  res.json(n);
+});
+
+router.get("/audit", (req, res) => {
+  res.json(repo.listAudit({ task_id: req.query.task, agent_id: req.query.agent, action: req.query.action, from: req.query.from, to: req.query.to }));
+});
+
+module.exports = router;
