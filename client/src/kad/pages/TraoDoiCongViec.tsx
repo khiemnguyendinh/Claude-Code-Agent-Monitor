@@ -24,6 +24,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Square,
+  Zap,
 } from "lucide-react";
 import {
   kadApi,
@@ -488,6 +489,17 @@ function TraoDoiCongViecInner({
     await runAction(() => kadApi.tasks.lockBrief(taskId!));
   }
 
+  // Phase 6.5 — confirm an auto-task (created by an automation rule, still in the
+  // "chờ xác nhận" queue) → kicks its first Main Agent turn. Optimistically flip
+  // to 'doing' so the banner clears; the task-scoped WS reconciles the rest.
+  async function handleConfirmAuto() {
+    const ok = await runAction(() => kadApi.tasks.confirm(taskId!));
+    if (ok) {
+      showToast({ message: "Đã xác nhận — việc bắt đầu chạy.", tone: "success" });
+      setTask((prev) => (prev ? { ...prev, status: "doing" } : prev));
+    }
+  }
+
   function handleEditBrief() {
     composerRef.current?.focus();
   }
@@ -593,7 +605,34 @@ function TraoDoiCongViecInner({
         <h1 className="kad-title text-kad-text-strong">{task.title}</h1>
         <div className="flex items-center gap-1.5 flex-wrap mt-2">
           <TaskStatusChip status={task.status} />
+          {task.originRuleId && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded kad-caption text-kad-text-muted"
+              style={{ background: "var(--kad-surface-2)" }}
+              title="Việc tạo tự động bởi một luật tự động hoá"
+            >
+              <Zap className="w-3 h-3" aria-hidden /> Tự động
+            </span>
+          )}
         </div>
+
+        {/* Auto-task chờ xác nhận (spec 02 §6b) — chưa spawn agent tới khi xác nhận. */}
+        {task.originRuleId && task.status === "inbox" && (
+          <div
+            className="rounded-lg px-3 py-2 mt-3 kad-caption"
+            style={{ background: "#FBF3E4", color: "#B97D10", border: "1px solid #B97D1055" }}
+          >
+            <p className="mb-2">Việc tự động — đang chờ anh xác nhận trước khi tiêu token.</p>
+            <button
+              type="button"
+              onClick={handleConfirmAuto}
+              className="px-2.5 py-1 rounded-md text-white kad-caption"
+              style={{ background: "var(--kad-accent)" }}
+            >
+              Xác nhận & chạy
+            </button>
+          </div>
+        )}
 
         {pinnedBrief && (
           <div className="border border-kad-border rounded-xl bg-kad-surface p-3 mt-4">

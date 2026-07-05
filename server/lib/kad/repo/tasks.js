@@ -52,14 +52,18 @@ function createTask({
   working_dir,
   workflow_id,
   activation,
+  origin_rule_id,
+  automation_depth,
+  actor_type,
+  actor_id,
 }) {
   const id = newId("task");
   const now = nowIso();
   const snapshot = resolveVersionSnapshot(department_id);
   db.prepare(
     `INSERT INTO tasks
-     (id, department_id, workflow_id, title, description, status, working_dir, org_context_version_id, blueprint_version_id, activation, automation_depth, priority, created_at, updated_at)
-     VALUES (@id,@department_id,@workflow_id,@title,@description,'inbox',@working_dir,@org_context_version_id,@blueprint_version_id,@activation,0,@priority,@now,@now)`
+     (id, department_id, workflow_id, title, description, status, working_dir, org_context_version_id, blueprint_version_id, activation, origin_rule_id, automation_depth, priority, created_at, updated_at)
+     VALUES (@id,@department_id,@workflow_id,@title,@description,'inbox',@working_dir,@org_context_version_id,@blueprint_version_id,@activation,@origin_rule_id,@automation_depth,@priority,@now,@now)`
   ).run({
     id,
     department_id: department_id ?? null,
@@ -70,6 +74,10 @@ function createTask({
     org_context_version_id: snapshot.org_context_version_id,
     blueprint_version_id: snapshot.blueprint_version_id,
     activation: activation ?? "manual",
+    // origin_rule_id / automation_depth are the anti-loop provenance for
+    // automation-created tasks (spec 02 §6b) — NULL/0 for human-created tasks.
+    origin_rule_id: origin_rule_id ?? null,
+    automation_depth: automation_depth ?? 0,
     priority: priority ?? "normal",
     now,
   });
@@ -77,12 +85,14 @@ function createTask({
     department_id,
     task_id: id,
     action: "task_created",
-    actor_type: "human", // task creation is always a human action, whatever the channel
-    actor_id: "human",
+    // Manual creation is a human action; an automation rule passes actor_type
+    // 'system' so the trail attributes the auto-task to the rule, not a person.
+    actor_type: actor_type ?? "human",
+    actor_id: actor_id ?? "human",
     channel: channel ?? "web",
     target_type: "task",
     target_id: id,
-    details: { title, channel_actor_ref: channel_actor_ref ?? null },
+    details: { title, channel_actor_ref: channel_actor_ref ?? null, origin_rule_id: origin_rule_id ?? null },
   });
   return getTask(id);
 }

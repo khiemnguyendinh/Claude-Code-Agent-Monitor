@@ -10,6 +10,7 @@
  */
 const express = require("express");
 const repo = require("../../lib/kad/repo");
+const automation = require("../../lib/kad/automation");
 const { emitDept } = require("../../lib/kad/events");
 
 const router = express.Router();
@@ -56,6 +57,39 @@ router.post("/automation-rules/:id/toggle", (req, res) => {
   const enabled = Boolean((req.body || {}).enabled);
   const updated = repo.automationRules.setEnabled(rule.id, enabled);
   res.json(updated);
+});
+
+router.patch("/automation-rules/:id", (req, res) => {
+  const rule = repo.automationRules.getRule(req.params.id);
+  if (!rule) return err(res, "ENOTFOUND", "rule not found", 404);
+  const b = req.body || {};
+  if (b.status !== undefined && !["active", "paused", "archived"].includes(b.status))
+    return err(res, "EBADSTATUS", "invalid status");
+  const updated = repo.automationRules.updateRule(rule.id, {
+    name: b.name,
+    trigger_config: b.trigger_config,
+    action_config: b.action_config,
+    approval_required: b.approval_required,
+    cooldown_seconds: b.cooldown_seconds,
+    max_fires: b.max_fires,
+    status: b.status,
+  });
+  res.json(updated);
+});
+
+// Chạy thử: "30 ngày qua luật này sẽ kích ở đâu" — KHÔNG tạo task (spec 03).
+router.post("/automation-rules/:id/dry-run", (req, res) => {
+  const rule = repo.automationRules.getRule(req.params.id);
+  if (!rule) return err(res, "ENOTFOUND", "rule not found", 404);
+  const days = Math.min(Math.max(Number((req.body || {}).days) || 30, 1), 365);
+  res.json(automation.dryRun(rule, { days }));
+});
+
+// Lịch sử kích (automation_rule_fires).
+router.get("/automation-rules/:id/fires", (req, res) => {
+  const rule = repo.automationRules.getRule(req.params.id);
+  if (!rule) return err(res, "ENOTFOUND", "rule not found", 404);
+  res.json(repo.automationRules.listFires(rule.id));
 });
 
 router.get("/automation/paused", (req, res) => {

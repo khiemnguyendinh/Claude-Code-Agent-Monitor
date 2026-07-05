@@ -63,6 +63,27 @@ function deptTokenUsageToday(departmentId) {
 }
 
 /**
+ * Department-level budget gate for the automation `create_task` action
+ * (spec 02 §6b / 01 §8). BEFORE an auto-task is created we check the department
+ * is not already over its daily token budget — over → skipped_budget +
+ * notification, task NOT created (see automation.js). Dept-scoped only: there is
+ * no task yet at rule-fire time, so this reuses the SAME daily cap the per-run
+ * breaker enforces.
+ * @returns {{over:boolean, reason?:string}}
+ */
+function deptOverBudget(departmentId) {
+  if (!departmentId) return { over: false };
+  const dept = repo.catalog.getDepartment(departmentId);
+  if (!dept) return { over: false };
+  const budget = budgetFor(dept);
+  const daily = deptTokenUsageToday(departmentId);
+  if (daily >= budget.daily_token_limit) {
+    return { over: true, reason: `daily_token_limit reached (${daily}/${budget.daily_token_limit})` };
+  }
+  return { over: false };
+}
+
+/**
  * Decide whether a new run/delegation may spawn for `taskId`.
  * @returns {{ok:boolean, reason?:string, maxTurns:number}}
  */
@@ -155,5 +176,7 @@ module.exports = {
   maxTurnsFor,
   tokenTotal,
   taskTokenUsage,
+  deptTokenUsageToday,
+  deptOverBudget,
   DEFAULT_BUDGET,
 };
