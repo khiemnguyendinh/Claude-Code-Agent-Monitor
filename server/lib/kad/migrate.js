@@ -3,8 +3,12 @@
  * @description Applies KAD SQL migrations against the shared monitor db
  * (better-sqlite3, WAL). Same process, single write connection (spec 02 §2.4).
  * Tracked in kad_migrations for idempotency; each file runs once, in a
- * transaction. Never enables PRAGMA foreign_keys globally (would change monitor
- * behavior) — FK clauses in the schema are documentation for MVP.
+ * transaction. The shared monitor connection already runs with
+ * `PRAGMA foreign_keys = ON` (server/db.js) — every FK clause in the KAD
+ * schema is a LIVE constraint (RESTRICT by default, no ON DELETE clause
+ * anywhere yet), not documentation-only. A row that violates one throws a
+ * synchronous SqliteError; routes must validate referenced ids themselves
+ * before insert/update instead of relying on the FK to fail soft.
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -27,7 +31,10 @@ function ensureLedger(db) {
 function runKadMigrations(db) {
   ensureLedger(db);
   const applied = new Set(
-    db.prepare("SELECT name FROM kad_migrations").all().map((r) => r.name)
+    db
+      .prepare("SELECT name FROM kad_migrations")
+      .all()
+      .map((r) => r.name)
   );
   const files = fs
     .readdirSync(MIGRATIONS_DIR)
@@ -35,9 +42,7 @@ function runKadMigrations(db) {
     .sort();
   const nowIso = () => new Date().toISOString();
   const justApplied = [];
-  const recordStmt = db.prepare(
-    "INSERT INTO kad_migrations (name, applied_at) VALUES (?, ?)"
-  );
+  const recordStmt = db.prepare("INSERT INTO kad_migrations (name, applied_at) VALUES (?, ?)");
   for (const file of files) {
     if (applied.has(file)) continue;
     const sql = fs.readFileSync(path.join(MIGRATIONS_DIR, file), "utf8");

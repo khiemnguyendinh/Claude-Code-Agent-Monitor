@@ -26,6 +26,12 @@ router.get("/agents/:id", (req, res) => {
   res.json(a);
 });
 
+// [spec/ui/07 §1] Quickstart cards on Giao việc mới — active workflows only.
+router.get("/workflows", (req, res) => {
+  const id = deptId(req);
+  res.json(id ? repo.catalog.listWorkflows(id, { status: req.query.status || "active" }) : []);
+});
+
 // Read-only — Pane A's stepper (spec/ui/05 §1) needs the step list a task's
 // workflow was created with.
 router.get("/workflows/:id", (req, res) => {

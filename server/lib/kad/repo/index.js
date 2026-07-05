@@ -23,4 +23,7 @@ module.exports = {
   jobs: require("./jobs"),
   catalog: require("./catalog"),
   standup: require("./standup"),
+  dependencies: require("./task-dependencies"),
+  automationRules: require("./automation-rules"),
+  attachments: require("./task-attachments"),
 };

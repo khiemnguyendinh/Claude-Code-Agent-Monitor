@@ -50,7 +50,9 @@ let taskIdSeq = 0;
 
 interface KadStoreValue {
   approvals: Approval[];
-  decideApproval: (id: string, status: ApprovalStatus, reason: string | null) => void;
+  /** Rejects on request failure so callers can show an error / avoid an
+   * optimistic success toast instead of assuming the decision landed. */
+  decideApproval: (id: string, status: ApprovalStatus, reason: string | null) => Promise<void>;
   /** Real agent_profiles by id (spec 03) — ids don't match mockData's, so screens
    * rendering a real agentId must pass AgentAvatar's displayNameOverride/agentNameOverride
    * from this map instead of relying on mockData's findAgent(). */
@@ -147,10 +149,15 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
 
   const decideApproval = useCallback(
     (id: string, status: ApprovalStatus, reason: string | null) => {
-      kadApi.approvals
+      return kadApi.approvals
         .decide(id, status, reason)
-        .then(() => refetchApprovals(departmentIdRef.current))
-        .catch((e) => console.warn("[kad] decide approval failed:", e && e.message));
+        .then(() => {
+          refetchApprovals(departmentIdRef.current);
+        })
+        .catch((e) => {
+          console.warn("[kad] decide approval failed:", e && e.message);
+          throw e;
+        });
     },
     [refetchApprovals]
   );

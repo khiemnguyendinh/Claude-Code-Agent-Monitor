@@ -23,6 +23,7 @@ import {
   findAgent,
 } from "../mockData";
 import { useKadStore } from "../store";
+import { useKadToast } from "../components/Toast";
 import { usePeek } from "../components/PeekDrawer";
 import { KadButton, KadCard, KadEmptyState, KadIconButton } from "../components/primitives";
 import { StatusChip } from "../components/StatusChip";
@@ -361,7 +362,9 @@ function StandupGroup({
 function BlockApprovals() {
   const { approvals, decideApproval, agentsById } = useKadStore();
   const { openPeek } = usePeek();
+  const toast = useKadToast();
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
 
   const pending = [...approvals]
     .filter((a) => a.status === "pending")
@@ -376,9 +379,24 @@ function BlockApprovals() {
       return next;
     });
 
-  const approveBatch = () => {
-    selected.forEach((id) => decideApproval(id, "approved", null));
+  // Each decide is its own request (no batch endpoint) — allSettled so one
+  // failure doesn't hide the others, then report exactly how many of the
+  // selection actually went through instead of a blanket "done".
+  const approveBatch = async () => {
+    const ids = [...selected];
+    setBatchSubmitting(true);
+    const results = await Promise.allSettled(ids.map((id) => decideApproval(id, "approved", null)));
+    const failed = results.filter((r) => r.status === "rejected").length;
     setSelected(new Set());
+    setBatchSubmitting(false);
+    if (failed > 0) {
+      toast({
+        message: `Duyệt được ${ids.length - failed}/${ids.length} mục — ${failed} mục lỗi, thử lại.`,
+        tone: "warning",
+      });
+    } else {
+      toast({ message: `Đã duyệt ${ids.length} mục.`, tone: "success" });
+    }
   };
 
   return (
@@ -439,7 +457,14 @@ function BlockApprovals() {
                     <KadButton
                       variant="ghost"
                       size="row"
-                      onClick={() => decideApproval(approval.id, "approved", null)}
+                      onClick={() =>
+                        decideApproval(approval.id, "approved", null).catch((e) =>
+                          toast({
+                            message: e instanceof Error ? e.message : "Có lỗi xảy ra, thử lại.",
+                            tone: "warning",
+                          })
+                        )
+                      }
                     >
                       Duyệt
                     </KadButton>
@@ -459,7 +484,7 @@ function BlockApprovals() {
       )}
       {selected.size > 0 && (
         <div className="flex justify-end pt-3 mt-2 border-t border-kad-border">
-          <KadButton variant="primary" onClick={approveBatch}>
+          <KadButton variant="primary" disabled={batchSubmitting} onClick={approveBatch}>
             Duyệt {selected.size} mục đã chọn
           </KadButton>
         </div>
