@@ -2089,6 +2089,21 @@ async function runS5() {
   const worker = require(path.join(ROOT, "server/lib/kad/job-queue"));
   const mainAgent = repo.catalog.getMainAgent(repo.catalog.getDepartmentBySlug("rd").id);
 
+  const { getAdapter } = require(path.join(ROOT, "server/lib/kad/runner/adapter"));
+  const claudeAdapter = getAdapter("claude");
+  claudeAdapter.run = async (opts) => {
+    return {
+      output: JSON.stringify({
+        root_cause: "Mocked analysis root cause",
+        correction_category: "brand_mismatch",
+        proposed_rules: ["Rule 1"],
+        patterns: [
+          { pattern: "Mocked pattern detect", confidence: 0.9, context: "S5 verify" }
+        ]
+      })
+    };
+  };
+
   console.log("\n=== KAD verify — Scenario S5 (Learning Loop) ===\n");
 
   const briefTask = await api("POST", "/api/kad/tasks", {
