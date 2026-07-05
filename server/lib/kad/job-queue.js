@@ -79,10 +79,11 @@ async function sweep() {
   sweeping = true;
   try {
     dependencyWorker.checkReleases(); // spec 02 §6b / audit-260704 §5.2 — every tick
-    // Phase 6.5 — fire any automation schedule now due (cheap enabled-rule scan,
-    // same "stateless per-tick" shape as dependency release). Never throws out of
-    // the sweep: a bad rule is logged inside sweepSchedules(), not here.
+    // Phase 6.5 — fire any automation schedule now due + evaluate metric_threshold
+    // rules against live values (cheap enabled-rule scans, same "stateless per-tick"
+    // shape as dependency release). Each logs its own bad-rule errors internally.
     automation.sweepSchedules();
+    automation.evaluateMetricRules();
     const jobs = repo.jobs.leaseDue(3);
     if (process.env.KAD_JOBS_TRACE && jobs.length)
       console.log(

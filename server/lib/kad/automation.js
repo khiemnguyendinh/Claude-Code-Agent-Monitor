@@ -151,6 +151,104 @@ function sweepSchedules(nowDate) {
   return out;
 }
 
+// ── Metric thresholds ────────────────────────────────────────────────────────
+
+// A sustained-over-threshold metric would re-fire every tick; with no per-rule
+// cooldown set, gate metric rules to this default so an alert repeats at most
+// hourly (approximate edge detection without a new state column).
+const METRIC_DEFAULT_COOLDOWN_S = Number(process.env.KAD_METRIC_COOLDOWN_S || 3600);
+
+/** Current value of a supported department metric, or null if unknown. */
+function computeMetric(departmentId, metric) {
+  if (!departmentId || !metric) return null;
+  switch (metric) {
+    case "daily_tokens":
+      return guardrails.deptTokenUsageToday(departmentId);
+    case "pending_approvals":
+      return repo.approvals.listPending({ department_id: departmentId }).length;
+    case "blocked_tasks":
+      return repo.db
+        .prepare("SELECT COUNT(*) n FROM tasks WHERE department_id=? AND status='blocked'")
+        .get(departmentId).n;
+    case "open_tasks":
+      return repo.db
+        .prepare(
+          `SELECT COUNT(*) n FROM tasks WHERE department_id=?
+           AND status IN ('inbox','triaged','doing','waiting_human','review','needs_changes')`
+        )
+        .get(departmentId).n;
+    case "failed_runs_today":
+      return repo.db
+        .prepare(
+          `SELECT COUNT(*) n FROM task_runs r JOIN tasks t ON r.task_id=t.id
+           WHERE t.department_id=? AND r.status='failed' AND substr(r.started_at,1,10)=?`
+        )
+        .get(departmentId, repo.nowIso().slice(0, 10)).n;
+    default:
+      return null;
+  }
+}
+
+/** Compare a metric value against a threshold using a `{op}` from trigger_config. */
+function compareOp(value, op, threshold) {
+  const t = Number(threshold);
+  switch (op) {
+    case ">":
+    case "gt":
+      return value > t;
+    case ">=":
+    case "gte":
+      return value >= t;
+    case "<":
+    case "lt":
+      return value < t;
+    case "<=":
+    case "lte":
+      return value <= t;
+    case "==":
+    case "eq":
+      return value === t;
+    case "!=":
+    case "ne":
+      return value !== t;
+    default:
+      return false;
+  }
+}
+
+/**
+ * Evaluate every enabled metric_threshold rule against the REAL current value
+ * (spec 02 §6b). Fires when the threshold is crossed, cooldown-gated so a
+ * sustained breach doesn't re-fire each tick. Cheap read-only scan run per tick
+ * alongside sweepSchedules().
+ * @param {string} [departmentId] optional scope
+ */
+function evaluateMetricRules(departmentId) {
+  const rules = repo.automationRules.listFireable(
+    "metric_threshold",
+    departmentId ? { department_id: departmentId } : {}
+  );
+  const out = [];
+  for (const rule of rules) {
+    try {
+      const cfg = rule.trigger_config || {};
+      const value = computeMetric(rule.department_id, cfg.metric);
+      if (value == null) continue; // unknown/unsupported metric — nothing to evaluate
+      if (!compareOp(value, cfg.op, cfg.value)) continue; // threshold not crossed
+      const cd = rule.cooldown_seconds ?? METRIC_DEFAULT_COOLDOWN_S;
+      if (
+        rule.last_fired_at &&
+        (Date.now() - new Date(rule.last_fired_at).getTime()) / 1000 < cd
+      )
+        continue; // still within the (default) alert cooldown — don't re-fire
+      out.push(fireRule(rule, { triggerRef: `metric:${cfg.metric}=${value}` }));
+    } catch (e) {
+      console.warn(`[kad] automation metric eval: rule ${rule.id} failed:`, e && e.message);
+    }
+  }
+  return out;
+}
+
 // ── Fire (safety gauntlet + action) ──────────────────────────────────────────
 
 function record(rule, result, { triggerRef, actionTaskId, note } = {}) {
@@ -458,13 +556,24 @@ function dryRun(rule, { days = 30 } = {}) {
       .filter((t) => matchEventFilter(t, cfg.filter || {}))
       .map((t) => t.completed_at)
       .filter(Boolean);
-  } else {
-    // metric_threshold: no historical metric stream in the MVP to replay.
+  } else if (rule.trigger_type === "metric_threshold") {
+    // No historical metric stream to replay — evaluate the REAL current value
+    // instead (honest "would it fire right now", not a fabricated 30-day history).
+    const cfg = rule.trigger_config || {};
+    const value = computeMetric(rule.department_id, cfg.metric);
+    if (value == null) {
+      return { count: 0, occurrences: [], summary: `Chỉ số không hỗ trợ: ${cfg.metric ?? "(trống)"}` };
+    }
+    const satisfied = compareOp(value, cfg.op, cfg.value);
     return {
-      count: 0,
-      occurrences: [],
-      summary: "Ngưỡng chỉ số — chưa có dữ liệu lịch sử để mô phỏng.",
+      count: satisfied ? 1 : 0,
+      occurrences: satisfied ? [now.toISOString()] : [],
+      summary: `Hiện tại ${cfg.metric}=${value} (ngưỡng ${cfg.op ?? "?"} ${cfg.value ?? "?"}) → ${
+        satisfied ? "SẼ kích ngay" : "chưa kích"
+      }. Ngưỡng đánh giá thời gian thực (không có lịch sử 30 ngày).`,
     };
+  } else {
+    return { count: 0, occurrences: [], summary: "Loại trigger không hỗ trợ chạy thử." };
   }
 
   const fmt = (iso) =>
@@ -479,6 +588,9 @@ function dryRun(rule, { days = 30 } = {}) {
 module.exports = {
   evaluateEventRules,
   sweepSchedules,
+  evaluateMetricRules,
+  computeMetric,
+  compareOp,
   fireRule,
   dryRun,
   matchEventFilter,

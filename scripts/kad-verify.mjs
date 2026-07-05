@@ -1832,6 +1832,29 @@ async function runS65() {
     const pausedState = await api("GET", `/api/kad/automation/paused?department=${deptId}`);
     check("S65.23 pause-all state readable", pausedState.body.paused === true);
     await api("POST", "/api/kad/automation/pause-all", { department_id: deptId, paused: false });
+
+    // 8) metric_threshold: evaluated against the REAL live value each tick.
+    const mrule = await api("POST", "/api/kad/automation-rules", {
+      name: "Nhiều việc đang mở → cảnh báo",
+      trigger_type: "metric_threshold",
+      trigger_config: { metric: "open_tasks", op: "gte", value: 1 },
+      action_type: "notify",
+      action_config: { title: "Có việc đang mở" },
+    });
+    check("S65.24 metric rule created (201)", mrule.status === 201);
+    await api("POST", "/api/kad/tasks", { title: "Việc mở cho metric test" }); // guarantees ≥1 open task
+    await jobQueue.sweep(); // evaluateMetricRules() runs in the tick
+    await sleep(120);
+    const mFires = await fires(mrule.body.id);
+    check("S65.25 metric rule fired result=notified", mFires.some((f) => f.result === "notified"));
+    const mNotif = (await api("GET", "/api/kad/notifications")).body;
+    check("S65.26 automation notification emitted", mNotif.some((n) => n.kind === "automation"));
+    const mDry = await api("POST", `/api/kad/automation-rules/${mrule.body.id}/dry-run`, {});
+    check(
+      "S65.27 metric dry-run reports live value (no fabricated history)",
+      mDry.body.count === 1 && /open_tasks=\d+/.test(mDry.body.summary),
+      mDry.body.summary
+    );
   } finally {
     try { ws?.close(); } catch {}
     try { jobQueue.stopWorker(); } catch {}
