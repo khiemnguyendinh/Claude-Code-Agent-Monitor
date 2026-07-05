@@ -728,6 +728,25 @@ export const kadApi = {
         rows.map(toArtifact)
       );
     },
+    // Học liệu "artifact vault + lineage" (phase-03 §7) — ancestor chain via
+    // parentArtifactId, immediate parent first. No dedicated server endpoint
+    // (parent_artifact_id has no index need beyond this short walk), so it
+    // resolves client-side; capped so a bad/cyclic chain can't hang the peek.
+    lineage: async (id: string): Promise<Artifact[]> => {
+      const chain: Artifact[] = [];
+      let current: Artifact | null = await kadApi.artifacts.get(id).catch(() => null);
+      let guard = 0;
+      while (current?.parentArtifactId && guard < 10) {
+        const parent: Artifact | null = await kadApi.artifacts
+          .get(current.parentArtifactId)
+          .catch(() => null);
+        if (!parent) break;
+        chain.push(parent);
+        current = parent;
+        guard++;
+      }
+      return chain;
+    },
   },
 
   agents: {

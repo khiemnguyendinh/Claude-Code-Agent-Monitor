@@ -14,31 +14,25 @@ const { execFileSync } = require("child_process");
 
 const { getUpdatesStatus } = require("../lib/update-check");
 
-// When this suite runs from inside a git hook (e.g. a pre-commit test run),
-// git has already exported GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE for the hook
-// process. Those env vars override normal cwd-based repo discovery, so every
-// "isolated" tmp-dir repo below would silently operate on the REAL repository
-// instead — as seen in practice: `git init <tmpdir>` still creates the tmpdir
-// repo, but the *following* add/commit/push land in the ambient repo's index,
-// corrupting real history. Strip them so child git processes are always
-// scoped to the `cwd` we pass in, regardless of the ambient hook env.
-const GIT_ENV = { ...process.env };
-for (const k of [
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_INDEX_FILE",
-  "GIT_COMMON_DIR",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_CEILING_DIRECTORIES",
-]) {
-  delete GIT_ENV[k];
+// When this suite runs from inside a git hook (e.g. .husky/pre-commit, which
+// runs `npm run test:server`), git sets GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE/
+// GIT_AUTHOR_*/GIT_COMMITTER_* in the process env for the commit in progress.
+// execFileSync inherits that env by default, so every "isolated" git command
+// below would silently operate on the REAL outer repo (and its real commit
+// identity) instead of this test's tmp fixture repo — stripping every GIT_*
+// var is the only reliable fix (cwd alone does not override GIT_DIR).
+function cleanGitEnv() {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("GIT_")) delete env[key];
+  }
+  return env;
 }
 
 function git(cwd, args) {
   return execFileSync("git", args, {
     cwd,
-    env: GIT_ENV,
+    env: cleanGitEnv(),
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
   }).trim();
@@ -50,7 +44,7 @@ function makeBareRemote(parent, name) {
   // -c init.defaultBranch=master works on every git that supports -c init.*,
   // i.e. far older than --initial-branch.
   execFileSync("git", ["-c", "init.defaultBranch=master", "init", "--bare", repo], {
-    env: GIT_ENV,
+    env: cleanGitEnv(),
     stdio: "ignore",
   });
   return repo;
@@ -60,7 +54,7 @@ function makeWorkingRepo(parent, dir, originUrl) {
   const repo = path.join(parent, dir);
   fs.mkdirSync(repo, { recursive: true });
   execFileSync("git", ["-c", "init.defaultBranch=master", "init", repo], {
-    env: GIT_ENV,
+    env: cleanGitEnv(),
     stdio: "ignore",
   });
   fs.writeFileSync(path.join(repo, "README.md"), "fixture\n");
@@ -180,7 +174,7 @@ describe("getUpdatesStatus — no remotes configured", () => {
     const repo = path.join(tmpDir, "noremote");
     fs.mkdirSync(repo, { recursive: true });
     execFileSync("git", ["-c", "init.defaultBranch=master", "init", repo], {
-      env: GIT_ENV,
+      env: cleanGitEnv(),
       stdio: "ignore",
     });
     fs.writeFileSync(path.join(repo, "README.md"), "lonely\n");

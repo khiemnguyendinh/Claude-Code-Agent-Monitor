@@ -20,12 +20,18 @@ interface ArtifactViewerProps {
   // sibling versions) they already fetched instead of the mockData registry.
   artifact?: Artifact;
   versions?: Artifact[];
+  // Học liệu "artifact vault + lineage" (phase-03 §7) — ancestor chain, immediate
+  // parent first (see kadApi.artifacts.lineage). Undefined/empty renders nothing.
+  lineage?: Artifact[];
+  onSelectLineageItem?: (artifactId: string) => void;
 }
 
 export function ArtifactViewer({
   artifactId,
   artifact: artifactOverride,
   versions: versionsOverride,
+  lineage,
+  onSelectLineageItem,
 }: ArtifactViewerProps) {
   const toast = useKadToast();
   const artifact = artifactOverride ?? findArtifact(artifactId);
@@ -58,6 +64,29 @@ export function ArtifactViewer({
         </div>
         <h2 className="kad-title text-kad-text-strong mt-2">{artifact.title}</h2>
       </div>
+
+      {lineage && lineage.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap kad-caption text-kad-text-muted">
+          <span className="text-kad-text-faint flex-shrink-0">Xuất xứ:</span>
+          {[...lineage].reverse().map((ancestor) => (
+            <span key={ancestor.id} className="flex items-center gap-1.5">
+              {onSelectLineageItem ? (
+                <button
+                  type="button"
+                  onClick={() => onSelectLineageItem(ancestor.id)}
+                  className="text-kad-text hover:underline"
+                >
+                  {ancestor.title}
+                </button>
+              ) : (
+                <span className="text-kad-text">{ancestor.title}</span>
+              )}
+              <span aria-hidden>→</span>
+            </span>
+          ))}
+          <span className="text-kad-text-strong font-medium">{artifact.title}</span>
+        </div>
+      )}
 
       {hasSensitivity && (
         <div className="flex gap-1.5 flex-wrap">

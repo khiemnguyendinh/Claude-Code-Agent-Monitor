@@ -1,7 +1,7 @@
 /**
  * Peek drawer body renderers — one per entity type, 01-app-shell.md §4.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, MessageSquare } from "lucide-react";
@@ -14,6 +14,8 @@ import {
   PROJECTS,
   TASK_DETAIL_SYLLABUS_K3,
 } from "../mockData";
+import { kadApi } from "../api-client";
+import type { Artifact } from "../types";
 import { useKadStore } from "../store";
 import { useKadToast } from "./Toast";
 import { AgentAvatar } from "./Avatar";
@@ -75,7 +77,7 @@ export function PeekContent({ target, onOpenPeek, onClose }: PeekContentProps) {
     case "project":
       return <ProjectPeek id={target.id} onOpenPeek={onOpenPeek} />;
     case "artifact":
-      return <ArtifactPeek id={target.id} />;
+      return <ArtifactPeek id={target.id} onOpenPeek={onOpenPeek} />;
     case "approval":
       return <ApprovalPeek id={target.id} onOpenPeek={onOpenPeek} onClose={onClose} />;
     case "agent":
@@ -215,10 +217,68 @@ function ProjectPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarge
 
 // ── Artifact ───────────────────────────────────────────────────────────
 
-function ArtifactPeek({ id }: { id: string }) {
+// Học liệu (real /api/kad/artifacts ids) vs. every other screen still on
+// mockData (TaskPeek's "Files & học liệu", ApprovalPeek's preview — see
+// DetailPanels.tsx header comment) share this ONE peek renderer. `findArtifact`
+// resolves synchronously and instantly for the mock ids those screens still
+// pass, so checking it first preserves their exact current behavior; only an
+// id it doesn't recognize (i.e. a real one) falls through to a live fetch.
+function ArtifactPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
+  const mockArtifact = findArtifact(id);
+  const [real, setReal] = useState<{ artifact: Artifact; lineage: Artifact[] } | null>(null);
+  const [loading, setLoading] = useState(!mockArtifact);
+
+  useEffect(() => {
+    if (mockArtifact) return;
+    let cancelled = false;
+    setLoading(true);
+    setReal(null);
+    (async () => {
+      try {
+        const [artifact, lineage] = await Promise.all([
+          kadApi.artifacts.get(id),
+          kadApi.artifacts.lineage(id),
+        ]);
+        if (!cancelled) setReal({ artifact, lineage });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, mockArtifact]);
+
+  if (mockArtifact) {
+    return (
+      <div className="p-4">
+        <ArtifactViewer artifactId={id} />
+      </div>
+    );
+  }
+  if (loading) {
+    return (
+      <div className="p-4">
+        <KadEmptyState icon={MessageSquare} message="Đang tải học liệu…" />
+      </div>
+    );
+  }
+  if (!real) {
+    return (
+      <div className="p-4">
+        <KadEmptyState icon={MessageSquare} message="Không tìm thấy học liệu." />
+      </div>
+    );
+  }
   return (
     <div className="p-4">
-      <ArtifactViewer artifactId={id} />
+      <ArtifactViewer
+        artifactId={id}
+        artifact={real.artifact}
+        versions={[real.artifact]}
+        lineage={real.lineage}
+        onSelectLineageItem={(aid) => onOpenPeek({ type: "artifact", id: aid })}
+      />
     </div>
   );
 }

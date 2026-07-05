@@ -17,22 +17,18 @@ const DEFAULT_ROOT = path.join(__dirname, "..", "..");
 // repo, "origin" points at the user's fork. Prefer upstream when both exist.
 const REMOTE_PRIORITY = ["upstream", "origin"];
 
-// If the dashboard process ever inherits GIT_DIR/GIT_WORK_TREE (e.g. started
-// from within a git hook), those env vars override normal cwd-based repo
-// discovery for every child git process — so `cwd` below would be silently
-// ignored and this would report on the wrong repository. Strip them so `cwd`
-// always wins.
-const GIT_ENV = { ...process.env };
-for (const k of [
-  "GIT_DIR",
-  "GIT_WORK_TREE",
-  "GIT_INDEX_FILE",
-  "GIT_COMMON_DIR",
-  "GIT_OBJECT_DIRECTORY",
-  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
-  "GIT_CEILING_DIRECTORIES",
-]) {
-  delete GIT_ENV[k];
+// A caller running inside a git hook (e.g. .husky/pre-commit) has GIT_DIR,
+// GIT_WORK_TREE, GIT_INDEX_FILE, GIT_AUTHOR_*, and GIT_COMMITTER_* set in its
+// own process env for the commit in progress. execFile inherits that by
+// default, which overrides the `cwd` below and points git at the wrong
+// repository — strip every GIT_ var so `cwd` is always what actually decides
+// which repo this resolves against.
+function cleanGitEnv() {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith("GIT_")) delete env[key];
+  }
+  return env;
 }
 
 function execGit(cwd, args, opts = {}) {
@@ -41,7 +37,7 @@ function execGit(cwd, args, opts = {}) {
     execFile(
       "git",
       args,
-      { cwd, env: GIT_ENV, timeout, maxBuffer: 2_000_000, encoding: "utf8" },
+      { cwd, timeout, maxBuffer: 2_000_000, encoding: "utf8", env: cleanGitEnv() },
       (err, stdout) => {
         if (err) reject(err);
         else resolve(String(stdout).trim());

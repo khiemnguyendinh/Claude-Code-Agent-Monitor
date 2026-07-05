@@ -1,8 +1,10 @@
 /**
  * @file server/lib/kad/repo/task-dependencies.js — task_dependencies (spec 02
- * §6b, spec/ui/09). Phase 3/6.5 own the worker that actually releases a
- * dependency when its condition is true (`evaluate_rules` job) — this repo
- * only covers create/read/manual-release, which is all Phase 2c wires.
+ * §6b, spec/ui/09). Phase 2c wired create/read/manual-release. Phase 3 adds
+ * `listWaiting()`, consumed by `../dependency-worker.js` (the real
+ * auto-release check — dep_task_done/dep_artifact_approved — run every job
+ * queue tick per audit-260704 §5.2), and `wouldCreateCycle()`, called by the
+ * route before creating a dependency to reject self/transitive cycles.
  */
 const { db, newId, nowIso } = require("./db");
 
@@ -20,6 +22,13 @@ function countWaiting(task_id) {
   return db
     .prepare("SELECT COUNT(*) n FROM task_dependencies WHERE task_id=? AND status='waiting'")
     .get(task_id).n;
+}
+
+/** All rows still waiting on their release condition, across every task (worker sweep). */
+function listWaiting() {
+  return db
+    .prepare("SELECT * FROM task_dependencies WHERE status='waiting' ORDER BY created_at ASC")
+    .all();
 }
 
 /** Creates the dependency row. Caller (route) also flips task.status='blocked'. */
@@ -87,6 +96,7 @@ module.exports = {
   getDependency,
   listByTask,
   countWaiting,
+  listWaiting,
   createDependency,
   wouldCreateCycle,
   release,
