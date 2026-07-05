@@ -32,6 +32,7 @@ import { TraoDoiCongViec } from "./kad/pages/TraoDoiCongViec";
 import { DoiNgu } from "./kad/pages/DoiNgu";
 import { HocLieu } from "./kad/pages/HocLieu";
 import { BaoCao } from "./kad/pages/BaoCao";
+import { NhatKy } from "./kad/pages/NhatKy";
 import { LearningNotes } from "./kad/pages/LearningNotes";
 import { KetNoi } from "./kad/pages/KetNoi";
 import { PheDuyet } from "./kad/pages/PheDuyet";
@@ -85,6 +86,7 @@ export default function App() {
             <Route path="phe-duyet/:id" element={<PheDuyet />} />
             <Route path="bao-cao" element={<BaoCao />} />
             <Route path="bao-cao/learning" element={<LearningNotes />} />
+            <Route path="nhat-ky" element={<NhatKy />} />
           </Route>
 
           {/* Monitor gốc — pages/functionality untouched, only reparented
