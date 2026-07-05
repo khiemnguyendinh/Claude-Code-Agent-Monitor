@@ -207,6 +207,21 @@ const TOOLS = [
     handler: (a) =>
       call("POST", "/web-search", { body: { query: a.query, max_results: a.max_results } }),
   },
+  {
+    name: "kad_flag_sensitivity",
+    description:
+      "Đánh dấu 3 chiều nhạy cảm cho một artifact (chỉ Quality Reviewer, spec 01 §4.3): metrics (số liệu/giá/KPI), people (tên người thật), brand (định vị/slogan/claim). Chiều nào true sẽ sinh yêu cầu duyệt nội dung nhạy cảm chặn thật.",
+    inputSchema: S(
+      {
+        artifact_id: str("id artifact cần đánh giá"),
+        metrics: { type: "boolean", description: "Chứa số liệu/giá/KPI" },
+        people: { type: "boolean", description: "Chứa tên người thật" },
+        brand: { type: "boolean", description: "Chứa định vị/slogan/claim thương hiệu" },
+      },
+      ["artifact_id"]
+    ),
+    handler: (a) => call("POST", "/flag-sensitivity", { body: a }),
+  },
 ];
 const TOOL_MAP = new Map(TOOLS.map((t) => [t.name, t]));
 

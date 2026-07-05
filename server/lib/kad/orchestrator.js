@@ -12,6 +12,7 @@ const path = require("node:path");
 const repo = require("./repo");
 const guardrails = require("./guardrails");
 const prompts = require("./prompts");
+const workflowEngine = require("./workflow-engine");
 const { getAdapter } = require("./runner/adapter");
 require("./runner/claude-cli"); // self-registers the 'claude' adapter
 const { emitTask } = require("./events");
@@ -46,6 +47,7 @@ function mcpToolsFor(agent) {
   if (p.read_org_context) tools.push("kad_read_org_context");
   if (p.read_templates) tools.push("kad_read_template");
   if (p.web_search) tools.push("kad_web_search");
+  if (p.flag_sensitivity) tools.push("kad_flag_sensitivity"); // quality reviewer (spec 04 §2)
   return [...new Set(tools)].map((t) => `mcp__kad__${t}`);
 }
 
@@ -162,7 +164,7 @@ async function spawnAgentRun({
     agentId: agent.id,
   });
   const adapter = getAdapter(agent.engine || "claude");
-  const approvalsBefore = repo.approvals.listByTask(task.id).length;
+  const approvalsBeforeCount = repo.approvals.listByTask(task.id).length;
 
   let result;
   try {
@@ -189,14 +191,23 @@ async function spawnAgentRun({
   // Persist engine session id (bridge to monitor trace) + tokens.
   if (result.engineSessionId) repo.runs.setEngineSession(run.id, result.engineSessionId);
 
-  // Turn-end classification: a NEW approval created during this turn means the turn
-  // ended at an approval boundary — use the COUNT DELTA, not pending-presence, so a
-  // fast human deciding the approval between these two reads can't misclassify the
-  // turn as 'completed' and skip the resume (durable-marker correctness).
+  // Turn-end classification: the turn ended at an approval boundary iff this turn
+  // created a NEW approval that a HUMAN must decide. Two subtleties:
+  //  - Use the count delta + slice (not pending-presence) so a fast human deciding
+  //    the approval between these reads can't misclassify the turn as 'completed'
+  //    and skip the resume — a human approval that was just decided still has
+  //    reviewer='human', so it is still counted here (durable-marker correctness).
+  //  - IGNORE reviewer='system' auto-approvals (workflow-engine, spec 01 §4.2):
+  //    an auto-approved slide/video/internal artifact created mid-turn must NOT
+  //    park the task — the turn continues/completes normally.
+  // Only this run writes approvals for this task (single-flight above), so the new
+  // rows are exactly the tail past approvalsBeforeCount.
   const approvalsAfter = repo.approvals.listByTask(task.id);
-  const createdApproval = approvalsAfter.length > approvalsBefore;
-  const boundaryApproval =
-    repo.approvals.latestPending(task.id) || approvalsAfter[approvalsAfter.length - 1];
+  const humanApproval = approvalsAfter
+    .slice(approvalsBeforeCount)
+    .find((a) => a.reviewer !== "system");
+  const createdApproval = !!humanApproval;
+  const boundaryApproval = humanApproval || repo.approvals.latestPending(task.id);
 
   if (result.error) {
     repo.tx(() => {
@@ -345,13 +356,25 @@ async function runDelegation(delegationId) {
   const org = repo.catalog.getCurrentOrgContext(
     task && task.department_id ? repo.catalog.getDepartment(task.department_id).org_id : null
   );
+  // On a workflow task, tell the sub-agent EXACTLY which artifact_type to save
+  // (spec 01 §3.1 roster output) + hand it the matching approved template, so the
+  // artifact it produces is correctly typed for the QC/auto-approve gates. Falls
+  // back to the old research/other heuristic for freeform tasks.
+  const artifactType =
+    workflowEngine.outputTypeForAgent(task, sub) ||
+    (sub.name.includes("researcher") ? "research_report" : "other");
+  const tpl =
+    sub.permissions.read_templates && artifactType !== "other"
+      ? repo.catalog.getApprovedTemplateByType(task.department_id, artifactType)
+      : null;
   const systemPrompt = `Bạn là ${sub.display_name} thuộc phòng R&D Kstudy. ${sub.role_description || ""} Luôn dùng tiếng Việt. Chỉ hành động qua tool KAD được cấp.`;
   const userMessage = prompts.buildDelegationPrompt({
     subAgent: sub,
     taskDescription: deleg.instruction,
     taskInputs: task.title,
+    templateContent: tpl ? tpl.version.content : "",
     orgContextSummary: org ? prompts.summarizeOrgContext(org.data) : "",
-    artifactType: sub.name.includes("researcher") ? "research_report" : "other",
+    artifactType,
     outputFormat: "markdown",
   });
 

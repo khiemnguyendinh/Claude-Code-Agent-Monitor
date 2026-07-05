@@ -9,6 +9,7 @@ const express = require("express");
 const repo = require("../../lib/kad/repo");
 const webSearch = require("../../lib/kad/web-search");
 const cost = require("../../lib/kad/cost");
+const workflowEngine = require("../../lib/kad/workflow-engine");
 const { requireInternalToken } = require("../../lib/kad/internal-auth");
 const { emitTask, emitDept } = require("../../lib/kad/events");
 
@@ -190,6 +191,13 @@ router.post("/request-approval", (req, res) => {
   if (!c) return;
   const b = req.body || {};
   const type = b.approval_type || "artifact";
+  // QC gate B (spec 01 §3.2): a reviewer-bound artifact (framework/syllabus) or a
+  // sensitive one may not be presented to the human until a passing Quality
+  // Reviewer report exists for it. Enforced server-side, not left to the agent.
+  if (b.artifact_id) {
+    const gate = workflowEngine.assertQualityGate(c.task, b.artifact_id);
+    if (!gate.ok) return bad(res, gate.code, gate.message, 409);
+  }
   let approval;
   repo.tx(() => {
     approval = repo.approvals.createApproval({
@@ -239,6 +247,10 @@ router.post("/create-delegation", (req, res) => {
   if (!to) return bad(res, "EBADAGENT", "to_agent not found");
   if (to.status !== "active")
     return bad(res, "EAGENTINACTIVE", `agent ${to.name} chưa active`, 409);
+  // Workflow ordering (spec 01 §3.2): framework before syllabus; syllabus approved
+  // before any materials step (lesson/slide/video run parallel-per-module after).
+  const order = workflowEngine.assertStepOrder(c.task, to);
+  if (!order.ok) return bad(res, order.code, order.message, 409);
   let deleg;
   repo.tx(() => {
     deleg = repo.delegations.createDelegation({
@@ -320,7 +332,63 @@ router.post("/save-artifact", (req, res) => {
     type: art.artifact_type,
     version: art.version,
   });
-  res.json({ artifact_id: art.id });
+
+  // Workflow engine (phase-03 §2-5): sensitive detection L2 → blocking approval;
+  // conditional/internal auto-approval (reviewer='system'); step advancement.
+  // No-op for freeform (non-workflow) tasks.
+  const decision = workflowEngine.onArtifactSaved({ task: c.task, artifact: art, agent: c.agent });
+  const resp = { artifact_id: art.id };
+  if (decision.sensitiveBlocked) {
+    resp.sensitive_pending = true;
+    resp.instruction = `Artifact chứa nội dung nhạy cảm (${decision.subtype}) — đã tạo yêu cầu duyệt cho trưởng phòng. KẾT THÚC lượt và chờ quyết định.`;
+  } else if (decision.autoApproved) {
+    resp.auto_approved = true;
+    resp.instruction = `Artifact đã được tự động duyệt (${decision.decisionReason}). Tiếp tục bước kế tiếp.`;
+  }
+  res.json(resp);
+});
+
+// kad_flag_sensitivity — quality reviewer only (spec 04 §2, layer 1). Writes the
+// 3-dimension sensitivity flags onto a target artifact; any flagged dimension
+// triggers the engine's blocking sensitive_content approval (same path as the
+// server-side scan) so a QR-flagged artifact can't reach human duyệt un-gated.
+router.post("/flag-sensitivity", (req, res) => {
+  const c = ctx(req, res);
+  if (!c) return;
+  if (!c.agent.permissions.flag_sensitivity)
+    return bad(res, "EPERM", "no flag_sensitivity permission", 403);
+  const b = req.body || {};
+  const art = b.artifact_id && repo.artifacts.getArtifact(b.artifact_id);
+  if (!art || art.task_id !== c.task.id)
+    return bad(res, "EBADARTIFACT", "artifact not in this task", 404);
+  const flags = { metrics: !!b.metrics, people: !!b.people, brand: !!b.brand };
+  repo.tx(() => {
+    repo.artifacts.updateArtifact(art.id, {
+      metadata: { ...(art.metadata || {}), sensitivity_flags: flags },
+    });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "artifact_updated",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "artifact",
+      target_id: art.id,
+      details: { sensitivity_flags: flags },
+    });
+  });
+  let sensitivePending = false;
+  if (flags.metrics || flags.people || flags.brand) {
+    const updated = repo.artifacts.getArtifact(art.id);
+    const decision = workflowEngine.onArtifactSaved({
+      task: c.task,
+      artifact: updated,
+      agent: c.agent,
+    });
+    sensitivePending = !!decision.sensitiveBlocked;
+  }
+  res.json({ ok: true, sensitivity_flags: flags, sensitive_pending: sensitivePending });
 });
 
 // kad_read_org_context — permission gated.
@@ -396,6 +464,14 @@ router.post("/present-report", (req, res) => {
     return bad(res, "EBADREPORT", "artifact_ids is required (from kad_save_artifact)");
   const artifacts = artifactIds.map((id) => repo.artifacts.getArtifact(id)).filter(Boolean);
   if (!artifacts.length) return bad(res, "EBADARTIFACT", "no valid artifact_ids");
+
+  // QC gate B (spec 01 §3.2): the bàn giao report can't include a reviewer-bound
+  // or sensitive artifact that never passed a Quality Reviewer. Block the whole
+  // report until it does (framework/syllabus already carry their QR by this step).
+  for (const a of artifacts) {
+    const gate = workflowEngine.assertQualityGate(c.task, a.id);
+    if (!gate.ok) return bad(res, gate.code, gate.message, 409);
+  }
 
   const priorReports = repo.tasks
     .listMessages(c.task.id)
