@@ -4,6 +4,7 @@
 const express = require("express");
 const repo = require("../../lib/kad/repo");
 const connectorService = require("../../lib/kad/connectors");
+const v = require("../../lib/kad/validate");
 
 const router = express.Router();
 
@@ -37,6 +38,14 @@ router.get("/connectors", (req, res) => {
 });
 
 router.post("/connectors", (req, res) => {
+  const verr = v.firstError(
+    v.checkEnum(req.body && req.body.connector_type, "connector_type", ["facebook_page", "wordpress"], {
+      required: true,
+    }),
+    v.checkString(req.body && req.body.name, "name", { required: true, maxLen: 200 }),
+    v.checkObject(req.body && req.body.config, "config")
+  );
+  if (verr) return err(res, verr.code, verr.message);
   try {
     const connector = connectorService.createConnector({
       department_id: deptId(req),

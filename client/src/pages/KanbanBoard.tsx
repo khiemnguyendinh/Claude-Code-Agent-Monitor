@@ -15,7 +15,6 @@ import { api } from "../lib/api";
 import { eventBus } from "../lib/eventBus";
 import { Tabs } from "../kad/components/Tabs";
 import { BaoCao } from "../kad/pages/BaoCao";
-import { AGENTS, PROJECTS } from "../kad/mockData";
 import { SegmentedProgress } from "../kad/components/Progress";
 import { KadStoreProvider } from "../kad/store";
 import { KadToastProvider } from "../kad/components/Toast";
@@ -39,6 +38,9 @@ import type {
   Session,
   WSMessage,
 } from "../lib/types";
+import { kadApi, type KadTask, type KadWorkflowStep } from "../kad/api-client";
+import type { AgentProfile } from "../kad/types";
+import { taskToProject } from "../kad/project-from-task";
 
 type BoardView = "agents" | "sessions";
 
@@ -88,6 +90,21 @@ function KanbanBoardInner() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, number>>({});
+  // [Phase 7 hardening, spec/ui/08] engine_session_id -> task title, so a
+  // session/agent card backed by a KAD delegation shows "tên phiên = tên công
+  // việc" instead of the generic Session <id8> / cwd-heuristic fallback.
+  const [sessionTaskTitles, setSessionTaskTitles] = useState<Record<string, string>>({});
+
+  const loadSessionTaskMap = useCallback(async () => {
+    try {
+      const map = await kadApi.sessionTaskMap();
+      const titles: Record<string, string> = {};
+      for (const [sessionId, entry] of Object.entries(map)) titles[sessionId] = entry.task_title;
+      setSessionTaskTitles(titles);
+    } catch {
+      /* KAD backend optional at runtime — board still works without it */
+    }
+  }, []);
 
   const setView = useCallback((next: BoardView) => {
     setViewState(next);
@@ -129,10 +146,11 @@ function KanbanBoardInner() {
     try {
       if (view === "agents") await loadAgents();
       else await loadSessions();
+      await loadSessionTaskMap();
     } finally {
       setLoading(false);
     }
-  }, [view, loadAgents, loadSessions]);
+  }, [view, loadAgents, loadSessions, loadSessionTaskMap]);
 
   useEffect(() => {
     setLoading(true);
@@ -295,6 +313,7 @@ function KanbanBoardInner() {
                             key={agent.id}
                             agent={agent}
                             session={sessionsById.get(agent.session_id)}
+                            taskTitle={sessionTaskTitles[agent.session_id]}
                           />
                         ))}
                 </Column>
@@ -328,7 +347,13 @@ function KanbanBoardInner() {
                       ))
                     : items
                         ?.slice(0, limit)
-                        .map((session) => <SessionCard key={session.id} session={session} />)}
+                        .map((session) => (
+                          <SessionCard
+                            key={session.id}
+                            session={session}
+                            taskTitle={sessionTaskTitles[session.id]}
+                          />
+                        ))}
                 </Column>
               );
             })}
@@ -394,16 +419,50 @@ export function KanbanBoard() {
   );
 }
 
-// Tab "Công việc": Tiến độ dự án (mock projects) + Đang chạy trực tiếp (live
-// flow, chuyển từ Đội ngũ > Tổ chức). Bấm 1 dự án / 1 phiên đang chạy → mở khay
-// chi tiết bên phải (peek), nhờ PeekDrawerHost bọc ở KanbanBoard.
+// Tab "Công việc": Tiến độ dự án (real /api/kad/tasks) + Đang chạy trực tiếp
+// (live flow, chuyển từ Đội ngũ > Tổ chức). Bấm 1 dự án / 1 phiên đang chạy →
+// mở khay chi tiết bên phải (peek), nhờ PeekDrawerHost bọc ở KanbanBoard.
+// [Phase 7 hardening] tasks/agents fetched once here, real — thay PROJECTS /
+// TASK_CARDS / AGENTS mock (spec/ui/08).
 function CongViecTab() {
   const { openPeek } = usePeek();
-  const mainAgent = AGENTS.find((a) => a.agentType === "main");
+  const [tasks, setTasks] = useState<KadTask[]>([]);
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const [taskRows, agentRows] = await Promise.all([kadApi.tasks.list(), kadApi.agents.list()]);
+        if (!cancelled) {
+          setTasks(taskRows);
+          setAgents(agentRows);
+        }
+      } catch {
+        // Board still renders (empty strip/live-flow) if the KAD API is down —
+        // this tab isn't the whole page, no need for a hard error state here.
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const agentsById = useMemo(() => new Map(agents.map((a) => [a.id, a])), [agents]);
+  const mainAgent = agents.find((a) => a.agentType === "main");
+
   return (
     <div className="space-y-6">
-      <ProjectProgressStrip />
-      <LiveFlowSection mainAgent={mainAgent} onOpenTask={(taskId) => openPeek({ type: "task", id: taskId })} />
+      <ProjectProgressStrip tasks={tasks} agents={agents} loading={loading} />
+      <LiveFlowSection
+        mainAgent={mainAgent}
+        tasks={tasks}
+        agentsById={agentsById}
+        onOpenTask={(taskId) => openPeek({ type: "task", id: taskId })}
+      />
     </div>
   );
 }
@@ -411,11 +470,21 @@ function CongViecTab() {
 // ── Tiến độ dự án ─────────────────────────────────────────────────────────
 // Nằm trong tab "Công việc". Bấm 1 dự án → mở khay chi tiết (peek) bên phải —
 // dùng chung PeekContent.ProjectPeek với KAD shell nhờ KanbanBoard bọc
-// PeekDrawerHost. Dữ liệu PROJECTS mock; bản chuẩn đọc /api/kad/projects
-// (spec/ui/08).
+// PeekDrawerHost. [Phase 7 hardening] "dự án" = mọi task thật có workflow_id
+// (không có bảng "projects" riêng trong spec 02 — mỗi task chạy 1 workflow
+// LÀ 1 dự án trong mô hình dữ liệu hiện tại); % và steps tính từ
+// workflow_definitions.steps thật + tasks.workflow_step thật, không suy diễn.
 const PROGRESS_COLLAPSE_KEY = "kanban-progress-collapsed";
 
-function ProjectProgressStrip() {
+function ProjectProgressStrip({
+  tasks,
+  agents,
+  loading,
+}: {
+  tasks: KadTask[];
+  agents: AgentProfile[];
+  loading: boolean;
+}) {
   const { openPeek } = usePeek();
   const [collapsed, setCollapsed] = useState(() => {
     try {
@@ -424,6 +493,52 @@ function ProjectProgressStrip() {
       return false;
     }
   });
+  const [workflowSteps, setWorkflowSteps] = useState<Record<string, KadWorkflowStep[]>>({});
+
+  const workflowTasks = useMemo(() => tasks.filter((t) => t.workflowId), [tasks]);
+  const workflowIds = useMemo(
+    () => Array.from(new Set(workflowTasks.map((t) => t.workflowId as string))),
+    [workflowTasks]
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const missing = workflowIds.filter((id) => !(id in workflowSteps));
+      if (!missing.length) return;
+      try {
+        const fetched = await Promise.all(
+          missing.map(async (id) => [id, (await kadApi.workflows.get(id)).steps] as const)
+        );
+        if (!cancelled) {
+          setWorkflowSteps((prev) => {
+            const next = { ...prev };
+            for (const [id, steps] of fetched) next[id] = steps;
+            return next;
+          });
+        }
+      } catch {
+        // A workflow fetch failing just drops that project from the strip
+        // (filtered out below since workflowSteps[id] stays unset) — not a
+        // hard error for the whole board.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only refetch when the SET of workflow ids changes
+  }, [workflowIds.join(",")]);
+
+  const agentsByName = useMemo(() => new Map(agents.map((a) => [a.name, a])), [agents]);
+
+  const projects = useMemo(
+    () =>
+      workflowTasks
+        .map((t) => ({ task: t, steps: t.workflowId ? workflowSteps[t.workflowId] : undefined }))
+        .filter((x): x is { task: KadTask; steps: KadWorkflowStep[] } => Boolean(x.steps))
+        .map(({ task, steps }) => taskToProject(task, steps, agentsByName)),
+    [workflowTasks, workflowSteps, agentsByName]
+  );
 
   const toggle = () =>
     setCollapsed((prev) => {
@@ -436,7 +551,7 @@ function ProjectProgressStrip() {
       return next;
     });
 
-  if (PROJECTS.length === 0) return null;
+  if (!loading && projects.length === 0) return null;
 
   return (
     <div>
@@ -451,7 +566,7 @@ function ProjectProgressStrip() {
         </button>
         {!collapsed && (
           <div className="mt-3 max-h-[280px] overflow-y-auto space-y-3">
-            {PROJECTS.map((project) => (
+            {projects.map((project) => (
               <button
                 key={project.id}
                 type="button"

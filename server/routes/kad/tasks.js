@@ -11,6 +11,7 @@ const workflowEngine = require("../../lib/kad/workflow-engine");
 const { emitTask, emitDept } = require("../../lib/kad/events");
 const { readKadActor, sendActorError } = require("../../lib/kad/auth");
 const { getUploader } = require("./attachments-upload");
+const v = require("../../lib/kad/validate");
 
 const router = express.Router();
 const err = (res, code, message, status = 400) =>
@@ -60,7 +61,17 @@ router.post("/", (req, res) => {
   const actor = readKadActor(req);
   if (sendActorError(actor, res)) return;
   const b = req.body || {};
-  if (!b.title || typeof b.title !== "string") return err(res, "EBADTITLE", "title is required");
+  const verr = v.firstError(
+    v.checkString(b.title, "title", { required: true, maxLen: 300 }),
+    v.checkString(b.description, "description", { maxLen: 20000 }),
+    v.checkEnum(b.priority, "priority", TASK_PRIORITIES),
+    v.checkString(b.working_dir, "working_dir", { maxLen: 1000 }),
+    v.checkString(b.workflow_id, "workflow_id", { maxLen: 100 }),
+    v.checkString(b.channel_context_ref, "channel_context_ref", { maxLen: 500 }),
+    v.checkString(b.channel_chat_type, "channel_chat_type", { maxLen: 50 }),
+    v.checkArray(b.attachment_names, "attachment_names", { maxItems: 20 })
+  );
+  if (verr) return err(res, verr.code, verr.message);
   const department_id = b.department_id || defaultDeptId();
   const task = repo.tasks.createTask({
     department_id,
@@ -108,10 +119,12 @@ router.patch("/:id", (req, res) => {
   const task = repo.tasks.getTask(req.params.id);
   if (!task) return err(res, "ENOTFOUND", "task not found", 404);
   const b = req.body || {};
-  if (b.status !== undefined && !TASK_STATUSES.includes(b.status))
-    return err(res, "EBADSTATUS", "invalid status");
-  if (b.priority !== undefined && !TASK_PRIORITIES.includes(b.priority))
-    return err(res, "EBADPRIORITY", "invalid priority");
+  const verr = v.firstError(
+    v.checkEnum(b.status, "status", TASK_STATUSES),
+    v.checkEnum(b.priority, "priority", TASK_PRIORITIES),
+    v.checkString(b.due_date, "due_date", { maxLen: 40 })
+  );
+  if (verr) return err(res, verr.code, verr.message);
   const patch = {};
   for (const k of ["status", "priority", "due_date"])
     if (req.body[k] !== undefined) patch[k] = req.body[k];
@@ -129,8 +142,11 @@ router.post("/:id/messages", (req, res) => {
   const task = repo.tasks.getTask(req.params.id);
   if (!task) return err(res, "ENOTFOUND", "task not found", 404);
   const b = req.body || {};
-  if (!b.content || typeof b.content !== "string")
-    return err(res, "EBADCONTENT", "content is required");
+  const verr = v.firstError(
+    v.checkString(b.content, "content", { required: true, maxLen: 20000 }),
+    v.checkArray(b.attachment_names, "attachment_names", { maxItems: 20 })
+  );
+  if (verr) return err(res, verr.code, verr.message);
   const attachmentNames = Array.isArray(b.attachment_names)
     ? b.attachment_names.slice(0, 20).map(String)
     : undefined;
@@ -353,6 +369,8 @@ router.post("/:id/report/:messageId/decide", (req, res) => {
     return err(res, "EBADDECISION", "decision must be approved|needs_changes");
   if (b.decision === "needs_changes" && !b.reason)
     return err(res, "EBADREASON", "reason is required for needs_changes");
+  const verr = v.checkString(b.reason, "reason", { maxLen: 5000 });
+  if (verr) return err(res, verr.code, verr.message);
 
   const at = new Date().toISOString();
   let updatedMsg;

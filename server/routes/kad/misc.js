@@ -88,6 +88,16 @@ router.post("/notifications/:id/read", (req, res) => {
   res.json(n);
 });
 
+// spec/ui/08 — bulk engine_session_id -> {task_id, task_title} map so
+// SessionCard/AgentCard on the Kanban board can show "tên phiên = tên công
+// việc" without an N+1 request per card.
+router.get("/session-task-map", (req, res) => {
+  const rows = repo.runs.listSessionTaskMap();
+  const map = {};
+  for (const r of rows) map[r.session_id] = { task_id: r.task_id, task_title: r.task_title };
+  res.json(map);
+});
+
 router.get("/audit", (req, res) => {
   res.json(
     repo.listAudit({

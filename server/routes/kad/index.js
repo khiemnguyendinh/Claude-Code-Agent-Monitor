@@ -17,8 +17,12 @@ const knowledgeRouter = require("./knowledge");
 const learningRouter = require("./learning");
 const connectorsRouter = require("./connectors");
 const larkRouter = require("./lark");
+const { makeLimiter } = require("../../lib/kad/rate-limit");
 
 const router = express.Router();
+// Phase 7 hardening: bound runaway loops/misbehaving scripts against the
+// local KAD API surface (see server/lib/kad/rate-limit.js for rationale).
+router.use(makeLimiter({ limit: 300 }));
 router.use("/tasks", tasksRouter);
 router.use("/approvals", approvalsRouter);
 router.use("/internal", internalRouter);

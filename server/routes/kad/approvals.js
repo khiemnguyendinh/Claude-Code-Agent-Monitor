@@ -10,6 +10,7 @@ const workflowEngine = require("../../lib/kad/workflow-engine");
 const { emitTask, emitDept } = require("../../lib/kad/events");
 const { analyzeLearningNote } = require("../../lib/kad/learning-loop");
 const { readKadActor, sendActorError } = require("../../lib/kad/auth");
+const v = require("../../lib/kad/validate");
 
 const router = express.Router();
 const err = (res, code, message, status = 400) =>
@@ -46,6 +47,8 @@ router.post("/:id/decide", (req, res) => {
   const b = req.body || {};
   if (!DECISIONS.has(b.decision))
     return err(res, "EBADDECISION", "decision must be approved|needs_changes|rejected");
+  const verr = v.checkString(b.reason, "reason", { maxLen: 5000 });
+  if (verr) return err(res, verr.code, verr.message);
 
   const task = repo.tasks.getTask(a.task_id);
   let decided;

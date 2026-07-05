@@ -1,36 +1,26 @@
 import { useEffect, useState } from "react";
-import { CheckCircle, ArrowRight, Activity, XCircle, AlertTriangle } from "lucide-react";
-import { KadCard, KadCardHeader, KadEmptyState } from "../components/primitives";
+import { ArrowRight, Activity, AlertTriangle } from "lucide-react";
+import { KadCard, KadEmptyState } from "../components/primitives";
 import { formatRelativeTime } from "../format";
 import { useKadToast } from "../components/Toast";
-import { api } from "../api-client";
+import { kadApi, type LearningNoteRow } from "../api-client";
 
-interface Note {
-  id: string;
-  correction_category: string;
-  severity: "minor" | "major" | "critical";
-  root_cause: string;
-  prevention: string;
-  affected_areas: string[];
-  proposed_change_target: string;
-  change_status: "noted" | "proposed" | "approved" | "applied";
-  created_at: string;
-}
+type Note = LearningNoteRow;
 
 export function LearningNotes() {
   const [notes, setNotes] = useState<Note[]>([]);
   const [loading, setLoading] = useState(true);
-  const { addToast } = useKadToast();
+  const showToast = useKadToast();
 
   const loadNotes = () => {
-    api
-      .get("/api/kad/learning-notes?department=rd")
+    kadApi.learningNotes
+      .list("rd")
       .then((res) => {
         setNotes(res);
         setLoading(false);
       })
-      .catch((err) => {
-        addToast({ message: "Lỗi tải learning notes", type: "error" });
+      .catch(() => {
+        showToast({ message: "Lỗi tải learning notes", tone: "warning" });
         setLoading(false);
       });
   };
@@ -40,23 +30,23 @@ export function LearningNotes() {
   }, []);
 
   const handlePropose = (id: string) => {
-    api
-      .post(`/api/kad/learning-notes/${id}/propose`, {})
+    kadApi.learningNotes
+      .propose(id)
       .then(() => {
-        addToast({ message: "Đã đề xuất áp dụng cải tiến", type: "success" });
+        showToast({ message: "Đã đề xuất áp dụng cải tiến", tone: "success" });
         loadNotes();
       })
-      .catch((err) => addToast({ message: err.message, type: "error" }));
+      .catch((err: Error) => showToast({ message: err.message, tone: "warning" }));
   };
 
   const handleApprove = (id: string) => {
-    api
-      .post(`/api/kad/learning-notes/${id}/approve`, {})
+    kadApi.learningNotes
+      .approve(id)
       .then(() => {
-        addToast({ message: "Đã duyệt và áp dụng cải tiến", type: "success" });
+        showToast({ message: "Đã duyệt và áp dụng cải tiến", tone: "success" });
         loadNotes();
       })
-      .catch((err) => addToast({ message: err.message, type: "error" }));
+      .catch((err: Error) => showToast({ message: err.message, tone: "warning" }));
   };
 
   if (loading) return <div className="p-6">Đang tải...</div>;

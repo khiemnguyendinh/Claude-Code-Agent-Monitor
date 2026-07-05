@@ -60,6 +60,7 @@ export interface TaskRow {
   id: string;
   department_id: string | null;
   workflow_id: string | null;
+  workflow_step: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -98,6 +99,10 @@ export interface KadTask {
   id: string;
   departmentId: string | null;
   workflowId: string | null;
+  // [Phase 7 hardening] step key the workflow engine last advanced to
+  // (spec 02 tasks.workflow_step) — real progress signal for the "Tiến độ dự
+  // án" strip's per-step state, no need to infer it from delegations.
+  workflowStep: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -120,6 +125,7 @@ function toTask(row: TaskRow): KadTask {
     id: row.id,
     departmentId: row.department_id,
     workflowId: row.workflow_id,
+    workflowStep: row.workflow_step,
     title: row.title,
     description: row.description,
     status: row.status,
@@ -746,6 +752,21 @@ export interface BlueprintRow {
   created_at: string;
 }
 
+// [Phase 7 hardening] server/routes/kad/learning.js response shape — same
+// field names as the DB row (spec 02 learning_notes), no camelCase adapter
+// needed since the UI (LearningNotes.tsx) already renders these raw.
+export interface LearningNoteRow {
+  id: string;
+  correction_category: string;
+  severity: "minor" | "major" | "critical";
+  root_cause: string;
+  prevention: string;
+  affected_areas: string[];
+  proposed_change_target: string;
+  change_status: "noted" | "proposed" | "approved" | "applied";
+  created_at: string;
+}
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 export const kadApi = {
@@ -809,6 +830,13 @@ export const kadApi = {
       request<{ task_id: string; confirmed: boolean; run_kicked: boolean }>(
         `/tasks/${encodeURIComponent(id)}/confirm`,
         { method: "POST" }
+      ),
+    // [Phase 7 hardening] real per-task delegation history — powers the
+    // "Tiến độ dự án" strip's per-agent progress (spec/ui/08's "Thành viên AI
+    // & tiến độ") from actual task_delegations rows instead of mock data.
+    delegations: (id: string) =>
+      request<DelegationRow[]>(`/tasks/${encodeURIComponent(id)}/delegations`).then((rows) =>
+        rows.map(toDelegation)
       ),
   },
 
@@ -986,6 +1014,30 @@ export const kadApi = {
     // the Delegation Card's trace link.
     get: (id: string) =>
       request<{ monitor_session_id: string | null }>(`/runs/${encodeURIComponent(id)}`),
+  },
+
+  // [Phase 7 hardening, spec/ui/08] engine_session_id -> {task_id, task_title}
+  // for every run that has one. Lets SessionCard/AgentCard show "tên phiên =
+  // tên công việc" instead of the projectFromCwd heuristic, in one request.
+  sessionTaskMap: () =>
+    request<Record<string, { task_id: string; task_title: string }>>("/session-task-map"),
+
+  // [Phase 7 hardening] server/routes/kad/learning.js — was previously called
+  // through a nonexistent `api.get/post` import (client/src/kad/pages/
+  // LearningNotes.tsx), which broke the ENTIRE app's module graph in dev
+  // (Vite throws on an unresolvable named export at import time, before React
+  // ever mounts — not something an error boundary can catch).
+  learningNotes: {
+    list: (department: string) =>
+      request<LearningNoteRow[]>(`/learning-notes?department=${encodeURIComponent(department)}`),
+    propose: (id: string) =>
+      request<LearningNoteRow>(`/learning-notes/${encodeURIComponent(id)}/propose`, {
+        method: "POST",
+      }),
+    approve: (id: string) =>
+      request<LearningNoteRow>(`/learning-notes/${encodeURIComponent(id)}/approve`, {
+        method: "POST",
+      }),
   },
 
   dependencies: {
