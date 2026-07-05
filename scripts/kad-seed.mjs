@@ -36,6 +36,7 @@ const ID = {
   dept: "dept-rd",
   blueprint: "bp-rd-v1",
   workflow: "wf-rd-standard-flow",
+  briefingRule: "rule-rd-daily-briefing",
   agents: {
     main: "agent-main-rd",
     architect: "agent-sub-program-architect",
@@ -531,6 +532,24 @@ function seed() {
       });
     }
 
+    // Morning briefing as a single schedule rule (phase-06_5 item 5 — replaces
+    // the earlier standalone [ĐỀ XUẤT]). run_briefing is deterministic + spends
+    // no tokens → approval_required=0 (auto-runs at the scheduled time). created_at
+    // gates the first fire so a fresh install never back-fires today's occurrence.
+    db.prepare(
+      `INSERT INTO automation_rules
+         (id, department_id, name, trigger_type, trigger_config, action_type, action_config,
+          approval_required, enabled, fire_count, created_by, status, created_at)
+       VALUES (@id,@dept,@name,'schedule',@trig,'run_briefing',@act,0,1,0,'seed','active',@now)`
+    ).run({
+      id: ID.briefingRule,
+      dept: ID.dept,
+      name: "Giao ban buổi sáng",
+      trig: JSON.stringify({ freq: "daily", time: "07:00", label: "Hằng ngày 07:00" }),
+      act: JSON.stringify({}),
+      now: NOW,
+    });
+
     db.prepare(
       `INSERT INTO audit_log (id,department_id,action,actor_type,actor_id,target_type,target_id,details,created_at)
        VALUES (@id,@dept,'org_context_changed','system','seed','org_context',@ctx,@details,@now)`
@@ -544,7 +563,7 @@ function seed() {
   });
   tx();
   console.log(
-    "[kad-seed] seeded: org, org_context v1, dept rd, blueprint v1, 8 agents (full roster active — phase-03 §1), workflow, 6 templates."
+    "[kad-seed] seeded: org, org_context v1, dept rd, blueprint v1, 8 agents (full roster active — phase-03 §1), workflow, 6 templates, 1 automation rule (daily briefing — phase-06_5)."
   );
 }
 

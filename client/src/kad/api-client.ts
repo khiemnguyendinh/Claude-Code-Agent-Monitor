@@ -68,6 +68,8 @@ export interface TaskRow {
   due_date: string | null;
   assigned_agent_id: string | null;
   brief: BriefRow | null;
+  activation?: "manual" | "dependency" | "schedule" | "rule";
+  origin_rule_id?: string | null;
   created_at: string;
   updated_at: string;
   completed_at: string | null;
@@ -104,6 +106,10 @@ export interface KadTask {
   dueDate: string | null;
   assignedAgentId: string | null;
   brief: BriefRow | null;
+  // Phase 6.5 — provenance for automation-created tasks. originRuleId != null +
+  // status 'inbox' = an auto-task in the "chờ xác nhận" queue (Tự động hoá).
+  activation: "manual" | "dependency" | "schedule" | "rule";
+  originRuleId: string | null;
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
@@ -122,6 +128,8 @@ function toTask(row: TaskRow): KadTask {
     dueDate: row.due_date,
     assignedAgentId: row.assigned_agent_id,
     brief: row.brief,
+    activation: row.activation ?? "manual",
+    originRuleId: row.origin_rule_id ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     completedAt: row.completed_at,
@@ -673,6 +681,13 @@ export const kadApi = {
       request<{ cancelled: string[] }>(`/tasks/${encodeURIComponent(id)}/cancel-run`, {
         method: "POST",
       }),
+    // Phase 6.5 — confirm an auto-task in the "chờ xác nhận" queue → kicks the
+    // first Main Agent turn (server/routes/kad/tasks.js POST /:id/confirm).
+    confirm: (id: string) =>
+      request<{ task_id: string; confirmed: boolean; run_kicked: boolean }>(
+        `/tasks/${encodeURIComponent(id)}/confirm`,
+        { method: "POST" }
+      ),
   },
 
   approvals: {
@@ -829,6 +844,12 @@ export const kadApi = {
         method: "POST",
         body: JSON.stringify({ enabled }),
       }).then(toAutomationRule),
+    // Chạy thử (Phase 6.5): "30 ngày qua luật này sẽ kích ở đâu" — no task created.
+    dryRun: (id: string, days = 30) =>
+      request<{ count: number; occurrences: string[]; summary: string }>(
+        `/automation-rules/${encodeURIComponent(id)}/dry-run`,
+        { method: "POST", body: JSON.stringify({ days }) }
+      ),
   },
 
   // Department-wide "Tạm dừng tất cả" kill switch (spec/ui/09 §3) — separate

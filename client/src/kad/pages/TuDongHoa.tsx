@@ -52,15 +52,26 @@ interface BlockedRow {
   dependencyId: string | null;
 }
 
+// An auto-task (origin_rule_id set) still in 'inbox' = created by a rule but not
+// yet confirmed → sits in the "chờ xác nhận" queue, no agent spawned (spec 02 §6b).
+interface PendingRow {
+  id: string;
+  title: string;
+  originRuleId: string | null;
+}
+
 export function TuDongHoa() {
   const showToast = useKadToast();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [blocked, setBlocked] = useState<BlockedRow[]>([]);
+  const [pending, setPending] = useState<PendingRow[]>([]);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [allAutomationPaused, setAllAutomationPaused] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
+  // Real dry-run summaries fetched lazily on row expand (spec 03 — no task created).
+  const [dryRuns, setDryRuns] = useState<Record<string, string>>({});
 
   const refreshBlocked = useCallback(async () => {
     const [blockedTasks, allTasks] = await Promise.all([
@@ -92,6 +103,17 @@ export function TuDongHoa() {
     setRules(await kadApi.automationRules.list());
   }, []);
 
+  // Auto-tasks in the "chờ xác nhận" queue: created by a rule (originRuleId set),
+  // still 'inbox' (no agent spawned). Confirming kicks the first turn.
+  const refreshPending = useCallback(async () => {
+    const inbox = await kadApi.tasks.list({ status: "inbox", limit: 200 });
+    setPending(
+      inbox
+        .filter((t) => t.originRuleId)
+        .map((t) => ({ id: t.id, title: t.title, originRuleId: t.originRuleId }))
+    );
+  }, []);
+
   const refreshPaused = useCallback(async () => {
     const { paused } = await kadApi.automation.getPaused();
     setAllAutomationPaused(paused);
@@ -100,13 +122,13 @@ export function TuDongHoa() {
   const loadAll = useCallback(() => {
     setLoading(true);
     setLoadError(false);
-    return Promise.all([refreshBlocked(), refreshRules(), refreshPaused()])
+    return Promise.all([refreshBlocked(), refreshPending(), refreshRules(), refreshPaused()])
       .catch((e) => {
         console.warn("[kad] failed to load automation screen:", e && e.message);
         setLoadError(true);
       })
       .finally(() => setLoading(false));
-  }, [refreshBlocked, refreshRules, refreshPaused]);
+  }, [refreshBlocked, refreshPending, refreshRules, refreshPaused]);
 
   useEffect(() => {
     loadAll();
@@ -148,6 +170,24 @@ export function TuDongHoa() {
       await kadApi.automationRules.toggle(rule.id, !rule.enabled);
       await refreshRules();
     });
+
+  const handleConfirm = (row: PendingRow) =>
+    runAction(async () => {
+      await kadApi.tasks.confirm(row.id);
+      showToast({ message: "Đã xác nhận — việc bắt đầu chạy.", tone: "success" });
+      await refreshPending();
+    });
+
+  // Expand a rule row and lazily fetch its real dry-run ("30 ngày qua sẽ kích ở đâu").
+  const handleExpand = (ruleId: string) => {
+    setExpanded((cur) => (cur === ruleId ? null : ruleId));
+    if (dryRuns[ruleId] === undefined) {
+      kadApi.automationRules
+        .dryRun(ruleId)
+        .then((r) => setDryRuns((prev) => ({ ...prev, [ruleId]: r.summary })))
+        .catch(() => setDryRuns((prev) => ({ ...prev, [ruleId]: "" })));
+    }
+  };
 
   if (loading) {
     return (
@@ -210,6 +250,38 @@ export function TuDongHoa() {
         </div>
       )}
 
+      {/* Việc tự động chờ xác nhận (spec 02 §6b — auto-task chưa spawn agent) */}
+      {pending.length > 0 && (
+        <KadCard>
+          <KadCardHeader title={`Việc chờ xác nhận (${pending.length})`} />
+          <div className="divide-y divide-kad-border">
+            {pending.map((p) => {
+              const ruleName = rules.find((r) => r.id === p.originRuleId)?.name ?? "luật tự động";
+              return (
+                <div key={p.id} className="flex items-center gap-3 py-2.5">
+                  <div className="flex-1 min-w-0">
+                    <p className="kad-body text-kad-text-strong truncate">{p.title}</p>
+                    <p className="kad-caption text-kad-text-muted truncate">
+                      <span
+                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded"
+                        style={{ background: "var(--kad-surface-2)" }}
+                      >
+                        <Zap className="w-3 h-3" aria-hidden />
+                        {ruleName}
+                      </span>{" "}
+                      · chờ xác nhận (chưa tiêu token)
+                    </p>
+                  </div>
+                  <KadButton variant="primary" onClick={() => handleConfirm(p)}>
+                    Xác nhận
+                  </KadButton>
+                </div>
+              );
+            })}
+          </div>
+        </KadCard>
+      )}
+
       {/* Việc đang chờ điều kiện */}
       <KadCard>
         <KadCardHeader title={`Việc đang chờ điều kiện (${blocked.length})`} />
@@ -251,7 +323,8 @@ export function TuDongHoa() {
                 rule={rule}
                 paused={allAutomationPaused}
                 expanded={expanded === rule.id}
-                onToggleExpand={() => setExpanded((cur) => (cur === rule.id ? null : rule.id))}
+                dryRunSummary={dryRuns[rule.id]}
+                onToggleExpand={() => handleExpand(rule.id)}
                 onToggle={() => handleToggleRule(rule)}
               />
             ))}
@@ -266,12 +339,14 @@ function RuleRow({
   rule,
   paused,
   expanded,
+  dryRunSummary,
   onToggleExpand,
   onToggle,
 }: {
   rule: AutomationRule;
   paused: boolean;
   expanded: boolean;
+  dryRunSummary: string | undefined;
   onToggleExpand: () => void;
   onToggle: () => void;
 }) {
@@ -343,7 +418,10 @@ function RuleRow({
         <div className="pl-6 pb-3 space-y-2">
           <div className="rounded-lg bg-kad-surface-2 px-3 py-2">
             <p className="kad-caption text-kad-text-muted">
-              <span className="text-kad-text-strong">Chạy thử 30 ngày:</span> {rule.dryRun30d}
+              <span className="text-kad-text-strong">Chạy thử 30 ngày:</span>{" "}
+              {dryRunSummary === undefined
+                ? "đang tính…"
+                : dryRunSummary || rule.dryRun30d}
             </p>
           </div>
           <div>

@@ -8,13 +8,15 @@
  * Phase 1 kinds wired: reconcile_runs, resume_task, start_delegation.
  * Phase 3 adds task_dependencies auto-release — not a `kind` (nothing to
  * lease/dedup, it's a stateless scan), so it runs directly every sweep tick
- * (see dependencyWorker.checkReleases() below). Automation-rule kinds
- * (evaluate_rules/run_schedule/sla_check/...) remain unwired until Phase 6.5 —
- * unknown `kind` rows still fail loudly.
+ * (see dependencyWorker.checkReleases() below). Phase 6.5 wires the automation
+ * kinds: `evaluate_rules` (event-driven, enqueued when a task reaches done) and
+ * `run_schedule` (a forceable trigger of the due-schedule sweep, which also runs
+ * every tick alongside dependency release). unknown `kind` rows still fail loudly.
  */
 const repo = require("./repo");
 const orchestrator = require("./orchestrator");
 const dependencyWorker = require("./dependency-worker");
+const automation = require("./automation");
 
 const TICK_MS = Number(process.env.KAD_WORKER_TICK_MS || 2000);
 let timer = null;
@@ -42,6 +44,23 @@ const handlers = {
       throw new PermanentJobError("start_delegation payload missing delegation_id");
     await orchestrator.runDelegation(payload.delegation_id);
   },
+  // Phase 6.5 — a business event fired (e.g. a task reached done). Evaluate
+  // every enabled event rule in the department against it. Idempotent per event:
+  // each rule's own cooldown/max_fires/loop guards decide whether it acts.
+  async evaluate_rules(payload) {
+    if (!payload || !payload.department_id)
+      throw new PermanentJobError("evaluate_rules payload missing department_id");
+    automation.evaluateEventRules({
+      department_id: payload.department_id,
+      event: payload.event,
+      task_id: payload.task_id,
+    });
+  },
+  // Phase 6.5 — forceable trigger of the due-schedule sweep (the same sweep runs
+  // every tick; this kind lets a caller/verify demand it explicitly).
+  async run_schedule() {
+    automation.sweepSchedules();
+  },
 };
 
 async function runOne(job) {
@@ -60,6 +79,10 @@ async function sweep() {
   sweeping = true;
   try {
     dependencyWorker.checkReleases(); // spec 02 §6b / audit-260704 §5.2 — every tick
+    // Phase 6.5 — fire any automation schedule now due (cheap enabled-rule scan,
+    // same "stateless per-tick" shape as dependency release). Never throws out of
+    // the sweep: a bad rule is logged inside sweepSchedules(), not here.
+    automation.sweepSchedules();
     const jobs = repo.jobs.leaseDue(3);
     if (process.env.KAD_JOBS_TRACE && jobs.length)
       console.log(

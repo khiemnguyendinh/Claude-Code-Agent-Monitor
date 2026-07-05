@@ -38,6 +38,22 @@ function defaultDeptId() {
   return d ? d.id : null;
 }
 
+// Phase 6.5 — enqueue the durable event-evaluation job when a task reaches done
+// (spec 04 §4 evaluate_rules). Best-effort: a queue failure must never break the
+// human-facing decision that just committed. The rule engine's own cooldown/
+// max_fires/loop guards make re-evaluation of the same event harmless.
+function enqueueEvaluateOnDone(task) {
+  if (!task || !task.department_id) return;
+  try {
+    repo.jobs.enqueue({
+      kind: "evaluate_rules",
+      payload: { department_id: task.department_id, event: "task.done", task_id: task.id },
+    });
+  } catch (e) {
+    console.warn(`[kad] evaluate_rules enqueue failed for task ${task.id}:`, e && e.message);
+  }
+}
+
 router.post("/", (req, res) => {
   const b = req.body || {};
   if (!b.title || typeof b.title !== "string") return err(res, "EBADTITLE", "title is required");
@@ -93,8 +109,11 @@ router.patch("/:id", (req, res) => {
   const patch = {};
   for (const k of ["status", "priority", "due_date"])
     if (req.body[k] !== undefined) patch[k] = req.body[k];
+  const wasDone = task.status === "done";
   const updated = repo.tasks.updateTask(req.params.id, patch);
   emitTask(req.params.id, "kad.task.status", { task_id: req.params.id, status: updated.status });
+  // Phase 6.5 — a task reaching done is a business event automation rules watch.
+  if (!wasDone && updated.status === "done") enqueueEvaluateOnDone(updated);
   res.json(updated);
 });
 
@@ -382,6 +401,8 @@ router.post("/:id/report/:messageId/decide", (req, res) => {
   } catch (e) {
     console.warn(`[kad] report/decide: syncStep failed for task ${task.id}:`, e && e.message);
   }
+  // Phase 6.5 — approved report moves the task to done: an automation event.
+  if (b.decision === "approved") enqueueEvaluateOnDone(repo.tasks.getTask(task.id));
   if (b.decision === "needs_changes") {
     try {
       repo.jobs.enqueue({
@@ -405,6 +426,41 @@ router.post("/:id/report/:messageId/decide", (req, res) => {
     }
   }
   res.json({ message: updatedMsg, resume_enqueued: b.decision === "needs_changes" });
+});
+
+// [Xác nhận] an auto-task in the "chờ xác nhận" queue (spec 02 §6b, phase-06_5
+// item 4). An automation `create_task` with approval_required=1 lands in 'inbox'
+// with origin_rule_id set and NO run — no agent has spawned yet. Confirming kicks
+// the first Main Agent turn, exactly as a human's first message would. Only these
+// unstarted auto-tasks are confirmable; a normal or already-running task 409s.
+router.post("/:id/confirm", (req, res) => {
+  const task = repo.tasks.getTask(req.params.id);
+  if (!task) return err(res, "ENOTFOUND", "task not found", 404);
+  if (!task.origin_rule_id)
+    return err(res, "ENOTAUTO", "task was not created by an automation rule", 409);
+  if (repo.runs.listByTask(task.id).length > 0)
+    return err(res, "EALREADYSTARTED", "task already started", 409);
+  if (!["inbox", "triaged"].includes(task.status))
+    return err(res, "EBADSTATE", `task not awaiting confirmation (status=${task.status})`, 409);
+
+  repo.audit({
+    department_id: task.department_id,
+    task_id: task.id,
+    action: "auto_task_confirmed",
+    actor_type: "human",
+    actor_id: "human",
+    channel: (req.body || {}).channel || "web",
+    target_type: "task",
+    target_id: task.id,
+    details: { origin_rule_id: task.origin_rule_id },
+  });
+  emitTask(task.id, "kad.task.status", { task_id: task.id, status: task.status });
+  setImmediate(() => {
+    orchestrator.startTaskTurn(task.id).catch((e) => {
+      console.warn(`[kad] confirm start(${task.id}) error:`, e && e.message);
+    });
+  });
+  res.json({ task_id: task.id, confirmed: true, run_kicked: true });
 });
 
 router.post("/:id/cancel-run", (req, res) => {

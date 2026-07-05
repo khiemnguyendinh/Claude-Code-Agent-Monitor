@@ -91,4 +91,76 @@ function setEnabled(id, enabled) {
   return getRule(id);
 }
 
-module.exports = { createRule, getRule, listRules, setEnabled, listFires };
+/** Enabled + active rules of one trigger_type — the candidate set the worker evaluates. */
+function listFireable(trigger_type, { department_id } = {}) {
+  const where = ["enabled=1", "status='active'", "trigger_type=?"];
+  const args = [trigger_type];
+  if (department_id) (where.push("department_id=?"), args.push(department_id));
+  return db
+    .prepare(`SELECT * FROM automation_rules WHERE ${where.join(" AND ")} ORDER BY created_at ASC`)
+    .all(...args)
+    .map(hydrate);
+}
+
+/** PATCH — only whitelisted editable columns; JSON configs re-serialized. */
+function updateRule(id, patch = {}) {
+  const cols = {
+    name: (v) => v,
+    trigger_config: (v) => JSON.stringify(v || {}),
+    action_config: (v) => JSON.stringify(v || {}),
+    approval_required: (v) => (v === false ? 0 : 1),
+    cooldown_seconds: (v) => v ?? null,
+    max_fires: (v) => v ?? null,
+    status: (v) => v,
+  };
+  const sets = [];
+  const params = { id };
+  for (const k of Object.keys(cols)) {
+    if (patch[k] !== undefined) {
+      sets.push(`${k}=@${k}`);
+      params[k] = cols[k](patch[k]);
+    }
+  }
+  if (!sets.length) return getRule(id);
+  db.prepare(`UPDATE automation_rules SET ${sets.join(", ")} WHERE id=@id`).run(params);
+  return getRule(id);
+}
+
+/** Bump the quota counters — called ONLY when a fire results in a real action
+ * (created/notified), so cooldown_seconds/max_fires track real fires not skips. */
+function markFired(id) {
+  db.prepare(
+    "UPDATE automation_rules SET fire_count=fire_count+1, last_fired_at=@now WHERE id=@id"
+  ).run({ id, now: nowIso() });
+  return getRule(id);
+}
+
+/** Record one evaluation outcome (created / skipped_* / blocked_loop / notified). */
+function recordFire({ rule_id, trigger_ref, action_task_id, result, note }) {
+  const id = newId("fire");
+  db.prepare(
+    `INSERT INTO automation_rule_fires (id, rule_id, fired_at, trigger_ref, action_task_id, result, note)
+     VALUES (@id,@rule_id,@now,@trigger_ref,@action_task_id,@result,@note)`
+  ).run({
+    id,
+    rule_id,
+    now: nowIso(),
+    trigger_ref: trigger_ref ?? null,
+    action_task_id: action_task_id ?? null,
+    result,
+    note: note ? String(note).slice(0, 500) : null,
+  });
+  return db.prepare("SELECT * FROM automation_rule_fires WHERE id=?").get(id);
+}
+
+module.exports = {
+  createRule,
+  getRule,
+  listRules,
+  listFireable,
+  updateRule,
+  setEnabled,
+  markFired,
+  recordFire,
+  listFires,
+};

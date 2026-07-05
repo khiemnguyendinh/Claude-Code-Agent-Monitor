@@ -1649,12 +1649,209 @@ async function runS3Deps() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
+/**
+ * Scenario S6.5 (Phase 6.5) — automation triggers. Pure INFRA leg (no engine):
+ * the whole point is the SAFETY gauntlet, all of which is deterministic service
+ * logic. Drives the real API + real worker sweep + real WS, asserts against real
+ * SQL. Covers the phase DoD: event rule → auto-task in "chờ xác nhận" (no run),
+ * loop block, budget skip, dry-run, schedule → briefing artifact, kill switch.
+ * Run: --s6_5
+ */
+async function runS65() {
+  const TMP = path.join(os.tmpdir(), `kad-verify-s65-${process.pid}.db`);
+  for (const f of [TMP, TMP + "-wal", TMP + "-shm"]) try { fs.unlinkSync(f); } catch {}
+  process.env.DASHBOARD_DB_PATH = TMP;
+  process.env.DASHBOARD_TOKEN = "";
+  process.env.KAD_WORKER_TICK_MS = "3600000"; // deterministic — only manual sweep() runs the worker
+
+  const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (seed.status !== 0) {
+    console.error("seed failed:", seed.stderr || seed.stdout);
+    process.exit(1);
+  }
+
+  const { createApp } = require(path.join(ROOT, "server/index.js"));
+  const kad = require(path.join(ROOT, "server/routes/kad"));
+  const { initWebSocket } = require(path.join(ROOT, "server/websocket.js"));
+  const jobQueue = require(path.join(ROOT, "server/lib/kad/job-queue"));
+  const repo = require(path.join(ROOT, "server/lib/kad/repo"));
+  const app = createApp();
+  const server = http.createServer(app);
+  initWebSocket(server);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const BASE = `http://127.0.0.1:${port}`;
+  kad.initKad({ apiBase: BASE });
+
+  const api = async (method, p, body) => {
+    const resp = await fetch(BASE + p, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+  const autoTasks = (ruleId) =>
+    repo.db.prepare("SELECT * FROM tasks WHERE origin_rule_id=? ORDER BY created_at ASC").all(ruleId);
+  const fires = async (ruleId) => (await api("GET", `/api/kad/automation-rules/${ruleId}/fires`)).body;
+
+  const { default: WebSocketClient } = await import("ws");
+  let ws;
+
+  try {
+    const deptId = repo.catalog.getDepartmentBySlug("rd").id;
+
+    // WS: capture kad.rule.fired on the department scope.
+    ws = new WebSocketClient(`ws://127.0.0.1:${port}/ws`);
+    const received = [];
+    await new Promise((resolve, reject) => {
+      ws.on("open", () => {
+        ws.send(JSON.stringify({ subscribe: `kad:department:${deptId}` }));
+        resolve();
+      });
+      ws.on("error", reject);
+    });
+    ws.on("message", (raw) => { try { received.push(JSON.parse(raw.toString())); } catch {} });
+
+    // 1) Event rule: task done + tag course-01 → tạo việc môn kế (approval_required).
+    const ruleResp = await api("POST", "/api/kad/automation-rules", {
+      name: "course-01: xong syllabus → R&D môn kế",
+      trigger_type: "event",
+      trigger_config: { event: "task.done", filter: { title_contains: "course-01" } },
+      action_type: "create_task",
+      action_config: { title: "R&D course-01 môn kế tiếp" },
+    });
+    check("S65.1 event rule created (201)", ruleResp.status === 201);
+    const ruleId = ruleResp.body.id;
+    check("S65.2 rule defaults approval_required=1", ruleResp.body.approval_required === 1);
+
+    // Source task carries the tag; mark done via the real generic PATCH.
+    const src1 = await api("POST", "/api/kad/tasks", { title: "Syllabus course-01 môn 01" });
+    await api("PATCH", `/api/kad/tasks/${src1.body.id}`, { status: "done" });
+    await jobQueue.sweep(); // leases the evaluate_rules job the PATCH enqueued
+    await sleep(120);
+
+    const created = autoTasks(ruleId);
+    check("S65.3 auto-task created by event rule", created.length === 1, `got ${created.length}`);
+    const auto = created[0];
+    check("S65.4 auto-task in 'inbox' (chờ xác nhận)", auto && auto.status === "inbox");
+    check("S65.5 auto-task carries origin_rule_id + depth=1",
+      auto && auto.origin_rule_id === ruleId && auto.automation_depth === 1);
+    check("S65.6 auto-task has NO run yet (chưa spawn agent)",
+      repo.runs.listByTask(auto.id).length === 0);
+    const f1 = await fires(ruleId);
+    check("S65.7 fire recorded result=created", f1.some((f) => f.result === "created"));
+    check("S65.8 kad.rule.fired broadcast (WS)",
+      received.some((m) => m.type === "kad.rule.fired" && m.data && m.data.rule_id === ruleId),
+      `types: ${JSON.stringify(received.map((m) => m.type))}`);
+
+    // 2) Confirm GUARD: a NON-auto task is not confirmable (409). The positive
+    // confirm→spawn path reuses startTaskTurn, already proven by S1/S2 with the
+    // real engine — not re-spawned here to keep this leg deterministic.
+    const confirmBad = await api("POST", `/api/kad/tasks/${src1.body.id}/confirm`);
+    check("S65.9 confirm rejects non-auto task (409)", confirmBad.status === 409);
+
+    // 3) Loop safety: the rule must NOT be re-triggered by the task it created.
+    await api("PATCH", `/api/kad/tasks/${auto.id}`, { status: "done" }); // auto-task matches the filter too
+    await jobQueue.sweep();
+    await sleep(120);
+    check("S65.10 no 2nd auto-task (loop blocked)", autoTasks(ruleId).length === 1);
+    const f2 = await fires(ruleId);
+    check("S65.11 fire recorded result=blocked_loop", f2.some((f) => f.result === "blocked_loop"));
+
+    // 4) Budget guard: dept over daily budget → skipped_budget, KHÔNG tạo việc.
+    const dept = repo.catalog.getDepartment(deptId);
+    const origSettings = dept.settings;
+    repo.db.prepare("UPDATE departments SET settings=? WHERE id=?").run(
+      JSON.stringify({ ...origSettings, budget: { ...(origSettings.budget || {}), daily_token_limit: 0 } }),
+      deptId
+    );
+    const src2 = await api("POST", "/api/kad/tasks", { title: "Syllabus course-01 môn 02" });
+    await api("PATCH", `/api/kad/tasks/${src2.body.id}`, { status: "done" });
+    await jobQueue.sweep();
+    await sleep(120);
+    check("S65.12 budget over → no new auto-task", autoTasks(ruleId).length === 1);
+    const f3 = await fires(ruleId);
+    check("S65.13 fire recorded result=skipped_budget", f3.some((f) => f.result === "skipped_budget"));
+    const notifs = await api("GET", "/api/kad/notifications");
+    check("S65.14 budget_warning notification emitted",
+      notifs.body.some((n) => n.kind === "budget_warning"));
+    repo.db.prepare("UPDATE departments SET settings=? WHERE id=?").run(
+      JSON.stringify(origSettings), deptId
+    ); // restore
+
+    // 5) Dry-run: renders past matching events, creates NOTHING.
+    const tasksBefore = repo.db.prepare("SELECT COUNT(*) n FROM tasks").get().n;
+    const dry = await api("POST", `/api/kad/automation-rules/${ruleId}/dry-run`, { days: 30 });
+    check("S65.15 dry-run returns matches (course-01 done tasks)", dry.body.count >= 1);
+    const tasksAfter = repo.db.prepare("SELECT COUNT(*) n FROM tasks").get().n;
+    check("S65.16 dry-run created no task", tasksBefore === tasksAfter);
+
+    // 6) Schedule → briefing (deterministic artifact). Backdate created_at so the
+    // just-passed daily occurrence is due (simulates "run_after tới hạn").
+    const t = new Date(Date.now() - 60000);
+    const hhmm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+    const schedResp = await api("POST", "/api/kad/automation-rules", {
+      name: "Giao ban buổi sáng",
+      trigger_type: "schedule",
+      trigger_config: { freq: "daily", time: hhmm },
+      action_type: "run_briefing",
+      action_config: {},
+    });
+    const schedId = schedResp.body.id;
+    repo.db.prepare("UPDATE automation_rules SET created_at=? WHERE id=?").run(
+      new Date(Date.now() - 2 * 864e5).toISOString(), schedId
+    );
+    await jobQueue.sweep(); // sweepSchedules() fires the due briefing
+    await sleep(120);
+    const schedFires = await fires(schedId);
+    const briefFire = schedFires.find((f) => f.result === "created");
+    check("S65.17 schedule fired → briefing task created", !!briefFire && !!briefFire.action_task_id);
+    if (briefFire) {
+      const brief = repo.tasks.getTask(briefFire.action_task_id);
+      check("S65.18 briefing task done + activation=schedule",
+        brief && brief.status === "done" && brief.activation === "schedule");
+      const arts = repo.artifacts.listArtifacts({ task_id: briefFire.action_task_id });
+      check("S65.19 briefing artifact produced", arts.length >= 1 && /Giao ban/.test(arts[0].title));
+    }
+    const briefNotif = (await api("GET", "/api/kad/notifications")).body;
+    check("S65.20 daily_briefing notification", briefNotif.some((n) => n.kind === "daily_briefing"));
+
+    // 7) Kill switch: pause-all → no rule fires until re-enabled.
+    await api("POST", "/api/kad/automation/pause-all", { department_id: deptId, paused: true });
+    const src3 = await api("POST", "/api/kad/tasks", { title: "Syllabus course-01 môn 03" });
+    await api("PATCH", `/api/kad/tasks/${src3.body.id}`, { status: "done" });
+    const firesBeforePause = (await fires(ruleId)).length;
+    await jobQueue.sweep();
+    await sleep(120);
+    check("S65.21 paused → no new auto-task", autoTasks(ruleId).length === 1);
+    check("S65.22 paused → no new fire recorded", (await fires(ruleId)).length === firesBeforePause);
+    const pausedState = await api("GET", `/api/kad/automation/paused?department=${deptId}`);
+    check("S65.23 pause-all state readable", pausedState.body.paused === true);
+    await api("POST", "/api/kad/automation/pause-all", { department_id: deptId, paused: false });
+  } finally {
+    try { ws?.close(); } catch {}
+    try { jobQueue.stopWorker(); } catch {}
+    server.close();
+    for (const f of [TMP, TMP + "-wal", TMP + "-shm"]) try { fs.unlinkSync(f); } catch {}
+  }
+
+  console.log(results.join("\n"));
+  console.log(`\n=== S6.5: ${pass} passed, ${fail} failed ===`);
+  process.exit(fail > 0 ? 1 : 0);
+}
+
 if (process.argv.includes("--s2")) {
   runS2().catch((e) => { console.error("verify S2 crashed:", e); process.exit(1); });
 } else if (process.argv.includes("--s3")) {
   runS3().catch((e) => { console.error("verify S3 crashed:", e); process.exit(1); });
 } else if (process.argv.includes("--s3-deps")) {
   runS3Deps().catch((e) => { console.error("verify S3-deps crashed:", e); process.exit(1); });
+} else if (process.argv.includes("--s6_5") || process.argv.includes("--s65")) {
+  runS65().catch((e) => { console.error("verify S6.5 crashed:", e); process.exit(1); });
 } else {
   main().catch((e) => { console.error("verify crashed:", e); process.exit(1); });
 }
