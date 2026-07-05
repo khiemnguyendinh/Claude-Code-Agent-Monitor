@@ -1059,9 +1059,187 @@ async function runS2() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
+// ---------------------------------------------------------------------------
+// S3-deps (Phase 3c track — task_dependencies auto-release, spec 02 §6b,
+// spec 03 §5.4, audit-260704 §5.2). No engine spawn needed: releasing a
+// dependency is a pure status-transition worker, so both legs run for real
+// against the isolated server — real SQL + a real kad.task.released WS frame,
+// no mocking. Does NOT exercise the workflow engine / QC gate / roster
+// (Phase 3b, a separate track) — that DoD lives in its own scenario.
+// ---------------------------------------------------------------------------
+async function runS3Deps() {
+  const TMP_DB3 = path.join(os.tmpdir(), `kad-verify-s3deps-${process.pid}.db`);
+  for (const f of [TMP_DB3, TMP_DB3 + "-wal", TMP_DB3 + "-shm"])
+    try {
+      fs.unlinkSync(f);
+    } catch {}
+  process.env.DASHBOARD_DB_PATH = TMP_DB3;
+  process.env.DASHBOARD_TOKEN = "";
+  process.env.KAD_WORKER_TICK_MS = "3600000"; // deterministic — only manual sweep() below runs it
+
+  const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (seed.status !== 0) {
+    console.error("seed failed:", seed.stderr || seed.stdout);
+    process.exit(1);
+  }
+
+  const { createApp } = require(path.join(ROOT, "server/index.js"));
+  const kad = require(path.join(ROOT, "server/routes/kad"));
+  const { initWebSocket } = require(path.join(ROOT, "server/websocket.js"));
+  const jobQueue = require(path.join(ROOT, "server/lib/kad/job-queue"));
+  const repo = require(path.join(ROOT, "server/lib/kad/repo"));
+  const app = createApp();
+  const server = http.createServer(app);
+  initWebSocket(server);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const BASE = `http://127.0.0.1:${port}`;
+  kad.initKad({ apiBase: BASE });
+
+  const api = async (method, p, body) => {
+    const resp = await fetch(BASE + p, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+
+  const { default: WebSocketClient } = await import("ws");
+  let ws;
+
+  try {
+    // 1) môn 01 (source) + môn 02 (dependent) — real tasks via the real API.
+    const t1 = await api("POST", "/api/kad/tasks", { title: "R&D Môn 01 — pilot" });
+    const t2 = await api("POST", "/api/kad/tasks", { title: "R&D Môn 02 — kế tiếp" });
+    check("S3d.1 tasks created", t1.status === 201 && t2.status === 201);
+    const task1Id = t1.body.id;
+    const task2Id = t2.body.id;
+    const deptId = t1.body.department_id;
+
+    // 2) môn 02 phụ thuộc "môn 01 hoàn thành" (dep_task_done).
+    const dep = await api("POST", `/api/kad/tasks/${task2Id}/dependencies`, {
+      depends_on_task_id: task1Id,
+      release_condition: "dep_task_done",
+    });
+    check("S3d.2 dependency created (201)", dep.status === 201);
+    const afterDep = await api("GET", `/api/kad/tasks/${task2Id}`);
+    check("S3d.3 task2 blocked after dependency created", afterDep.body.status === "blocked");
+
+    // 3) subscribe WS to the department scope BEFORE triggering the release.
+    ws = new WebSocketClient(`ws://127.0.0.1:${port}/ws`);
+    const received = [];
+    await new Promise((resolve, reject) => {
+      ws.on("open", () => {
+        ws.send(JSON.stringify({ subscribe: `kad:department:${deptId}` }));
+        resolve();
+      });
+      ws.on("error", reject);
+    });
+    ws.on("message", (raw) => {
+      try {
+        received.push(JSON.parse(raw.toString()));
+      } catch {}
+    });
+
+    // 4) môn 01 "xong" — real generic status PATCH the app already exposes.
+    const patchDone = await api("PATCH", `/api/kad/tasks/${task1Id}`, { status: "done" });
+    check("S3d.4 task1 marked done", patchDone.status === 200 && patchDone.body.status === "done");
+
+    // 5) worker tick (manual sweep — tick interval disabled above for determinism).
+    await jobQueue.sweep();
+    await sleep(150); // let the WS frame land
+
+    // 6) assert SQL: dependency released + task2 back in inbox.
+    const depsAfter = await api("GET", `/api/kad/tasks/${task2Id}/dependencies`);
+    const depRow = depsAfter.body.find((d) => d.id === dep.body.id);
+    check(
+      "S3d.5 dependency row released (SQL)",
+      !!depRow && depRow.status === "released" && !!depRow.released_at
+    );
+    const task2After = await api("GET", `/api/kad/tasks/${task2Id}`);
+    check("S3d.6 task2 auto-returned to inbox (SQL)", task2After.body.status === "inbox");
+
+    // 7) assert event: kad.task.released was actually broadcast.
+    const releaseEvt = received.find(
+      (m) => m.type === "kad.task.released" && m.data && m.data.task_id === task2Id
+    );
+    check(
+      "S3d.7 kad.task.released event received (WS)",
+      !!releaseEvt,
+      `got types: ${JSON.stringify(received.map((m) => m.type))}`
+    );
+
+    // 8) second mechanism: dep_artifact_approved, driven through the real
+    // report/decide endpoint (the same path that flips artifacts.status).
+    const t3 = await api("POST", "/api/kad/tasks", { title: "R&D Môn 03 — điều kiện artifact" });
+    const task3Id = t3.body.id;
+    const depB = await api("POST", `/api/kad/tasks/${task3Id}/dependencies`, {
+      depends_on_task_id: task1Id,
+      release_condition: "dep_artifact_approved",
+    });
+    check("S3d.8 second dependency created (201)", depB.status === 201);
+
+    const artifact = repo.artifacts.createArtifact({
+      task_id: task1Id,
+      artifact_type: "syllabus",
+      title: "Syllabus Môn 01",
+      content: "# Syllabus",
+      status: "review",
+    });
+    const reportMsg = repo.tasks.addMessage({
+      task_id: task1Id,
+      sender_type: "agent",
+      sender_id: "system",
+      content: "Báo cáo hoàn thành",
+      message_type: "report",
+      metadata: { report: { artifacts: [{ artifactId: artifact.id, title: artifact.title }] } },
+    });
+    const decideReport = await api(
+      "POST",
+      `/api/kad/tasks/${task1Id}/report/${reportMsg.id}/decide`,
+      { decision: "approved" }
+    );
+    check("S3d.9 report decide approved (200)", decideReport.status === 200);
+
+    await jobQueue.sweep();
+    await sleep(150);
+
+    const task3After = await api("GET", `/api/kad/tasks/${task3Id}`);
+    check(
+      "S3d.10 task3 auto-released via dep_artifact_approved (SQL)",
+      task3After.body.status === "inbox"
+    );
+  } finally {
+    try {
+      ws?.close();
+    } catch {}
+    try {
+      jobQueue.stopWorker();
+    } catch {}
+    server.close();
+    for (const f of [TMP_DB3, TMP_DB3 + "-wal", TMP_DB3 + "-shm"])
+      try {
+        fs.unlinkSync(f);
+      } catch {}
+  }
+
+  console.log(results.join("\n"));
+  console.log(`\n=== S3-deps: ${pass} passed, ${fail} failed ===`);
+  process.exit(fail > 0 ? 1 : 0);
+}
+
 if (process.argv.includes("--s2")) {
   runS2().catch((e) => {
     console.error("verify S2 crashed:", e);
+    process.exit(1);
+  });
+} else if (process.argv.includes("--s3-deps")) {
+  runS3Deps().catch((e) => {
+    console.error("verify S3-deps crashed:", e);
     process.exit(1);
   });
 } else {

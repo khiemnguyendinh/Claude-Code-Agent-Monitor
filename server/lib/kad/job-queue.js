@@ -6,11 +6,15 @@
  * jobs live in kad_job_queue, and reconcile_runs cleans orphaned runs on boot.
  *
  * Phase 1 kinds wired: reconcile_runs, resume_task, start_delegation.
- * Other kinds (evaluate_rules/run_schedule/sla_check/...) are created by the
- * schema but not wired until Phase 3/6.5 — unknown kinds fail loudly.
+ * Phase 3 adds task_dependencies auto-release — not a `kind` (nothing to
+ * lease/dedup, it's a stateless scan), so it runs directly every sweep tick
+ * (see dependencyWorker.checkReleases() below). Automation-rule kinds
+ * (evaluate_rules/run_schedule/sla_check/...) remain unwired until Phase 6.5 —
+ * unknown `kind` rows still fail loudly.
  */
 const repo = require("./repo");
 const orchestrator = require("./orchestrator");
+const dependencyWorker = require("./dependency-worker");
 
 const TICK_MS = Number(process.env.KAD_WORKER_TICK_MS || 2000);
 let timer = null;
@@ -55,6 +59,7 @@ async function sweep() {
   if (sweeping) return; // coalesce — never overlap sweeps
   sweeping = true;
   try {
+    dependencyWorker.checkReleases(); // spec 02 §6b / audit-260704 §5.2 — every tick
     const jobs = repo.jobs.leaseDue(3);
     if (process.env.KAD_JOBS_TRACE && jobs.length)
       console.log(
