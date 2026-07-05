@@ -10,6 +10,10 @@ function hydrate(row) {
 function createArtifact({ task_id, agent_id, artifact_type, title, content, file_path, parent_artifact_id, template_version_id, org_context_version_id, status, metadata }) {
   const id = newId("artifact");
   const now = nowIso();
+  const taskSnapshot =
+    task_id && org_context_version_id == null
+      ? db.prepare("SELECT org_context_version_id FROM tasks WHERE id=?").get(task_id)
+      : null;
   db.prepare(
     `INSERT INTO artifacts
      (id, task_id, agent_id, artifact_type, title, content, file_path, parent_artifact_id, template_version_id, org_context_version_id, status, version, metadata, created_at, updated_at)
@@ -24,7 +28,7 @@ function createArtifact({ task_id, agent_id, artifact_type, title, content, file
     file_path: file_path ?? null,
     parent: parent_artifact_id ?? null,
     tplver: template_version_id ?? null,
-    orgver: org_context_version_id ?? null,
+    orgver: org_context_version_id ?? (taskSnapshot && taskSnapshot.org_context_version_id) ?? null,
     status: status ?? "draft",
     metadata: metadata != null ? JSON.stringify(metadata) : null,
     now,

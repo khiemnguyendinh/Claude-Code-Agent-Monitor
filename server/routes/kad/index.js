@@ -10,12 +10,14 @@ const approvalsRouter = require("./approvals");
 const artifactsRouter = require("./artifacts");
 const miscRouter = require("./misc");
 const internalRouter = require("./internal");
+const knowledgeRouter = require("./knowledge");
 
 const router = express.Router();
 router.use("/tasks", tasksRouter);
 router.use("/approvals", approvalsRouter);
 router.use("/internal", internalRouter);
 router.use("/", artifactsRouter); // /artifacts, /runs
+router.use("/", knowledgeRouter); // /org-context, /templates, /wizard, /blueprints, /org-chart
 router.use("/", miscRouter); // /agents, /reports, /notifications, /audit
 
 let started = false;

@@ -23,4 +23,6 @@ module.exports = {
   jobs: require("./jobs"),
   catalog: require("./catalog"),
   standup: require("./standup"),
+  orgContext: require("./org-context"),
+  templates: require("./templates"),
 };
