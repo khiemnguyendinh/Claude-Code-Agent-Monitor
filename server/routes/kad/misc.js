@@ -50,6 +50,17 @@ router.get("/reports/overview", (req, res) => {
   });
 });
 
+// [GAP spec/ui/02 §5] Standup rút gọn — deterministic (see repo/standup.js),
+// not a Main Agent narrative. GET reads today's snapshot (null if not yet
+// generated); POST regenerates it now.
+router.get("/standup/today", (req, res) => {
+  res.json(repo.standup.getToday(deptId(req)));
+});
+
+router.post("/standup/today/regenerate", (req, res) => {
+  res.json(repo.standup.regenerate(deptId(req)));
+});
+
 router.get("/notifications", (req, res) => {
   res.json(
     repo.notifications.listNotifications({

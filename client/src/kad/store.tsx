@@ -1,24 +1,26 @@
 /**
- * In-memory interaction layer for the mockup. There is no `/api/kad/*` yet,
- * so this is NOT a data-fetching store — it's a thin reactive overlay on top
- * of the static mock arrays (mockData.ts) purely so that clicking "Duyệt" in
- * one place (e.g. the peek drawer) is reflected everywhere else on screen
- * (Tổng quan, Kanban, chat, notification bell) within the same session. Real
- * wiring later replaces this with WS events + refetch, per spec/ui.
+ * Reactive overlay shared across KAD screens (Tổng quan, peek drawer, command
+ * palette, ...) so an action in one place (e.g. "Duyệt" in the peek drawer)
+ * is reflected everywhere on screen. `approvals`/`standup`/`agentsById` are
+ * wired to the real `/api/kad/*` backend (Phase 2 "Tổng quan" track) + WS —
+ * this was always the intended seam for that swap (see git history). The rest
+ * (tasks/automation/goals/notifications) is still the mock overlay, out of
+ * scope for that track.
  */
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { kadApi } from "./api-client";
+import { departmentScope, subscribeKadScope } from "./ws-client";
 import {
-  APPROVALS,
   AUTOMATION_RULES,
   BLOCKED_TASKS,
   GOALS,
   NOTIFICATIONS,
   ORG_CONTEXT_SECTIONS,
-  STANDUP,
   TASK_CARDS,
 } from "./mockData";
 import type {
+  AgentProfile,
   Approval,
   ApprovalStatus,
   AutomationRule,
@@ -30,6 +32,15 @@ import type {
   TaskStatus,
 } from "./types";
 
+const EMPTY_STANDUP: StandupBrief = {
+  generatedAt: null,
+  dangChay: [],
+  choAnh: [],
+  ruiRo: [],
+  costYesterdayTokens: 0,
+  costYesterdayVnd: 0,
+};
+
 const INITIAL_STRATEGY: StrategyPlan = {
   bodyMarkdown: ORG_CONTEXT_SECTIONS.find((s) => s.key === "chien-luoc")?.bodyMarkdown ?? "",
   updatedAt: ORG_CONTEXT_SECTIONS.find((s) => s.key === "chien-luoc")?.approvedAt ?? null,
@@ -37,14 +48,13 @@ const INITIAL_STRATEGY: StrategyPlan = {
 
 let taskIdSeq = 0;
 
-interface ApprovalDecision {
-  status: ApprovalStatus;
-  decisionReason: string | null;
-}
-
 interface KadStoreValue {
   approvals: Approval[];
   decideApproval: (id: string, status: ApprovalStatus, reason: string | null) => void;
+  /** Real agent_profiles by id (spec 03) — ids don't match mockData's, so screens
+   * rendering a real agentId must pass AgentAvatar's displayNameOverride/agentNameOverride
+   * from this map instead of relying on mockData's findAgent(). */
+  agentsById: Map<string, AgentProfile>;
   notifications: KadNotification[];
   unreadCount: number;
   markAllNotificationsRead: () => void;
@@ -73,34 +83,89 @@ interface KadStoreValue {
 const KadStoreContext = createContext<KadStoreValue | null>(null);
 
 export function KadStoreProvider({ children }: { children: ReactNode }) {
-  const [decisions, setDecisions] = useState<Record<string, ApprovalDecision>>({});
   const [notifications, setNotifications] = useState<KadNotification[]>(NOTIFICATIONS);
-  const [standup, setStandup] = useState<StandupBrief>(STANDUP);
   const [tasks, setTasks] = useState<TaskCard[]>([...BLOCKED_TASKS, ...TASK_CARDS]);
   const [automationRules, setAutomationRules] = useState<AutomationRule[]>(AUTOMATION_RULES);
   const [allAutomationPaused, setAllAutomationPaused] = useState(false);
   const [goals, setGoals] = useState<Goal[]>(GOALS);
   const [strategy, setStrategy] = useState<StrategyPlan>(INITIAL_STRATEGY);
 
-  const approvals = useMemo(
-    () =>
-      APPROVALS.map((a) => {
-        const decision = decisions[a.id];
-        return decision ? { ...a, status: decision.status, decisionReason: decision.decisionReason } : a;
-      }),
-    [decisions]
+  // ── Real data: approvals + standup + agent identities (spec 03 / spec/ui/02) ──
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [standup, setStandup] = useState<StandupBrief>(EMPTY_STANDUP);
+  const [agentsById, setAgentsById] = useState<Map<string, AgentProfile>>(new Map());
+  // Bootstrapped once from GET /reports/overview (single-department MVP); kept in a
+  // ref so decideApproval/regenerateStandup (defined once via useCallback) always
+  // read the current value without re-subscribing WS on every render.
+  const departmentIdRef = useRef<string | null>(null);
+
+  const refetchApprovals = useCallback((deptId: string | null) => {
+    kadApi.approvals
+      .list(deptId ? { department: deptId } : undefined)
+      .then(setApprovals)
+      .catch((e) => {
+        console.warn("[kad] failed to load approvals:", e && e.message);
+      });
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    let unsubscribe: (() => void) | undefined;
+
+    kadApi.agents
+      .list()
+      .then((rows) => {
+        if (!cancelled) setAgentsById(new Map(rows.map((a) => [a.id, a])));
+      })
+      .catch((e) => console.warn("[kad] failed to load agents:", e && e.message));
+    kadApi.reports
+      .overview()
+      .then((overview) => {
+        if (cancelled) return;
+        const deptId = overview.departmentId;
+        departmentIdRef.current = deptId;
+        refetchApprovals(deptId);
+        kadApi.standup
+          .today(deptId ?? undefined)
+          .then(setStandup)
+          .catch(() => {});
+        if (!deptId) return;
+        unsubscribe = subscribeKadScope(departmentScope(deptId), (ev) => {
+          if (ev.type === "kad.approval.created" || ev.type === "kad.approval.decided") {
+            refetchApprovals(departmentIdRef.current);
+          }
+        });
+      })
+      .catch((e) => console.warn("[kad] failed to load overview:", e && e.message));
+
+    return () => {
+      cancelled = true;
+      unsubscribe?.();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const decideApproval = useCallback(
+    (id: string, status: ApprovalStatus, reason: string | null) => {
+      kadApi.approvals
+        .decide(id, status, reason)
+        .then(() => refetchApprovals(departmentIdRef.current))
+        .catch((e) => console.warn("[kad] decide approval failed:", e && e.message));
+    },
+    [refetchApprovals]
   );
 
-  const decideApproval = useCallback((id: string, status: ApprovalStatus, reason: string | null) => {
-    setDecisions((prev) => ({ ...prev, [id]: { status, decisionReason: reason } }));
+  const regenerateStandup = useCallback(() => {
+    kadApi.standup
+      .regenerate(departmentIdRef.current ?? undefined)
+      .then(setStandup)
+      .catch((e) => console.warn("[kad] regenerate standup failed:", e && e.message));
   }, []);
 
   const markAllNotificationsRead = useCallback(() => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() })));
-  }, []);
-
-  const regenerateStandup = useCallback(() => {
-    setStandup((prev) => ({ ...prev, generatedAt: new Date().toISOString() }));
+    setNotifications((prev) =>
+      prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() }))
+    );
   }, []);
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
@@ -140,7 +205,9 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
 
   const assignTask = useCallback((id: string, agentId: string) => {
     setTasks((prev) =>
-      prev.map((t) => (t.id === id ? { ...t, assignedAgentId: agentId, status: "doing" as TaskStatus } : t))
+      prev.map((t) =>
+        t.id === id ? { ...t, assignedAgentId: agentId, status: "doing" as TaskStatus } : t
+      )
     );
   }, []);
 
@@ -148,12 +215,16 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
   // ở mockup người gỡ tay để demo).
   const releaseDependency = useCallback((taskId: string) => {
     setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: "inbox" as TaskStatus, startCondition: null } : t))
+      prev.map((t) =>
+        t.id === taskId ? { ...t, status: "inbox" as TaskStatus, startCondition: null } : t
+      )
     );
   }, []);
 
   const toggleRule = useCallback((id: string) => {
-    setAutomationRules((prev) => prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r)));
+    setAutomationRules((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
+    );
   }, []);
 
   const togglePauseAll = useCallback(() => {
@@ -170,12 +241,16 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
   // điều chỉnh ưu tiên công việc.
   const saveGoalsAndStrategy = useCallback((input: { goals: Goal[]; strategyMarkdown: string }) => {
     setGoals(input.goals);
-    setStrategy({ bodyMarkdown: input.strategyMarkdown, updatedAt: new Date().toLocaleDateString("vi-VN") });
+    setStrategy({
+      bodyMarkdown: input.strategyMarkdown,
+      updatedAt: new Date().toLocaleDateString("vi-VN"),
+    });
   }, []);
 
   const value: KadStoreValue = {
     approvals,
     decideApproval,
+    agentsById,
     notifications,
     unreadCount,
     markAllNotificationsRead,

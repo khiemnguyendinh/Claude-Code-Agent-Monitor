@@ -14,7 +14,14 @@ import {
   ShieldCheck,
   Target,
 } from "lucide-react";
-import { ARTIFACTS, EXCEPTIONS, OPS_METRICS, PROJECTS, RECENT_ARTIFACTS, findAgent } from "../mockData";
+import {
+  ARTIFACTS,
+  EXCEPTIONS,
+  OPS_METRICS,
+  PROJECTS,
+  RECENT_ARTIFACTS,
+  findAgent,
+} from "../mockData";
 import { useKadStore } from "../store";
 import { usePeek } from "../components/PeekDrawer";
 import { KadButton, KadCard, KadEmptyState, KadIconButton } from "../components/primitives";
@@ -22,8 +29,19 @@ import { StatusChip } from "../components/StatusChip";
 import { KpiCard } from "../components/KpiCard";
 import { SegmentedProgress } from "../components/Progress";
 import { AgentAvatar, AgentAvatarStack } from "../components/Avatar";
-import { ARTIFACT_TYPE_LABEL, STEP_ARTIFACT_TYPE, STEP_STATE_CHIP_KIND, approvalCategoryLabel } from "../labels";
-import { formatDueDate, formatRelativeTime, formatSlaCountdown, formatTokens, formatVnd } from "../format";
+import {
+  ARTIFACT_TYPE_LABEL,
+  STEP_ARTIFACT_TYPE,
+  STEP_STATE_CHIP_KIND,
+  approvalCategoryLabel,
+} from "../labels";
+import {
+  formatDueDate,
+  formatRelativeTime,
+  formatSlaCountdown,
+  formatTokens,
+  formatVnd,
+} from "../format";
 import type { Approval, ExceptionKind, Project, StepState } from "../types";
 
 function slaDeadlineMs(a: Approval): number {
@@ -93,25 +111,28 @@ function BlockGoals() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           {goals.map((goal) => {
-        const percent = goal.target > 0 ? Math.min(100, (goal.current / goal.target) * 100) : 0;
-        return (
-          <button
-            key={goal.id}
-            type="button"
-            onClick={() => openPeek({ type: "goal", id: goal.id })}
-            className="text-left bg-kad-surface border border-kad-border rounded-xl p-4 hover:border-kad-border-strong transition-colors"
-          >
-            <p className="kad-heading text-kad-text-strong truncate">{goal.title}</p>
-            <div className="mt-2.5 h-1 w-full rounded-full bg-kad-surface-2 overflow-hidden">
-              <div className="h-full rounded-full bg-kad-primary" style={{ width: `${percent}%` }} />
-            </div>
-            <div className="flex items-baseline justify-between mt-2">
-              <span className="kad-display text-kad-text-strong">{Math.round(percent)}%</span>
-              <span className="kad-caption text-kad-text-muted">{goal.due}</span>
-            </div>
-          </button>
-              );
-            })}
+            const percent = goal.target > 0 ? Math.min(100, (goal.current / goal.target) * 100) : 0;
+            return (
+              <button
+                key={goal.id}
+                type="button"
+                onClick={() => openPeek({ type: "goal", id: goal.id })}
+                className="text-left bg-kad-surface border border-kad-border rounded-xl p-4 hover:border-kad-border-strong transition-colors"
+              >
+                <p className="kad-heading text-kad-text-strong truncate">{goal.title}</p>
+                <div className="mt-2.5 h-1 w-full rounded-full bg-kad-surface-2 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-kad-primary"
+                    style={{ width: `${percent}%` }}
+                  />
+                </div>
+                <div className="flex items-baseline justify-between mt-2">
+                  <span className="kad-display text-kad-text-strong">{Math.round(percent)}%</span>
+                  <span className="kad-caption text-kad-text-muted">{goal.due}</span>
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -161,14 +182,20 @@ function BlockProjects() {
                   aria-label={isOpen ? "Thu gọn" : "Mở rộng"}
                   className="text-kad-text-faint hover:text-kad-text-muted flex-shrink-0"
                 >
-                  {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  {isOpen ? (
+                    <ChevronDown className="w-4 h-4" />
+                  ) : (
+                    <ChevronRight className="w-4 h-4" />
+                  )}
                 </button>
                 <button
                   type="button"
                   onClick={() => openPeek({ type: "project", id: project.id })}
                   className="flex-1 min-w-0 flex items-center gap-3 text-left"
                 >
-                  <span className="kad-body text-kad-text truncate max-w-[200px]">{project.title}</span>
+                  <span className="kad-body text-kad-text truncate max-w-[200px]">
+                    {project.title}
+                  </span>
                   <span className="flex-1 min-w-[80px] max-w-[220px] hidden sm:block">
                     <SegmentedProgress steps={project.steps} height={4} />
                   </span>
@@ -191,7 +218,8 @@ function BlockProjects() {
                 <div className="pl-7 pb-2 space-y-0.5">
                   {project.steps.map((step) => {
                     const artifact = ARTIFACTS.find(
-                      (a) => a.taskId === project.id && a.artifactType === STEP_ARTIFACT_TYPE[step.key]
+                      (a) =>
+                        a.taskId === project.id && a.artifactType === STEP_ARTIFACT_TYPE[step.key]
                     );
                     return (
                       <div key={step.key} className="h-9 flex items-center gap-3">
@@ -249,7 +277,11 @@ function BlockOpsMetrics() {
 
 function BlockStandup() {
   const { standup, regenerateStandup } = useKadStore();
-  const { openPeek } = usePeek();
+  const navigate = useNavigate();
+  // Standup lines link real task ids (repo.tasks, not mockData's PROJECTS), so
+  // they open the real task workspace (/cong-viec/:id, wired since P2A) rather
+  // than a "project" peek that would look the id up in the mock array.
+  const goToTask = (taskId: string) => navigate(`/cong-viec/${taskId}`);
 
   return (
     <KadCard>
@@ -257,7 +289,9 @@ function BlockStandup() {
         <div>
           <h3 className="kad-heading text-kad-text-strong">Standup hôm nay</h3>
           {standup.generatedAt && (
-            <p className="kad-caption text-kad-text-faint">Tạo lúc {formatRelativeTime(standup.generatedAt)}</p>
+            <p className="kad-caption text-kad-text-faint">
+              Tạo lúc {formatRelativeTime(standup.generatedAt)}
+            </p>
           )}
         </div>
         <KadIconButton icon={RefreshCw} label="Tạo lại" onClick={regenerateStandup} />
@@ -274,11 +308,12 @@ function BlockStandup() {
         />
       ) : (
         <div className="space-y-3">
-          <StandupGroup title="Đang chạy" lines={standup.dangChay} onOpenPeek={openPeek} />
-          <StandupGroup title="Chờ anh" lines={standup.choAnh} onOpenPeek={openPeek} />
-          <StandupGroup title="Rủi ro" lines={standup.ruiRo} onOpenPeek={openPeek} />
+          <StandupGroup title="Đang chạy" lines={standup.dangChay} onLineClick={goToTask} />
+          <StandupGroup title="Chờ anh" lines={standup.choAnh} onLineClick={goToTask} />
+          <StandupGroup title="Rủi ro" lines={standup.ruiRo} onLineClick={goToTask} />
           <p className="kad-caption text-kad-text-faint pt-2 border-t border-kad-border">
-            Hôm qua: {formatTokens(standup.costYesterdayTokens)} · ~{formatVnd(standup.costYesterdayVnd)}
+            Hôm qua: {formatTokens(standup.costYesterdayTokens)} · ~
+            {formatVnd(standup.costYesterdayVnd)}
           </p>
         </div>
       )}
@@ -289,11 +324,11 @@ function BlockStandup() {
 function StandupGroup({
   title,
   lines,
-  onOpenPeek,
+  onLineClick,
 }: {
   title: string;
   lines: { text: string; linkTaskId?: string }[];
-  onOpenPeek: (t: { type: "project"; id: string }) => void;
+  onLineClick: (taskId: string) => void;
 }) {
   if (lines.length === 0) return null;
   return (
@@ -305,7 +340,7 @@ function StandupGroup({
             <button
               key={i}
               type="button"
-              onClick={() => onOpenPeek({ type: "project", id: line.linkTaskId! })}
+              onClick={() => onLineClick(line.linkTaskId!)}
               className="kad-body text-kad-accent hover:underline text-left block"
             >
               {line.text}
@@ -324,7 +359,7 @@ function StandupGroup({
 // ── F. Cần tôi duyệt ──────────────────────────────────────────────────────
 
 function BlockApprovals() {
-  const { approvals, decideApproval } = useKadStore();
+  const { approvals, decideApproval, agentsById } = useKadStore();
   const { openPeek } = usePeek();
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -386,9 +421,16 @@ function BlockApprovals() {
                 >
                   {approval.title}
                 </button>
-                <AgentAvatar agentId={approval.requestedByAgentId} size={20} />
+                <AgentAvatar
+                  agentId={approval.requestedByAgentId}
+                  size={20}
+                  displayNameOverride={agentsById.get(approval.requestedByAgentId)?.displayName}
+                  agentNameOverride={agentsById.get(approval.requestedByAgentId)?.name}
+                />
                 {sla && (
-                  <span className={`kad-caption flex-shrink-0 ${sla.overdue ? "text-kad-danger font-medium" : "text-kad-text-muted"}`}>
+                  <span
+                    className={`kad-caption flex-shrink-0 ${sla.overdue ? "text-kad-danger font-medium" : "text-kad-text-muted"}`}
+                  >
                     {sla.text}
                   </span>
                 )}
@@ -402,7 +444,11 @@ function BlockApprovals() {
                       Duyệt
                     </KadButton>
                   )}
-                  <KadButton variant="ghost" size="row" onClick={() => openPeek({ type: "approval", id: approval.id })}>
+                  <KadButton
+                    variant="ghost"
+                    size="row"
+                    onClick={() => openPeek({ type: "approval", id: approval.id })}
+                  >
                     Xem
                   </KadButton>
                 </div>
@@ -456,7 +502,9 @@ function BlockExceptions() {
                 variant="ghost"
                 size="row"
                 className="flex-shrink-0"
-                onClick={() => (exc.taskId ? openPeek({ type: "project", id: exc.taskId }) : toast())}
+                onClick={() =>
+                  exc.taskId ? openPeek({ type: "project", id: exc.taskId }) : toast()
+                }
               >
                 Xử lý
               </KadButton>
@@ -471,7 +519,8 @@ function BlockExceptions() {
 function useToastSafe() {
   // Exceptions without a linked task (e.g. connector_error) have nowhere to
   // deep-link yet in this mockup — /ket-noi is a later phase (spec 05 §2).
-  return () => window.alert("Xem chi tiết kết nối — màn Kết nối chưa nằm trong phạm vi mockup này.");
+  return () =>
+    window.alert("Xem chi tiết kết nối — màn Kết nối chưa nằm trong phạm vi mockup này.");
 }
 
 // ── D. Đã xong gần đây ────────────────────────────────────────────────────
@@ -567,9 +616,14 @@ function BlockRecentArtifacts() {
               </div>
               <div className="flex items-center justify-between mt-2">
                 <span className="kad-caption text-kad-text-muted truncate">
-                  {findAgent(artifact.agentId)?.displayName} · {formatRelativeTime(artifact.updatedAt)}
+                  {findAgent(artifact.agentId)?.displayName} ·{" "}
+                  {formatRelativeTime(artifact.updatedAt)}
                 </span>
-                <KadButton variant="ghost" size="row" onClick={() => openPeek({ type: "artifact", id: artifact.id })}>
+                <KadButton
+                  variant="ghost"
+                  size="row"
+                  onClick={() => openPeek({ type: "artifact", id: artifact.id })}
+                >
                   Xem nhanh
                 </KadButton>
               </div>

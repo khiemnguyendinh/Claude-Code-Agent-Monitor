@@ -22,4 +22,5 @@ module.exports = {
   learning: require("./learning"),
   jobs: require("./jobs"),
   catalog: require("./catalog"),
+  standup: require("./standup"),
 };

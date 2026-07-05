@@ -21,9 +21,22 @@ import { SensitivityBadge, TaskStatusChip } from "./StatusChip";
 import { SegmentedProgress, ProgressBar } from "./Progress";
 import { KadButton, KadEmptyState, KadTextarea } from "./primitives";
 import { ArtifactViewer } from "./ArtifactViewer";
-import { formatDueDate, formatPercent, formatRelativeTime, formatSlaCountdown, formatTokens, formatVnd } from "../format";
+import {
+  formatDueDate,
+  formatPercent,
+  formatRelativeTime,
+  formatSlaCountdown,
+  formatTokens,
+  formatVnd,
+} from "../format";
 import { Sparkline } from "./Sparkline";
-import { AgentProgressList, FilesPanel, agentProgress, artifactsForProject, artifactsForTask } from "./DetailPanels";
+import {
+  AgentProgressList,
+  FilesPanel,
+  agentProgress,
+  artifactsForProject,
+  artifactsForTask,
+} from "./DetailPanels";
 
 export const PEEK_TITLES: Record<PeekType, string> = {
   task: "Công việc",
@@ -110,7 +123,9 @@ function TaskPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) 
           {task.assignedAgentId ? (
             <div className="flex items-center gap-1.5">
               <AgentAvatar agentId={task.assignedAgentId} size={20} />
-              <span className="kad-body text-kad-text">{findAgent(task.assignedAgentId)?.displayName}</span>
+              <span className="kad-body text-kad-text">
+                {findAgent(task.assignedAgentId)?.displayName}
+              </span>
             </div>
           ) : (
             <span className="kad-body text-kad-text-faint">Chưa giao</span>
@@ -139,7 +154,9 @@ function TaskPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) 
             {lastMessages.map((m) => (
               <div key={m.id} className="border border-kad-border rounded-lg px-3 py-2">
                 <p className="kad-caption text-kad-text-muted">
-                  {m.senderType === "human" ? "Anh Khiêm" : findAgent(m.senderId)?.displayName ?? "Trợ lý vận hành"}{" "}
+                  {m.senderType === "human"
+                    ? "Anh Khiêm"
+                    : (findAgent(m.senderId)?.displayName ?? "Trợ lý vận hành")}{" "}
                   · {formatRelativeTime(m.createdAt)}
                 </p>
                 <p className="kad-body text-kad-text line-clamp-3">{m.content}</p>
@@ -175,7 +192,8 @@ function ProjectPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarge
       <div>
         <h2 className="kad-title text-kad-text-strong">{project.title}</h2>
         <p className="kad-caption text-kad-text-muted mt-1">
-          {project.itemsDone}/{project.itemsTotal} hạng mục · {formatDueDate(project.dueDate) ?? "Chưa có hạn"}
+          {project.itemsDone}/{project.itemsTotal} hạng mục ·{" "}
+          {formatDueDate(project.dueDate) ?? "Chưa có hạn"}
         </p>
       </div>
       <Field label="Workflow & tiến độ">
@@ -216,16 +234,21 @@ function ApprovalPeek({
   onOpenPeek: (t: PeekTarget) => void;
   onClose: () => void;
 }) {
-  const { approvals, decideApproval } = useKadStore();
+  const { approvals, decideApproval, agentsById } = useKadStore();
   const toast = useKadToast();
   const approval = approvals.find((a) => a.id === id);
   const [mode, setMode] = useState<"idle" | "needs_changes" | "rejected">("idle");
   const [reason, setReason] = useState("");
-  if (!approval) return <KadEmptyState icon={MessageSquare} message="Không tìm thấy yêu cầu duyệt." />;
+  if (!approval)
+    return <KadEmptyState icon={MessageSquare} message="Không tìm thấy yêu cầu duyệt." />;
 
   const artifact = approval.artifactId ? findArtifact(approval.artifactId) : undefined;
   const sla = approval.slaReminderHours
-    ? formatSlaCountdown(new Date(new Date(approval.createdAt).getTime() + approval.slaReminderHours * 3_600_000).toISOString())
+    ? formatSlaCountdown(
+        new Date(
+          new Date(approval.createdAt).getTime() + approval.slaReminderHours * 3_600_000
+        ).toISOString()
+      )
     : null;
   const decided = approval.status !== "pending";
 
@@ -233,7 +256,12 @@ function ApprovalPeek({
     if (status !== "approved" && reason.trim().length === 0) return;
     decideApproval(id, status, status === "approved" ? null : reason.trim());
     toast({
-      message: status === "approved" ? "Đã duyệt." : status === "needs_changes" ? "Đã gửi yêu cầu sửa." : "Đã từ chối.",
+      message:
+        status === "approved"
+          ? "Đã duyệt."
+          : status === "needs_changes"
+            ? "Đã gửi yêu cầu sửa."
+            : "Đã từ chối.",
       tone: status === "rejected" ? "warning" : "success",
     });
     onClose();
@@ -243,7 +271,9 @@ function ApprovalPeek({
     <div className="p-4 space-y-4">
       <div>
         <div className="flex items-center gap-2 flex-wrap">
-          {approval.sensitivitySubtype && <SensitivityBadge subtype={approval.sensitivitySubtype} />}
+          {approval.sensitivitySubtype && (
+            <SensitivityBadge subtype={approval.sensitivitySubtype} />
+          )}
           <span className="kad-caption text-kad-text-muted">{approval.taskTitle}</span>
         </div>
         <h2 className="kad-title text-kad-text-strong mt-2">{approval.title}</h2>
@@ -253,13 +283,32 @@ function ApprovalPeek({
       <div className="grid grid-cols-2 gap-4">
         <Field label="Người xin duyệt">
           <div className="flex items-center gap-1.5">
-            <AgentAvatar agentId={approval.requestedByAgentId} size={20} />
-            <span className="kad-body text-kad-text">{findAgent(approval.requestedByAgentId)?.displayName}</span>
+            {(() => {
+              // Real approvals (Tổng quan track) carry agent_profiles ids that don't
+              // match mockData's — prefer the store's real map when it has the id.
+              const real = agentsById.get(approval.requestedByAgentId);
+              const mock = real ? undefined : findAgent(approval.requestedByAgentId);
+              return (
+                <>
+                  <AgentAvatar
+                    agentId={approval.requestedByAgentId}
+                    size={20}
+                    displayNameOverride={real?.displayName}
+                    agentNameOverride={real?.name}
+                  />
+                  <span className="kad-body text-kad-text">
+                    {real?.displayName ?? mock?.displayName}
+                  </span>
+                </>
+              );
+            })()}
           </div>
         </Field>
         {sla && (
           <Field label="SLA">
-            <span className={`kad-body font-medium ${sla.overdue ? "text-kad-danger" : "text-kad-text"}`}>
+            <span
+              className={`kad-body font-medium ${sla.overdue ? "text-kad-danger" : "text-kad-text"}`}
+            >
               {sla.text}
             </span>
           </Field>
@@ -284,7 +333,8 @@ function ApprovalPeek({
       {decided ? (
         <div className="flex items-center gap-2 pt-2 border-t border-kad-border">
           <span className="kad-body text-kad-text-muted">
-            Đã quyết định: <span className="text-kad-text-strong font-medium">{approval.status}</span>
+            Đã quyết định:{" "}
+            <span className="text-kad-text-strong font-medium">{approval.status}</span>
             {approval.decisionReason ? ` — ${approval.decisionReason}` : ""}
           </span>
         </div>
@@ -304,7 +354,9 @@ function ApprovalPeek({
         <div className="space-y-2 pt-2 border-t border-kad-border">
           <KadTextarea
             autoFocus
-            placeholder={mode === "rejected" ? "Lý do từ chối (bắt buộc)…" : "Cần sửa gì (bắt buộc)…"}
+            placeholder={
+              mode === "rejected" ? "Lý do từ chối (bắt buộc)…" : "Cần sửa gì (bắt buộc)…"
+            }
             value={reason}
             onChange={(e) => setReason(e.target.value)}
           />
@@ -358,7 +410,9 @@ function AgentPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget)
               <p className="kad-caption text-kad-text-muted">việc tuần này</p>
             </div>
             <div>
-              <p className="kad-display text-kad-text-strong">{formatPercent(stats.qualityPassRate30d)}</p>
+              <p className="kad-display text-kad-text-strong">
+                {formatPercent(stats.qualityPassRate30d)}
+              </p>
               <p className="kad-caption text-kad-text-muted">đạt lần đầu (30d)</p>
             </div>
             <div>
