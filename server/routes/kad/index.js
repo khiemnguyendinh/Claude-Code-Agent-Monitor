@@ -16,6 +16,7 @@ const attachmentsRouter = require("./attachments");
 const knowledgeRouter = require("./knowledge");
 const learningRouter = require("./learning");
 const connectorsRouter = require("./connectors");
+const larkRouter = require("./lark");
 
 const router = express.Router();
 router.use("/tasks", tasksRouter);
@@ -29,6 +30,7 @@ router.use("/", dependenciesRouter); // /dependencies/:depId
 router.use("/", automationRulesRouter); // /automation-rules, /automation/*
 router.use("/", attachmentsRouter); // /attachments/:id
 router.use("/learning-notes", learningRouter);
+router.use("/lark", larkRouter);
 
 let started = false;
 

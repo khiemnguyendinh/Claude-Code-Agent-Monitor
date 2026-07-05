@@ -11,6 +11,7 @@ const webSearch = require("../../lib/kad/web-search");
 const cost = require("../../lib/kad/cost");
 const workflowEngine = require("../../lib/kad/workflow-engine");
 const connectorService = require("../../lib/kad/connectors");
+const larkAdapter = require("../../lib/kad/lark-adapter");
 const { requireInternalToken } = require("../../lib/kad/internal-auth");
 const { emitTask, emitDept } = require("../../lib/kad/events");
 
@@ -143,6 +144,9 @@ router.post("/ask-intake", (req, res) => {
     });
   });
   emitTask(c.task.id, "kad.message.created", msg);
+  larkAdapter
+    .pushTaskMessage(msg)
+    .catch((e) => console.warn("[kad:lark] intake card push failed:", e && e.message));
   res.json({
     message_id: msg.id,
     instruction: "Đã hỏi trưởng phòng. Hãy KẾT THÚC lượt ngay và chờ câu trả lời.",
@@ -196,6 +200,9 @@ router.post("/propose-brief", (req, res) => {
     });
   });
   emitTask(c.task.id, "kad.message.created", msg);
+  larkAdapter
+    .pushTaskMessage(msg)
+    .catch((e) => console.warn("[kad:lark] brief card push failed:", e && e.message));
   res.json({
     message_id: msg.id,
     instruction: "Đã gửi brief chờ trưởng phòng chốt. Hãy KẾT THÚC lượt ngay.",
@@ -458,8 +465,8 @@ router.get("/learning-notes", (req, res) => {
       severity: n.severity,
       root_cause: n.root_cause,
       prevention: n.prevention,
-      target: n.proposed_change_target
-    }))
+      target: n.proposed_change_target,
+    })),
   });
 });
 
@@ -558,6 +565,9 @@ router.post("/present-report", (req, res) => {
   });
   emitTask(c.task.id, "kad.message.created", msg);
   emitTask(c.task.id, "kad.task.status", { task_id: c.task.id, status: "waiting_human" });
+  larkAdapter
+    .pushTaskMessage(msg)
+    .catch((e) => console.warn("[kad:lark] report card push failed:", e && e.message));
   res.json({
     message_id: msg.id,
     instruction: "Đã gửi báo cáo chờ trưởng phòng duyệt. Hãy KẾT THÚC lượt ngay.",

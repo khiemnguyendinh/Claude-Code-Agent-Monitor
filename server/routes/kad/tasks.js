@@ -9,6 +9,7 @@ const repo = require("../../lib/kad/repo");
 const orchestrator = require("../../lib/kad/orchestrator");
 const workflowEngine = require("../../lib/kad/workflow-engine");
 const { emitTask, emitDept } = require("../../lib/kad/events");
+const { readKadActor, sendActorError } = require("../../lib/kad/auth");
 const { getUploader } = require("./attachments-upload");
 
 const router = express.Router();
@@ -55,6 +56,8 @@ function enqueueEvaluateOnDone(task) {
 }
 
 router.post("/", (req, res) => {
+  const actor = readKadActor(req);
+  if (sendActorError(actor, res)) return;
   const b = req.body || {};
   if (!b.title || typeof b.title !== "string") return err(res, "EBADTITLE", "title is required");
   const department_id = b.department_id || defaultDeptId();
@@ -63,8 +66,10 @@ router.post("/", (req, res) => {
     title: b.title,
     description: b.description,
     priority: b.priority,
-    channel: b.channel,
-    channel_actor_ref: b.channel_actor_ref,
+    channel: actor.channel,
+    channel_actor_ref: actor.actorRef,
+    channel_context_ref: b.channel_context_ref,
+    channel_chat_type: b.channel_chat_type,
     working_dir: b.working_dir,
     workflow_id: b.workflow_id,
   });
@@ -118,6 +123,8 @@ router.patch("/:id", (req, res) => {
 });
 
 router.post("/:id/messages", (req, res) => {
+  const actor = readKadActor(req);
+  if (sendActorError(actor, res)) return;
   const task = repo.tasks.getTask(req.params.id);
   if (!task) return err(res, "ENOTFOUND", "task not found", 404);
   const b = req.body || {};
@@ -132,8 +139,8 @@ router.post("/:id/messages", (req, res) => {
     sender_id: "human",
     content: b.content,
     message_type: "chat",
-    channel: b.channel,
-    channel_actor_ref: b.channel_actor_ref,
+    channel: actor.channel,
+    channel_actor_ref: actor.actorRef,
     // [spec 07 §5] Lets the chat bubble render a real FileText chip
     // (TraoDoiCongViec.tsx's TimelineItemRenderer already reads this) instead
     // of relying only on the "📎 Đính kèm: …" text `orchestrator.js`'s
@@ -273,6 +280,8 @@ router.get("/:id/delegations", (req, res) => {
 // Mirrors approvals.js decide(): flips the card's state, then enqueues a
 // durable resume_task job (never resumes a held process).
 router.post("/:id/brief/lock", (req, res) => {
+  const actor = readKadActor(req);
+  if (sendActorError(actor, res)) return;
   const task = repo.tasks.getTask(req.params.id);
   if (!task) return err(res, "ENOTFOUND", "task not found", 404);
   const briefMsg = repo.tasks.latestMessageByType(task.id, "brief");
@@ -281,7 +290,6 @@ router.post("/:id/brief/lock", (req, res) => {
   if (briefMsg.metadata.brief.decidedAt)
     return err(res, "EALREADYDECIDED", "brief already locked", 409);
 
-  const b = req.body || {};
   const decidedAt = new Date().toISOString();
   const brief = { ...briefMsg.metadata.brief, decidedAt };
   let updatedMsg;
@@ -297,10 +305,10 @@ router.post("/:id/brief/lock", (req, res) => {
       action: "brief_locked",
       actor_type: "human",
       actor_id: "human",
-      channel: b.channel || "web",
+      channel: actor.channel,
       target_type: "message",
       target_id: briefMsg.id,
-      details: {},
+      details: { actor_ref: actor.actorRef || null },
     });
   });
   emitTask(task.id, "kad.message.updated", updatedMsg);
@@ -328,6 +336,8 @@ router.post("/:id/brief/lock", (req, res) => {
 // [Duyệt tất cả] / [Yêu cầu sửa] on a Report Card (spec 07 §4) — a super-set of
 // approvals.js decide() covering possibly-multiple artifacts + a cost summary.
 router.post("/:id/report/:messageId/decide", (req, res) => {
+  const actor = readKadActor(req);
+  if (sendActorError(actor, res)) return;
   const task = repo.tasks.getTask(req.params.id);
   if (!task) return err(res, "ENOTFOUND", "task not found", 404);
   const msg = repo.tasks.getMessage(req.params.messageId);
@@ -368,6 +378,8 @@ router.post("/:id/report/:messageId/decide", (req, res) => {
         sender_id: "human",
         content: b.reason,
         message_type: "chat",
+        channel: actor.channel,
+        channel_actor_ref: actor.actorRef,
       });
       repo.learning.createNote({
         department_id: task.department_id,
@@ -384,10 +396,10 @@ router.post("/:id/report/:messageId/decide", (req, res) => {
       action: "report_decided",
       actor_type: "human",
       actor_id: "human",
-      channel: b.channel || "web",
+      channel: actor.channel,
       target_type: "message",
       target_id: msg.id,
-      details: { decision: b.decision },
+      details: { decision: b.decision, actor_ref: actor.actorRef || null },
     });
   });
   emitTask(task.id, "kad.message.updated", updatedMsg);

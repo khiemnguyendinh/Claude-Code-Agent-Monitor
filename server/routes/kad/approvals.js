@@ -9,6 +9,7 @@ const repo = require("../../lib/kad/repo");
 const workflowEngine = require("../../lib/kad/workflow-engine");
 const { emitTask, emitDept } = require("../../lib/kad/events");
 const { analyzeLearningNote } = require("../../lib/kad/learning-loop");
+const { readKadActor, sendActorError } = require("../../lib/kad/auth");
 
 const router = express.Router();
 const err = (res, code, message, status = 400) =>
@@ -36,6 +37,8 @@ router.get("/:id", (req, res) => {
 });
 
 router.post("/:id/decide", (req, res) => {
+  const actor = readKadActor(req);
+  if (sendActorError(actor, res)) return;
   const a = repo.approvals.getApproval(req.params.id);
   if (!a) return err(res, "ENOTFOUND", "approval not found", 404);
   if (a.status !== "pending")
@@ -50,8 +53,8 @@ router.post("/:id/decide", (req, res) => {
     decided = repo.approvals.decide(a.id, {
       decision: b.decision,
       reason: b.reason,
-      channel: b.channel,
-      channel_actor_ref: b.channel_actor_ref,
+      channel: actor.channel,
+      channel_actor_ref: actor.actorRef,
     });
     // Approving an artifact-bound approval (framework/syllabus/sensitive) flips the
     // artifact to 'approved' — the durable fact the workflow engine reads to advance
@@ -67,10 +70,14 @@ router.post("/:id/decide", (req, res) => {
       action: "approval_decided",
       actor_type: "human",
       actor_id: "human",
-      channel: b.channel || "web",
+      channel: actor.channel,
       target_type: "approval",
       target_id: a.id,
-      details: { decision: b.decision, approval_type: a.approval_type },
+      details: {
+        decision: b.decision,
+        approval_type: a.approval_type,
+        actor_ref: actor.actorRef || null,
+      },
     });
     if (b.decision === "rejected" || b.decision === "needs_changes") {
       analyzeLearningNote({
@@ -80,7 +87,7 @@ router.post("/:id/decide", (req, res) => {
         trigger_type: b.decision === "rejected" ? "human_rejection" : "human_revision",
         feedback_content: b.reason || `${a.approval_type} bị ${b.decision}`,
         artifact_title: a.title,
-        artifact_content: a.description
+        artifact_content: a.description,
       }).catch(console.error);
     }
   });

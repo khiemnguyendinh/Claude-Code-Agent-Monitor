@@ -49,6 +49,8 @@ function createTask({
   priority,
   channel,
   channel_actor_ref,
+  channel_context_ref,
+  channel_chat_type,
   working_dir,
   workflow_id,
   activation,
@@ -92,7 +94,14 @@ function createTask({
     channel: channel ?? "web",
     target_type: "task",
     target_id: id,
-    details: { title, channel_actor_ref: channel_actor_ref ?? null, origin_rule_id: origin_rule_id ?? null },
+    details: {
+      title,
+      channel: channel ?? "web",
+      channel_actor_ref: channel_actor_ref ?? null,
+      channel_context_ref: channel_context_ref ?? null,
+      channel_chat_type: channel_chat_type ?? null,
+      origin_rule_id: origin_rule_id ?? null,
+    },
   });
   return getTask(id);
 }
