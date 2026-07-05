@@ -26,4 +26,6 @@ module.exports = {
   dependencies: require("./task-dependencies"),
   automationRules: require("./automation-rules"),
   attachments: require("./task-attachments"),
+  orgContext: require("./org-context"),
+  templates: require("./templates"),
 };

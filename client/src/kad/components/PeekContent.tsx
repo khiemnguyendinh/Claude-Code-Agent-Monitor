@@ -456,8 +456,9 @@ function ApprovalPeek({
 
 function AgentPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
   const navigate = useNavigate();
-  const { tasks } = useKadStore();
-  const agent = findAgent(id);
+  const { tasks, agentsById } = useKadStore();
+  const realAgent = agentsById.get(id);
+  const agent = realAgent ?? findAgent(id);
   if (!agent) return <KadEmptyState icon={MessageSquare} message="Không tìm thấy hồ sơ." />;
   const stats = AGENT_STATS[id];
   const activeTasks = tasks.filter((t) => t.assignedAgentId === id && t.status !== "done");
@@ -465,7 +466,12 @@ function AgentPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget)
   return (
     <div className="p-4 space-y-5">
       <div className="flex items-center gap-3">
-        <AgentAvatar agentId={id} size={40} />
+        <AgentAvatar
+          agentId={id}
+          size={40}
+          displayNameOverride={realAgent?.displayName}
+          agentNameOverride={realAgent?.name}
+        />
         <div>
           <h2 className="kad-title text-kad-text-strong">{agent.displayName}</h2>
           <p className="kad-caption text-kad-text-muted">{agent.title}</p>

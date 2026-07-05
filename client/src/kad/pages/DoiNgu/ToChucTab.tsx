@@ -10,17 +10,38 @@
  * cây tĩnh ở trên: quy trình chuẩn của phòng ban (tĩnh, RD_WORKFLOW) và
  * các phiên đang thực sự chạy ngay lúc này (động, từ TASK_CARDS).
  */
+import { useEffect, useState } from "react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
-import { AGENTS, ORG_CHART_NODES, RD_WORKFLOW } from "../../mockData";
+import { RD_WORKFLOW } from "../../mockData";
+import { kadApi } from "../../api-client";
+import type { OrgChartNodeRow } from "../../api-client";
+import type { AgentProfile } from "../../types";
 import { usePeek } from "../../components/PeekDrawer";
 import { AgentAvatar, HumanAvatar } from "../../components/Avatar";
-import { KadCard } from "../../components/primitives";
+import { KadButton, KadCard, KadInput, KadSkeleton } from "../../components/primitives";
+import { useKadToast } from "../../components/Toast";
 
 export function ToChucTab() {
   const { openPeek } = usePeek();
-  const subAgents = AGENTS.filter((a) => a.agentType === "sub");
-  const mainAgent = AGENTS.find((a) => a.agentType === "main");
-  const helperGhosts = ORG_CHART_NODES.filter((n) => n.isHelperGhost);
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
+  const [nodes, setNodes] = useState<OrgChartNodeRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const toast = useKadToast();
+
+  useEffect(() => {
+    Promise.all([kadApi.agents.list(), kadApi.orgContext.orgChart()])
+      .then(([agentRows, nodeRows]) => {
+        setAgents(agentRows);
+        setNodes(nodeRows);
+      })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <KadSkeleton className="h-72 w-full" />;
+
+  const subAgents = agents.filter((a) => a.agentType === "sub");
+  const mainAgent = agents.find((a) => a.agentType === "main");
+  const helperGhosts = agents.filter((a) => a.agentType === "helper");
 
   return (
     <div className="space-y-8">
@@ -31,19 +52,25 @@ export function ToChucTab() {
             <NodeCard kind="human" name="Anh Khiêm" title="Trưởng phòng R&D" />
             <div className="w-px h-6 bg-kad-text-faint" />
             {mainAgent && (
-              <NodeCard kind="main" agentId={mainAgent.id} name={mainAgent.displayName} title="Điều phối" />
+              <NodeCard
+                kind="main"
+                agentId={mainAgent.id}
+                agentName={mainAgent.name}
+                name={mainAgent.displayName}
+                title="Điều phối"
+              />
             )}
 
-            <div className="relative" style={{ width: subAgents.length * 152 - 12 }}>
+            <div className="relative" style={{ width: Math.max(subAgents.length, 1) * 152 - 12 }}>
               <svg
                 className="absolute left-0 top-0 w-full h-6 pointer-events-none"
                 preserveAspectRatio="none"
-                viewBox={`0 0 ${subAgents.length * 152 - 12} 24`}
+                viewBox={`0 0 ${Math.max(subAgents.length, 1) * 152 - 12} 24`}
               >
                 <line
-                  x1={(subAgents.length * 152 - 12) / 2}
+                  x1={(Math.max(subAgents.length, 1) * 152 - 12) / 2}
                   y1="0"
-                  x2={(subAgents.length * 152 - 12) / 2}
+                  x2={(Math.max(subAgents.length, 1) * 152 - 12) / 2}
                   y2="8"
                   stroke="var(--kad-text-faint)"
                   strokeWidth="1.5"
@@ -51,7 +78,7 @@ export function ToChucTab() {
                 <line
                   x1={70}
                   y1="8"
-                  x2={(subAgents.length - 1) * 152 + 70}
+                  x2={(Math.max(subAgents.length, 1) - 1) * 152 + 70}
                   y2="8"
                   stroke="var(--kad-text-faint)"
                   strokeWidth="1.5"
@@ -70,20 +97,24 @@ export function ToChucTab() {
               </svg>
               <div className="flex gap-3 pt-6">
                 {subAgents.map((agent) => {
-                  const helper = helperGhosts.find((h) => h.parentId === `node-${agent.id}`);
+                  const helper = helperGhosts.find((h) => h.parentAgentId === agent.id);
                   return (
                     <div key={agent.id} className="flex flex-col items-center">
                       <button type="button" onClick={() => openPeek({ type: "agent", id: agent.id })}>
-                        <NodeCard kind="sub" agentId={agent.id} name={agent.displayName} title={agent.title} />
+                        <NodeCard
+                          kind="sub"
+                          agentId={agent.id}
+                          agentName={agent.name}
+                          name={agent.displayName}
+                          title={agent.title || agent.name}
+                        />
                       </button>
                       {helper && (
                         <>
                           <div className="w-px h-4 border-l border-dashed border-kad-text-faint" />
                           <div className="w-[110px] rounded-lg border border-dashed border-kad-text-faint px-1.5 py-1 text-center">
                             <p className="kad-caption text-kad-text-muted leading-tight">Trợ thủ tạm thời</p>
-                            <p className="kad-caption text-kad-text-faint">
-                              hết hạn sau {helper.helperExpiresInMinutes}ph
-                            </p>
+                            <p className="kad-caption text-kad-text-faint">helper</p>
                           </div>
                         </>
                       )}
@@ -101,7 +132,20 @@ export function ToChucTab() {
       </KadCard>
 
       {/* 1b — quy trình chuẩn */}
-      <WorkflowSection />
+      <WorkflowSection agents={agents} />
+      <OrgChartEditor
+        nodes={nodes}
+        onChange={setNodes}
+        onSave={() => {
+          kadApi.orgContext
+            .updateOrgChart(nodes)
+            .then((saved) => {
+              setNodes(saved);
+              toast({ message: "Đã lưu org chart.", tone: "success" });
+            })
+            .catch((e) => toast({ message: e instanceof Error ? e.message : "Không lưu được org chart.", tone: "warning" }));
+        }}
+      />
     </div>
   );
 }
@@ -109,11 +153,13 @@ export function ToChucTab() {
 function NodeCard({
   kind,
   agentId,
+  agentName,
   name,
   title,
 }: {
   kind: "human" | "main" | "sub";
   agentId?: string;
+  agentName?: string;
   name: string;
   title: string;
 }) {
@@ -130,7 +176,13 @@ function NodeCard({
       {kind === "human" ? (
         <HumanAvatar name={name} size={28} />
       ) : (
-        <AgentAvatar agentId={agentId ?? ""} size={28} status="running" />
+        <AgentAvatar
+          agentId={agentId ?? ""}
+          size={28}
+          status="running"
+          displayNameOverride={name}
+          agentNameOverride={agentName}
+        />
       )}
       <div className="min-w-0 text-left">
         <p className="kad-caption font-medium text-kad-text-strong leading-tight line-clamp-2">{name}</p>
@@ -147,7 +199,7 @@ function NodeCard({
 
 const WORKFLOWS = [RD_WORKFLOW];
 
-function WorkflowSection() {
+function WorkflowSection({ agents }: { agents: AgentProfile[] }) {
   return (
     <div>
       <h3 className="kad-heading text-kad-text-strong mb-3">Quy trình chuẩn</h3>
@@ -160,13 +212,18 @@ function WorkflowSection() {
             </div>
             <div className="flex items-center overflow-x-auto pb-1 -mx-1 px-1">
               {wf.steps.map((step, i) => {
-                const agent = AGENTS.find((a) => a.name === step.agentName);
+                const agent = agents.find((a) => a.name === step.agentName);
                 const isLast = i === wf.steps.length - 1;
                 return (
                   <div key={step.key} className="flex items-center flex-shrink-0">
                     <div className="w-[132px] flex flex-col items-center text-center gap-1.5 px-1">
                       {agent ? (
-                        <AgentAvatar agentId={agent.id} size={28} />
+                        <AgentAvatar
+                          agentId={agent.id}
+                          size={28}
+                          displayNameOverride={agent.displayName}
+                          agentNameOverride={agent.name}
+                        />
                       ) : (
                         <div className="w-8 h-8 rounded-full bg-kad-surface-2" />
                       )}
@@ -195,3 +252,43 @@ function WorkflowSection() {
   );
 }
 
+function OrgChartEditor({
+  nodes,
+  onChange,
+  onSave,
+}: {
+  nodes: OrgChartNodeRow[];
+  onChange: (nodes: OrgChartNodeRow[]) => void;
+  onSave: () => void;
+}) {
+  const update = (id: string, patch: Partial<OrgChartNodeRow>) => {
+    onChange(nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)));
+  };
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="kad-heading text-kad-text-strong">Org chart editor</h3>
+        <KadButton size="row" variant="primary" onClick={onSave}>
+          Lưu
+        </KadButton>
+      </div>
+      <div className="space-y-2">
+        {nodes.map((node) => (
+          <div key={node.id} className="grid grid-cols-1 sm:grid-cols-[1fr_150px_1fr] gap-2 border border-kad-border rounded-lg p-3">
+            <KadInput value={node.name} onChange={(e) => update(node.id, { name: e.target.value })} />
+            <select
+              value={node.node_type}
+              onChange={(e) => update(node.id, { node_type: e.target.value as OrgChartNodeRow["node_type"] })}
+              className="kad-body h-9 rounded-lg bg-kad-surface-2 px-3 text-kad-text"
+            >
+              <option value="company">company</option>
+              <option value="department">department</option>
+              <option value="position">position</option>
+            </select>
+            <KadInput value={node.parent_id ?? ""} onChange={(e) => update(node.id, { parent_id: e.target.value || null })} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

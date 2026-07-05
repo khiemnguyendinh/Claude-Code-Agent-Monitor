@@ -1,22 +1,15 @@
-/**
- * Tab "Văn hóa & Nguyên tắc" — 04-man-doi-ngu.md §2. Living document, read
- * is primary; edits always go through a draft + approval, never a direct
- * save (§2: "mọi nút sửa đổi đều là 'Gửi duyệt', không có nút Lưu trực tiếp").
- *
- * "Chiến lược & Ưu tiên" đã tách sang tab "Mục tiêu" (2026-07-04) — không còn
- * hiển thị ở đây; tab này chỉ còn tri thức tổ chức sửa qua Gửi duyệt.
- */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { ORG_CONTEXT_SECTIONS } from "../../mockData";
+import { kadApi } from "../../api-client";
+import type { OrgContextData, OrgContextVersionRow } from "../../api-client";
 import { useKadToast } from "../../components/Toast";
-import { KadButton, KadTextarea } from "../../components/primitives";
+import { KadButton, KadErrorBlock, KadSkeleton, KadTextarea } from "../../components/primitives";
 import { MarkdownLite } from "../../components/MarkdownLite";
 import type { OrgContextSection } from "../../types";
+import { OrgContextWizard } from "./OrgContextWizard";
 
-const CORE_VALUES = ["AI-First", "Asset-light (Ultra-lean)", "Thực chiến, đo lường được"];
+type SectionKey = OrgContextSection["key"];
 
-// Scroll-spy: mục cột trái nào ứng với section đang lọt vào vùng đọc.
 function useScrollSpy(keys: string[]): string | null {
   const [active, setActive] = useState<string | null>(keys[0] ?? null);
   const keyStr = keys.join("|");
@@ -39,17 +32,141 @@ function useScrollSpy(keys: string[]): string | null {
   return active;
 }
 
+function fmtDate(value: string | null): string {
+  if (!value) return "chưa duyệt";
+  return new Date(value).toLocaleDateString("vi-VN");
+}
+
+function strategyText(data: OrgContextData): string {
+  const s = data.strategy || { goals: "", priorities: "", constraints: "", roadmap: "" };
+  return [
+    `## Goals\n${s.goals || ""}`,
+    `## Priorities\n${s.priorities || ""}`,
+    `## Constraints\n${s.constraints || ""}`,
+    `## Roadmap\n${s.roadmap || ""}`,
+  ].join("\n");
+}
+
+function toSections(current: OrgContextVersionRow, pending: boolean): OrgContextSection[] {
+  const data = current.data;
+  return [
+    {
+      key: "su-menh",
+      title: "Sứ mệnh",
+      bodyMarkdown: data.mission || "",
+      version: current.version,
+      approvedAt: fmtDate(current.approved_at),
+      pendingChange: pending,
+    },
+    {
+      key: "tam-nhin",
+      title: "Tầm nhìn",
+      bodyMarkdown: data.vision || "",
+      version: current.version,
+      approvedAt: fmtDate(current.approved_at),
+      pendingChange: pending,
+    },
+    {
+      key: "gia-tri",
+      title: "Giá trị cốt lõi",
+      bodyMarkdown: (data.core_values || []).join("\n"),
+      version: current.version,
+      approvedAt: fmtDate(current.approved_at),
+      pendingChange: pending,
+    },
+    {
+      key: "nguyen-tac",
+      title: "Nguyên tắc làm việc",
+      bodyMarkdown: data.brand?.voice || "",
+      version: current.version,
+      approvedAt: fmtDate(current.approved_at),
+      pendingChange: pending,
+    },
+    {
+      key: "ky-luat",
+      title: "Kỷ luật công việc",
+      bodyMarkdown: data.brand?.guideline || "",
+      version: current.version,
+      approvedAt: fmtDate(current.approved_at),
+      pendingChange: pending,
+    },
+    {
+      key: "chien-luoc",
+      title: "Chiến lược & Ưu tiên quý",
+      bodyMarkdown: strategyText(data),
+      version: current.version,
+      approvedAt: fmtDate(current.approved_at),
+      pendingChange: pending,
+    },
+  ];
+}
+
+function nextData(data: OrgContextData, key: SectionKey, body: string): OrgContextData {
+  if (key === "su-menh") return { ...data, mission: body };
+  if (key === "tam-nhin") return { ...data, vision: body };
+  if (key === "gia-tri")
+    return {
+      ...data,
+      core_values: body
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean),
+    };
+  if (key === "nguyen-tac") return { ...data, brand: { ...data.brand, voice: body } };
+  if (key === "ky-luat") return { ...data, brand: { ...data.brand, guideline: body } };
+  return { ...data, strategy: { ...data.strategy, priorities: body } };
+}
+
 export function VanHoaTab() {
-  const [sections, setSections] = useState<OrgContextSection[]>(
-    ORG_CONTEXT_SECTIONS.filter((s) => s.key !== "chien-luoc")
+  const [current, setCurrent] = useState<OrgContextVersionRow | null>(null);
+  const [versions, setVersions] = useState<OrgContextVersionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [needsWizard, setNeedsWizard] = useState(false);
+  const [error, setError] = useState(false);
+
+  const refresh = () => {
+    setLoading(true);
+    setError(false);
+    Promise.all([kadApi.orgContext.current(), kadApi.orgContext.versions()])
+      .then(([ctx, all]) => {
+        setCurrent(ctx);
+        setVersions(all);
+        setNeedsWizard(false);
+      })
+      .catch(() => {
+        setNeedsWizard(true);
+        setCurrent(null);
+      })
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  const pendingDraft = versions.find((v) => v.status === "draft");
+  const sections = useMemo(
+    () => (current ? toSections(current, Boolean(pendingDraft)) : []),
+    [current, pendingDraft]
   );
-  const [editingKey, setEditingKey] = useState<string | null>(null);
   const activeKey = useScrollSpy(sections.map((s) => s.key));
+  const toast = useKadToast();
+
+  if (loading) {
+    return (
+      <div className="max-w-[720px] space-y-3">
+        <KadSkeleton className="h-4 w-2/3" />
+        <KadSkeleton className="h-28 w-full" />
+        <KadSkeleton className="h-28 w-full" />
+      </div>
+    );
+  }
+
+  if (needsWizard) return <OrgContextWizard onCompleted={refresh} />;
+  if (error || !current) return <KadErrorBlock onRetry={refresh} />;
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-[220px_1fr] gap-8">
-      {/* Cột trái — card điều hướng, đồng bộ style với cột trái tab JD & Kỹ
-          năng; mục đang xem được highlight qua scroll-spy. */}
       <nav className="hidden lg:block sticky top-20 self-start h-fit border border-kad-border rounded-xl overflow-hidden">
         {sections.map((s) => (
           <a
@@ -68,24 +185,39 @@ export function VanHoaTab() {
       </nav>
 
       <div className="max-w-[720px] space-y-8">
-        <p className="kad-caption text-kad-text-faint border-b border-kad-border pb-4">
-          Nội dung trang này được nạp vào ngữ cảnh của mọi thành viên AI.
-        </p>
+        <div className="flex items-center justify-between gap-3 border-b border-kad-border pb-4">
+          <p className="kad-caption text-kad-text-faint">
+            Nội dung trang này được nạp vào ngữ cảnh của mọi thành viên AI.
+          </p>
+          {pendingDraft && (
+            <KadButton
+              variant="primary"
+              size="row"
+              onClick={() => {
+                kadApi.orgContext
+                  .approve(pendingDraft.id)
+                  .then(() => {
+                    toast({ message: "Đã duyệt bản tri thức mới.", tone: "success" });
+                    refresh();
+                  })
+                  .catch((e) => toast({ message: e instanceof Error ? e.message : "Không duyệt được.", tone: "warning" }));
+              }}
+            >
+              Duyệt bản nháp v{pendingDraft.version}
+            </KadButton>
+          )}
+        </div>
 
         {sections.map((section) => (
           <SectionBlock
             key={section.key}
             section={section}
-            isEditing={editingKey === section.key}
-            onToggleEdit={() => setEditingKey(editingKey === section.key ? null : section.key)}
-            onSubmitted={() => {
-              setSections((prev) => prev.map((s) => (s.key === section.key ? { ...s, pendingChange: true } : s)));
-              setEditingKey(null);
-            }}
+            current={current}
+            onDraftCreated={refresh}
           >
             {section.key === "gia-tri" ? (
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {CORE_VALUES.map((v) => (
+                {current.data.core_values.map((v) => (
                   <div key={v} className="border border-kad-border rounded-lg p-3 text-center">
                     <p className="kad-label text-kad-text-strong">{v}</p>
                   </div>
@@ -101,29 +233,27 @@ export function VanHoaTab() {
   );
 }
 
-// StrategyBlock đã chuyển sang tab "Mục tiêu" (MucTieuTab.tsx).
-
 function SectionBlock({
   section,
-  isEditing,
-  onToggleEdit,
-  onSubmitted,
+  current,
+  onDraftCreated,
   children,
 }: {
   section: OrgContextSection;
-  isEditing: boolean;
-  onToggleEdit: () => void;
-  onSubmitted: () => void;
+  current: OrgContextVersionRow;
+  onDraftCreated: () => void;
   children: ReactNode;
 }) {
+  const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(section.bodyMarkdown);
+  const [saving, setSaving] = useState(false);
   const toast = useKadToast();
 
   return (
     <section id={`section-${section.key}`} className="scroll-mt-20">
       <div className="flex items-center justify-between mb-2">
         <h2 className="kad-title text-kad-text-strong">{section.title}</h2>
-        <KadButton variant="ghost" size="row" onClick={onToggleEdit}>
+        <KadButton variant="ghost" size="row" onClick={() => setEditing((v) => !v)}>
           Đề xuất sửa
         </KadButton>
       </div>
@@ -134,7 +264,7 @@ function SectionBlock({
         </div>
       )}
 
-      {isEditing ? (
+      {editing ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <p className="kad-overline text-kad-text-faint mb-1.5">Bản hiện tại</p>
@@ -142,19 +272,31 @@ function SectionBlock({
           </div>
           <div>
             <p className="kad-overline text-kad-text-faint mb-1.5">Bản sửa</p>
-            <KadTextarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[140px]" />
+            <KadTextarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[160px]" />
             <div className="flex items-center gap-2 mt-2">
               <KadButton
                 variant="primary"
                 size="row"
+                loading={saving}
                 onClick={() => {
-                  toast({ message: "Đã gửi duyệt thay đổi.", tone: "success" });
-                  onSubmitted();
+                  setSaving(true);
+                  kadApi.orgContext
+                    .createDraft({
+                      data: nextData(current.data, section.key, draft),
+                      change_summary: `Đề xuất sửa ${section.title}`,
+                    })
+                    .then(() => {
+                      toast({ message: "Đã tạo draft chờ duyệt.", tone: "success" });
+                      setEditing(false);
+                      onDraftCreated();
+                    })
+                    .catch((e) => toast({ message: e instanceof Error ? e.message : "Không tạo được draft.", tone: "warning" }))
+                    .finally(() => setSaving(false));
                 }}
               >
                 Gửi duyệt thay đổi
               </KadButton>
-              <KadButton variant="ghost" size="row" onClick={onToggleEdit}>
+              <KadButton variant="ghost" size="row" onClick={() => setEditing(false)}>
                 Hủy
               </KadButton>
             </div>

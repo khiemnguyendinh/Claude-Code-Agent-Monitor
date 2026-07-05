@@ -1064,6 +1064,339 @@ async function runS2() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
+async function runS4() {
+  console.log("\n=== KAD verify — Scenario S4 (Phase 4, wizard + knowledge/template versioning) ===\n");
+  const TMP_DB4 = path.join(os.tmpdir(), `kad-verify-s4-${process.pid}.db`);
+  for (const f of [TMP_DB4, TMP_DB4 + "-wal", TMP_DB4 + "-shm"])
+    try {
+      fs.unlinkSync(f);
+    } catch {}
+  process.env.DASHBOARD_DB_PATH = TMP_DB4;
+  process.env.DASHBOARD_TOKEN = "";
+  process.env.KAD_WORKER_TICK_MS = "3600000";
+
+  const { createApp } = require(path.join(ROOT, "server/index.js"));
+  const kad = require(path.join(ROOT, "server/routes/kad"));
+  const { getInternalToken } = require(path.join(ROOT, "server/lib/kad/internal-auth"));
+  const app = createApp();
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const BASE = `http://127.0.0.1:${port}`;
+  kad.initKad({ apiBase: BASE });
+
+  const api = async (method, p, body) => {
+    const resp = await fetch(BASE + p, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+  const internal = async (method, p, { runCtx, body } = {}) => {
+    const h = { "content-type": "application/json", "x-kad-internal-token": getInternalToken() };
+    if (runCtx)
+      Object.assign(h, {
+        "x-kad-run-id": runCtx.run,
+        "x-kad-task-id": runCtx.task,
+        "x-kad-agent-id": runCtx.agent,
+      });
+    const resp = await fetch(BASE + "/api/kad/internal" + p, {
+      method,
+      headers: h,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+
+  const Database = require("better-sqlite3");
+  const sdb4 = new Database(TMP_DB4, { readonly: true });
+  const one = (q, ...a) => sdb4.prepare(q).get(...a);
+  const repo = require(path.join(ROOT, "server/lib/kad/repo"));
+
+  const empty = await api("GET", "/api/kad/org-context/current");
+  check("S4: DB trắng starts with no org context", empty.status === 404, `got ${empty.status}`);
+
+  const wizardDraft = {
+    _profile: {
+      name: "Học viện Kstudy",
+      industry: "Đào tạo Digital Marketing, AI & Automation",
+      size: "11-50",
+      founded_year: 2015,
+    },
+    vision:
+      "Phổ cập năng lực Digital Marketing định hướng AI & Automation, thực chiến, cho người đi làm và người chuyển nghề tại Việt Nam.",
+    mission:
+      "Đào tạo Digital Marketing, AI & Automation theo hướng làm được ngay; xây và đưa học liệu lên hệ thống Kstudy AI Mentor.",
+    core_values: ["AI-First", "Asset-light", "Guerrilla Marketing", "Business Automation"],
+    brand: {
+      voice:
+        'Chuyên gia gần gũi, thực chiến, thẳng thắn; với học trò xưng "anh/em"; không phóng đại.',
+      guideline: "Không bịa số liệu, không cam kết quá mức, ưu tiên ví dụ Việt Nam.",
+      primary_color: "#1D237D",
+      font: "Inter",
+      slogan: "Đào tạo AI & Automation Marketing",
+    },
+    products: [
+      {
+        name: "Nghề Digital Marketing định hướng AI Automation",
+        description: "Chương trình 6-8 tháng, online + hybrid.",
+        target_audience: "Người đi làm và người chuyển nghề.",
+      },
+    ],
+    personas: [
+      {
+        name: "Người chuyển nghề Digital Marketing",
+        demographics: "Người đi làm tại Việt Nam.",
+        needs: "Học thực chiến, làm được ngay.",
+        pain_points: "Thiếu nền tảng, ngại lý thuyết suông.",
+        channels: "Online + Hybrid",
+      },
+    ],
+    strategy: {
+      goals: "Soạn học liệu chuẩn CDIO/KASH/Bloom.",
+      priorities: "Chất lượng sư phạm + tính thực chiến + brand voice nhất quán.",
+      constraints: "Không phóng đại; ưu tiên công cụ phổ cập, chi phí thấp.",
+      roadmap: "Phase 1: syllabus; Phase 2: lesson/slide/video.",
+    },
+    swot: {
+      strengths: ["Thực chiến", "AI-first"],
+      weaknesses: ["Organic traffic còn yếu"],
+      opportunities: ["SME cần automation"],
+      threats: ["Thị trường nhiễu thông tin AI"],
+    },
+    competitors: [
+      {
+        name: "Đối thủ benchmark",
+        strengths: "Nhận diện tốt",
+        weaknesses: "Ít automation",
+        differentiator: "Kstudy tập trung AI-native workflow",
+      },
+    ],
+    department_role: "Phòng R&D xây khung chương trình, syllabus và học liệu.",
+    pedagogy_standards: "CDIO, KASH, Bloom taxonomy, hybrid learning.",
+    responsible_human: "anh Khiêm",
+    _org_chart_nodes: [
+      { id: "company", parent_id: null, name: "Học viện Kstudy", node_type: "company", sort_order: 0 },
+      { id: "rd", parent_id: "company", name: "Phòng R&D", node_type: "department", sort_order: 1 },
+    ],
+    _department: {
+      slug: "rd",
+      name: "Phòng R&D",
+      template_type: "rd",
+      mission: "Xây khung chương trình, syllabus và học liệu.",
+    },
+    _templates: [],
+  };
+
+  for (let step = 1; step <= 11; step++) {
+    const draft = await api("POST", "/api/kad/wizard/draft", { step, draft: wizardDraft });
+    check(`S4: wizard draft step ${step}/11 saved`, draft.status === 200, `got ${draft.status}`);
+  }
+  const completed = await api("POST", "/api/kad/wizard/complete", { draft: wizardDraft });
+  check(
+    "S4: wizard complete → org context v1 approved",
+    completed.status === 201 && completed.body.org_context.status === "approved",
+    `got ${completed.status}`
+  );
+  check(
+    "S4 SQL: dept rd + approved blueprint + active main/researcher",
+    one("SELECT COUNT(*) n FROM departments WHERE slug='rd' AND status='active'").n === 1 &&
+      one("SELECT COUNT(*) n FROM department_blueprints WHERE status='approved'").n === 1 &&
+      one("SELECT COUNT(*) n FROM agent_profiles WHERE name='main-agent-rd' AND status='active'").n === 1 &&
+      one("SELECT COUNT(*) n FROM agent_profiles WHERE name='sub-curriculum-researcher' AND status='active'").n === 1
+  );
+  check(
+    "S4 SQL: 6 approved seed templates",
+    one("SELECT COUNT(*) n FROM template_versions WHERE status='approved'").n >= 6
+  );
+
+  const dept = repo.catalog.getDepartmentBySlug("rd");
+  const mainAgent = repo.catalog.getMainAgent(dept.id);
+  const oldTask = await api("POST", "/api/kad/tasks", { title: "S4 task trước khi sửa brand voice" });
+  const v1 = one("SELECT id FROM organization_context_versions WHERE status='approved'").id;
+  check("S4: task before edit snapshots org context v1", oldTask.body.org_context_version_id === v1);
+
+  const current = await api("GET", "/api/kad/org-context/current");
+  const changedData = {
+    ...current.body.data,
+    brand: {
+      ...current.body.data.brand,
+      voice: `${current.body.data.brand.voice}\nS4 brand voice version mới.`,
+    },
+  };
+  const draftV2 = await api("POST", "/api/kad/org-context/versions", {
+    data: changedData,
+    change_summary: "S4 update brand voice",
+  });
+  check(
+    "S4: brand voice edit creates v2 draft",
+    draftV2.status === 201 && draftV2.body.version === 2 && draftV2.body.status === "draft",
+    `got ${draftV2.status}`
+  );
+  const approvedV2 = await api("POST", `/api/kad/org-context/versions/${draftV2.body.id}/approve`, {});
+  check(
+    "S4: approve org context v2 archives v1",
+    approvedV2.status === 200 &&
+      approvedV2.body.status === "approved" &&
+      one("SELECT status FROM organization_context_versions WHERE id=?", v1).status === "archived"
+  );
+
+  const newTask = await api("POST", "/api/kad/tasks", { title: "S4 task sau khi sửa brand voice" });
+  check(
+    "S4: new task snapshots org context v2",
+    newTask.body.org_context_version_id === approvedV2.body.id,
+    `${newTask.body.org_context_version_id} !== ${approvedV2.body.id}`
+  );
+  check(
+    "S4: old task still points to v1",
+    one("SELECT org_context_version_id FROM tasks WHERE id=?", oldTask.body.id).org_context_version_id === v1
+  );
+
+  const ctxMain = { run: "run-s4-main", task: newTask.body.id, agent: mainAgent.id };
+  const artifact = await internal("POST", "/save-artifact", {
+    runCtx: ctxMain,
+    body: {
+      artifact_type: "other",
+      title: "S4 artifact uses v2",
+      content: "# Artifact\nUses latest approved org context.",
+    },
+  });
+  const artifactOrg = one("SELECT org_context_version_id FROM artifacts WHERE id=?", artifact.body.artifact_id);
+  check("S4: artifact metadata writes org_context_version_id v2", artifactOrg.org_context_version_id === approvedV2.body.id);
+
+  const tplDraft = await api("POST", "/api/kad/templates", {
+    name: "S4 Custom Markdown",
+    file_name: "s4-custom-template.md",
+    template_type: "custom",
+    purpose: "Verify custom upload",
+    content: "# S4 Custom Template\n- Required section",
+  });
+  check(
+    "S4: upload .md creates template draft",
+    tplDraft.status === 201 && tplDraft.body.version.status === "draft",
+    `got ${tplDraft.status}`
+  );
+  const tplApproved = await api("POST", `/api/kad/templates/${tplDraft.body.version.id}/approve`, {});
+  check(
+    "S4: approve uploaded template",
+    tplApproved.status === 200 && tplApproved.body.version.status === "approved"
+  );
+  const readTemplate = await internal("GET", "/template?type=custom", { runCtx: ctxMain });
+  check(
+    "S4: agent can read approved custom template",
+    readTemplate.status === 200 && /S4 Custom Template/.test(readTemplate.body.content || ""),
+    `got ${readTemplate.status}`
+  );
+  check(
+    "S4 SQL: template_usage_log written",
+    one(
+      "SELECT COUNT(*) n FROM template_usage_log WHERE template_version_id=? AND task_id=?",
+      tplApproved.body.version.id,
+      newTask.body.id
+    ).n === 1
+  );
+
+  const currentBp = repo.orgContext.listBlueprints({ department_id: dept.id }).find((b) => b.status === "approved");
+  const proposedBp = await api("POST", `/api/kad/blueprints/${currentBp.id}/propose`, {
+    data: { ...currentBp.data, s4_note: "new blueprint proposal" },
+    change_summary: "S4 blueprint proposal",
+  });
+  check(
+    "S4: blueprint proposal creates pending_approval",
+    proposedBp.status === 201 && proposedBp.body.status === "pending_approval"
+  );
+  const approvedBp = await api("POST", `/api/kad/blueprints/${proposedBp.body.id}/decide`, {
+    decision: "approved",
+  });
+  const bpTask = await api("POST", "/api/kad/tasks", { title: "S4 task sau blueprint v2" });
+  check(
+    "S4: new task snapshots approved blueprint v2",
+    approvedBp.status === 200 &&
+      bpTask.body.blueprint_version_id === approvedBp.body.id &&
+      one("SELECT status FROM department_blueprints WHERE id=?", currentBp.id).status === "archived"
+  );
+
+  console.log("\n--- S4 engine leg (real Claude spawn) ---");
+  const worker = require(path.join(ROOT, "server/lib/kad/job-queue"));
+  let engineBlocked = false;
+  const engineTask = await api("POST", "/api/kad/tasks", {
+    title: "S4 engine task sau wizard",
+  });
+  const msg = await api("POST", `/api/kad/tasks/${engineTask.body.id}/messages`, {
+    content:
+      "Từ dữ liệu wizard vừa thiết lập, lập kế hoạch nghiên cứu nhu cầu học AI Automation của chủ SME Việt Nam và gọi kad_plan_task.",
+  });
+  check("S4.E0 POST /messages accepted + real run kicked", msg.status === 201 && msg.body.run_kicked === true);
+  const t0 = Date.now();
+  let planRow = null,
+    run = null,
+    briefLocked = false;
+  const answeredIntakeIds = new Set();
+  while (Date.now() - t0 < 420000) {
+    if (briefLocked) {
+      await worker.sweep();
+      await sleep(1000);
+    } else {
+      await sleep(3000);
+    }
+    const plans = repo.approvals
+      .listByTask(engineTask.body.id)
+      .filter((a) => a.approval_type === "plan");
+    planRow = plans[plans.length - 1] || null;
+    const runs = repo.runs.listByTask(engineTask.body.id);
+    run = runs[runs.length - 1] || null;
+    if (planRow) break;
+    if (run && run.status === "failed") {
+      const out = JSON.stringify(run.output || "");
+      if (/401|authenticate|credentials/i.test(out)) engineBlocked = true;
+      break;
+    }
+    const messages = repo.tasks.listMessages(engineTask.body.id);
+    const intake = [...messages]
+      .reverse()
+      .find((m) => m.message_type === "intake_question" && !answeredIntakeIds.has(m.id));
+    if (intake) {
+      answeredIntakeIds.add(intake.id);
+      const options = intake.metadata && intake.metadata.options;
+      const answer = options && options.length ? options[0] : "Dùng chuẩn Kstudy, ưu tiên thực chiến và có nguồn.";
+      await api("POST", `/api/kad/tasks/${engineTask.body.id}/messages`, { content: answer });
+      continue;
+    }
+    if (!briefLocked && messages.some((m) => m.message_type === "brief")) {
+      const lock = await api("POST", `/api/kad/tasks/${engineTask.body.id}/brief/lock`, {});
+      if (lock.status === 200) briefLocked = true;
+    }
+  }
+  if (briefLocked) check("S4.E0b live brief flow locked", true);
+  if (engineBlocked) {
+    blocked("S4.E1 real Main Agent calls kad_plan_task", "spawned claude 401 — no standalone credential");
+  } else {
+    check(
+      "S4.E1 real Main Agent calls kad_plan_task after wizard",
+      !!planRow,
+      run ? `run status=${run.status}` : "no run"
+    );
+    check("S4.E2 engine_session_id captured", !!(run && run.engine_session_id));
+  }
+
+  console.log(results.join("\n"));
+  console.log(
+    `\n=== S4: ${pass} passed, ${fail} failed${engineBlocked ? " (engine leg BLOCKED — auth)" : ""} ===`
+  );
+
+  sdb4.close();
+  try {
+    require(path.join(ROOT, "server/lib/kad/job-queue")).stopWorker();
+  } catch {}
+  server.close();
+  for (const f of [TMP_DB4, TMP_DB4 + "-wal", TMP_DB4 + "-shm"])
+    try {
+      fs.unlinkSync(f);
+    } catch {}
+  process.exit(fail > 0 ? 1 : 0);
+}
+
 /**
  * Scenario S3 (Phase 3B, phase-03 §2-5 + DoD): the R&D workflow engine — step
  * machine, QC gate B, conditional/internal auto-approval, sensitive detection
@@ -1649,7 +1982,9 @@ async function runS3Deps() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
-if (process.argv.includes("--s2")) {
+if (process.argv.includes("--s4")) {
+  runS4().catch((e) => { console.error("verify S4 crashed:", e); process.exit(1); });
+} else if (process.argv.includes("--s2")) {
   runS2().catch((e) => { console.error("verify S2 crashed:", e); process.exit(1); });
 } else if (process.argv.includes("--s3")) {
   runS3().catch((e) => { console.error("verify S3 crashed:", e); process.exit(1); });

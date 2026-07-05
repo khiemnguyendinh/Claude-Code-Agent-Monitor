@@ -16,6 +16,27 @@ const TASK_COLS = [
   "archived",
 ];
 
+function resolveVersionSnapshot(department_id) {
+  if (!department_id) return { org_context_version_id: null, blueprint_version_id: null };
+  const dept = db.prepare("SELECT org_id FROM departments WHERE id=?").get(department_id);
+  const org = dept
+    ? db
+        .prepare(
+          "SELECT id FROM organization_context_versions WHERE org_id=? AND status='approved' ORDER BY version DESC LIMIT 1"
+        )
+        .get(dept.org_id)
+    : null;
+  const bp = db
+    .prepare(
+      "SELECT id FROM department_blueprints WHERE department_id=? AND status='approved' ORDER BY version DESC LIMIT 1"
+    )
+    .get(department_id);
+  return {
+    org_context_version_id: org ? org.id : null,
+    blueprint_version_id: bp ? bp.id : null,
+  };
+}
+
 function hydrateTask(row) {
   if (!row) return null;
   return { ...row, brief: parseJson(row.brief, null) };
@@ -34,9 +55,11 @@ function createTask({
 }) {
   const id = newId("task");
   const now = nowIso();
+  const snapshot = resolveVersionSnapshot(department_id);
   db.prepare(
-    `INSERT INTO tasks (id, department_id, workflow_id, title, description, status, working_dir, activation, automation_depth, priority, created_at, updated_at)
-     VALUES (@id,@department_id,@workflow_id,@title,@description,'inbox',@working_dir,@activation,0,@priority,@now,@now)`
+    `INSERT INTO tasks
+     (id, department_id, workflow_id, title, description, status, working_dir, org_context_version_id, blueprint_version_id, activation, automation_depth, priority, created_at, updated_at)
+     VALUES (@id,@department_id,@workflow_id,@title,@description,'inbox',@working_dir,@org_context_version_id,@blueprint_version_id,@activation,0,@priority,@now,@now)`
   ).run({
     id,
     department_id: department_id ?? null,
@@ -44,6 +67,8 @@ function createTask({
     title,
     description: description ?? null,
     working_dir: working_dir ?? null,
+    org_context_version_id: snapshot.org_context_version_id,
+    blueprint_version_id: snapshot.blueprint_version_id,
     activation: activation ?? "manual",
     priority: priority ?? "normal",
     now,

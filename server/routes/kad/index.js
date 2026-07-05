@@ -13,12 +13,14 @@ const internalRouter = require("./internal");
 const dependenciesRouter = require("./dependencies");
 const automationRulesRouter = require("./automation-rules");
 const attachmentsRouter = require("./attachments");
+const knowledgeRouter = require("./knowledge");
 
 const router = express.Router();
 router.use("/tasks", tasksRouter);
 router.use("/approvals", approvalsRouter);
 router.use("/internal", internalRouter);
 router.use("/", artifactsRouter); // /artifacts, /runs
+router.use("/", knowledgeRouter); // /org-context, /templates, /wizard, /blueprints, /org-chart
 router.use("/", miscRouter); // /agents, /reports, /notifications, /audit
 router.use("/", dependenciesRouter); // /dependencies/:depId
 router.use("/", automationRulesRouter); // /automation-rules, /automation/*

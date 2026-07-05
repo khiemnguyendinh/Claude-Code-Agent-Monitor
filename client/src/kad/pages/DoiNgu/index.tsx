@@ -10,12 +10,14 @@ import { MucTieuTab } from "./MucTieuTab";
 import { VanHoaTab } from "./VanHoaTab";
 import { JDKyNangTab } from "./JDKyNangTab";
 import { KiemSoatTab } from "./KiemSoatTab";
+import { ThuVienMauTab } from "./ThuVienMauTab";
 import { Workflows } from "../../../pages/Workflows";
 
 const TABS = [
   { key: "to-chuc", label: "Tổ chức" },
   { key: "muc-tieu", label: "Mục tiêu" },
   { key: "van-hoa", label: "Văn hóa & Nguyên tắc" },
+  { key: "thu-vien-mau", label: "Thư viện mẫu" },
   { key: "jd-ky-nang", label: "JD & Kỹ năng" },
   { key: "kiem-soat", label: "Kiểm soát & Phân quyền" },
   // 2026-07-04: he-thong/workflows folded in as a 5th tab per Khiêm's spec
@@ -34,6 +36,7 @@ export function DoiNgu() {
         {active === "to-chuc" && <ToChucTab />}
         {active === "muc-tieu" && <MucTieuTab />}
         {active === "van-hoa" && <VanHoaTab />}
+        {active === "thu-vien-mau" && <ThuVienMauTab />}
         {active === "jd-ky-nang" && <JDKyNangTab />}
         {active === "kiem-soat" && <KiemSoatTab />}
         {active === "workflow" && <Workflows />}

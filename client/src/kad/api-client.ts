@@ -616,6 +616,128 @@ export interface AttachmentRow {
   created_at: string;
 }
 
+// Phase 4 knowledge APIs. These are additive wire types for the real backend;
+// types.ts remains the approved UI contract.
+export interface OrgProfileRow {
+  id?: string;
+  name: string;
+  logo_path?: string | null;
+  industry?: string | null;
+  size?: "1-10" | "11-50" | "51-200" | "201-500" | "500+" | null;
+  founded_year?: number | null;
+}
+
+export interface OrgContextData {
+  vision: string;
+  mission: string;
+  core_values: string[];
+  brand: {
+    voice: string;
+    guideline: string;
+    primary_color?: string;
+    font?: string;
+    slogan?: string;
+  };
+  products: { name: string; description: string; target_audience: string }[];
+  personas: {
+    name: string;
+    demographics: string;
+    needs: string;
+    pain_points: string;
+    channels: string;
+  }[];
+  strategy: { goals: string; priorities: string; constraints: string; roadmap: string };
+  swot: {
+    strengths: string[];
+    weaknesses: string[];
+    opportunities: string[];
+    threats: string[];
+  };
+  competitors: { name: string; strengths: string; weaknesses: string; differentiator: string }[];
+  department_role: string;
+  pedagogy_standards?: string;
+  responsible_human?: string;
+}
+
+export interface OrgContextVersionRow {
+  id: string;
+  org_id: string;
+  version: number;
+  status: "draft" | "approved" | "archived";
+  data: OrgContextData & Record<string, unknown>;
+  change_summary: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+}
+
+export interface WizardDraftRow extends OrgContextVersionRow {
+  profile?: OrgProfileRow | null;
+}
+
+export interface OrgChartNodeRow {
+  id: string;
+  org_id?: string;
+  parent_id: string | null;
+  name: string;
+  node_type: "company" | "department" | "position";
+  lead_name: string | null;
+  mission: string | null;
+  sort_order: number;
+}
+
+export interface TemplateVersionRow {
+  id: string;
+  template_id: string;
+  version: number;
+  content: string;
+  change_summary: string | null;
+  status: "draft" | "approved" | "archived";
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+}
+
+export interface TemplateLibraryRow {
+  id: string;
+  department_id: string | null;
+  name: string;
+  template_type: string;
+  purpose: string | null;
+  owner: string | null;
+  status: "active" | "archived";
+  created_at: string;
+  updated_at: string;
+  latest_version: TemplateVersionRow | null;
+  approved_version: TemplateVersionRow | null;
+  usage_count: number;
+}
+
+export interface TemplateUsageRow {
+  id: string;
+  template_id: string;
+  template_version_id: string;
+  task_id: string | null;
+  artifact_id: string | null;
+  agent_id: string | null;
+  used_at: string;
+  task_title?: string | null;
+  artifact_title?: string | null;
+  agent_display_name?: string | null;
+}
+
+export interface BlueprintRow {
+  id: string;
+  department_id: string;
+  version: number;
+  status: "draft" | "pending_approval" | "approved" | "archived";
+  data: Record<string, unknown>;
+  proposed_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_at: string;
+}
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 export const kadApi = {
@@ -751,6 +873,84 @@ export const kadApi = {
 
   agents: {
     list: () => request<AgentRow[]>("/agents").then((rows) => rows.map(toAgent)),
+  },
+
+  orgContext: {
+    current: () => request<OrgContextVersionRow>("/org-context/current"),
+    versions: () => request<OrgContextVersionRow[]>("/org-context/versions"),
+    createDraft: (input: { data: OrgContextData; change_summary?: string }) =>
+      request<OrgContextVersionRow>("/org-context/versions", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    approve: (id: string) =>
+      request<OrgContextVersionRow>(`/org-context/versions/${encodeURIComponent(id)}/approve`, {
+        method: "POST",
+      }),
+    wizardDraft: () => request<WizardDraftRow | null>("/wizard/draft"),
+    saveWizardDraft: (input: { step: number; data?: Record<string, unknown>; draft?: Record<string, unknown> }) =>
+      request<WizardDraftRow>("/wizard/draft", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    completeWizard: (input?: Record<string, unknown>) =>
+      request<{
+        org: OrgProfileRow;
+        org_context: OrgContextVersionRow;
+        department: { id: string; slug: string; name: string };
+        blueprint: BlueprintRow;
+        org_chart: OrgChartNodeRow[];
+      }>("/wizard/complete", { method: "POST", body: JSON.stringify(input || {}) }),
+    orgChart: () => request<OrgChartNodeRow[]>("/org-chart"),
+    updateOrgChart: (nodes: OrgChartNodeRow[]) =>
+      request<OrgChartNodeRow[]>("/org-chart", {
+        method: "PUT",
+        body: JSON.stringify({ nodes }),
+      }),
+    blueprints: (department?: string) => {
+      const qs = department ? `?department=${encodeURIComponent(department)}` : "";
+      return request<BlueprintRow[]>(`/blueprints${qs}`);
+    },
+    proposeBlueprint: (id: string, input: { data?: Record<string, unknown>; change_summary?: string }) =>
+      request<BlueprintRow>(`/blueprints/${encodeURIComponent(id)}/propose`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    decideBlueprint: (id: string, decision: "approved" | "rejected", reason?: string) =>
+      request<BlueprintRow>(`/blueprints/${encodeURIComponent(id)}/decide`, {
+        method: "POST",
+        body: JSON.stringify({ decision, reason }),
+      }),
+  },
+
+  templates: {
+    list: (params?: { type?: string; status?: string; version_status?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.type) qs.set("type", params.type);
+      if (params?.status) qs.set("status", params.status);
+      if (params?.version_status) qs.set("version_status", params.version_status);
+      const q = qs.toString();
+      return request<TemplateLibraryRow[]>(`/templates${q ? `?${q}` : ""}`);
+    },
+    createDraft: (input: {
+      template_id?: string;
+      name?: string;
+      file_name?: string;
+      template_type?: string;
+      purpose?: string;
+      content: string;
+      change_summary?: string;
+    }) =>
+      request<{ template: TemplateLibraryRow; version: TemplateVersionRow }>("/templates", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    approve: (id: string) =>
+      request<{ template: TemplateLibraryRow; version: TemplateVersionRow }>(
+        `/templates/${encodeURIComponent(id)}/approve`,
+        { method: "POST" }
+      ),
+    usage: (id: string) => request<TemplateUsageRow[]>(`/templates/${encodeURIComponent(id)}/usage`),
   },
 
   workflows: {
