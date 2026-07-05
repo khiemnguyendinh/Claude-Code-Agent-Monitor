@@ -12,6 +12,7 @@ const miscRouter = require("./misc");
 const internalRouter = require("./internal");
 const dependenciesRouter = require("./dependencies");
 const automationRulesRouter = require("./automation-rules");
+const attachmentsRouter = require("./attachments");
 
 const router = express.Router();
 router.use("/tasks", tasksRouter);
@@ -21,6 +22,7 @@ router.use("/", artifactsRouter); // /artifacts, /runs
 router.use("/", miscRouter); // /agents, /reports, /notifications, /audit
 router.use("/", dependenciesRouter); // /dependencies/:depId
 router.use("/", automationRulesRouter); // /automation-rules, /automation/*
+router.use("/", attachmentsRouter); // /attachments/:id
 
 let started = false;
 

@@ -637,12 +637,12 @@ export const kadApi = {
       const q = qs.toString();
       return request<TaskRow[]>(`/tasks${q ? `?${q}` : ""}`).then((rows) => rows.map(toTask));
     },
-    sendMessage: (id: string, content: string) =>
+    sendMessage: (id: string, content: string, attachmentNames?: string[]) =>
       request<{ message: MessageRow; run_kicked: boolean }>(
         `/tasks/${encodeURIComponent(id)}/messages`,
         {
           method: "POST",
-          body: JSON.stringify({ content }),
+          body: JSON.stringify({ content, attachment_names: attachmentNames }),
         }
       ).then((r) => ({ message: toMessage(r.message), runKicked: r.run_kicked })),
     timeline: (id: string, taskTitle = "") =>
@@ -829,6 +829,29 @@ export const kadApi = {
   attachments: {
     listByTask: (taskId: string) =>
       request<AttachmentRow[]>(`/tasks/${encodeURIComponent(taskId)}/attachments`),
+    // Real multipart upload (spec 03) — deliberately bypasses request()'s
+    // JSON Content-Type: the browser must set its own multipart boundary.
+    upload: async (taskId: string, files: File[]): Promise<{ id: string; file_name: string }[]> => {
+      const form = new FormData();
+      for (const f of files) form.append("file", f);
+      const token = dashboardToken();
+      const res = await fetch(`${BASE}/tasks/${encodeURIComponent(taskId)}/attachments`, {
+        method: "POST",
+        headers: token ? { "x-dashboard-token": token } : undefined,
+        body: form,
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error?.message || `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
+    // Real removal (DB row + best-effort file unlink) — "remove chip" must
+    // actually delete the attachment, not just hide it client-side.
+    remove: (attachmentId: string) =>
+      request<{ id: string; task_id: string }>(`/attachments/${encodeURIComponent(attachmentId)}`, {
+        method: "DELETE",
+      }),
   },
 };
 

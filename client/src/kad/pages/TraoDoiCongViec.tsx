@@ -38,6 +38,7 @@ import {
   type MessageRow,
 } from "../api-client";
 import { subscribeKadScope, taskScope } from "../ws-client";
+import { takePendingFiles } from "../pending-uploads";
 import { usePeek } from "../components/PeekDrawer";
 import { useKadToast } from "../components/Toast";
 import { KadButton, KadEmptyState, KadTextarea } from "../components/primitives";
@@ -64,19 +65,9 @@ import type {
   TaskMessage,
 } from "../types";
 
-// Local demo cycle for the composer's attach affordance — task_attachments has
-// no real upload endpoint yet (spec 07 §1 [GAP]); attaching just names the
-// file in the message content so a human/agent at least sees it was sent.
-const DEMO_ATTACHMENT_NAMES = [
-  "tai-lieu-tham-khao.pdf",
-  "outline-cu.docx",
-  "so-lieu-hoc-vien.xlsx",
-];
-
 interface RouterFreshState {
   fresh?: boolean;
   description?: string;
-  attachments?: string[];
   // [Phase 2c "Giao việc"] carried from CongViecMoi.tsx's composer — see the
   // fresh-flow create call below.
   workingDir?: string;
@@ -94,7 +85,6 @@ export function TraoDoiCongViec() {
       routeId={id}
       fresh={Boolean(state?.fresh)}
       freshDescription={state?.description}
-      freshAttachments={state?.attachments ?? []}
       freshWorkingDir={state?.workingDir}
       freshWorkflowId={state?.workflowId}
     />
@@ -163,14 +153,12 @@ function TraoDoiCongViecInner({
   routeId,
   fresh,
   freshDescription,
-  freshAttachments,
   freshWorkingDir,
   freshWorkflowId,
 }: {
   routeId: string;
   fresh: boolean;
   freshDescription?: string;
-  freshAttachments?: string[];
   freshWorkingDir?: string;
   freshWorkflowId?: string;
 }) {
@@ -189,8 +177,10 @@ function TraoDoiCongViecInner({
   const [panelOpen, setPanelOpen] = useState(true);
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [dockAttachments, setDockAttachments] = useState<string[]>([]);
-  const [dockAttachCycle, setDockAttachCycle] = useState(0);
+  // Real attachment ids (server-issued at upload time — see
+  // handleDockedFilesSelected) alongside display names; id-keyed so a second
+  // upload sharing a name with an earlier one stays independently removable.
+  const [dockAttachments, setDockAttachments] = useState<{ id: string; file_name: string }[]>([]);
   const composerRef = useRef<TaskComposerHandle>(null);
   const initRef = useRef(false);
 
@@ -223,15 +213,41 @@ function TraoDoiCongViecInner({
             title: description,
             working_dir: freshWorkingDir,
             workflow_id: freshWorkflowId,
-            attachment_names: freshAttachments,
           });
           realId = created.id;
           unsubscribe = subscribeKadScope(taskScope(realId), (ev) => handleWsEvent(ev));
-          let content = description;
-          if (freshAttachments && freshAttachments.length) {
-            content += `\n\n📎 Đính kèm: ${freshAttachments.join(", ")}`;
+          // Real File objects from CongViecMoi.tsx's composer, handed off via
+          // pending-uploads.ts (no task_id existed yet when they were picked).
+          // Names for the text mention + chip metadata come from what the
+          // upload actually returned, not from intent — if it fails, neither
+          // is populated instead of claiming a file made it that didn't.
+          const pendingFiles = takePendingFiles(routeId);
+          let uploadedNames: string[] = [];
+          if (pendingFiles.length) {
+            try {
+              const uploaded = await kadApi.attachments.upload(realId, pendingFiles);
+              uploadedNames = uploaded.map((u) => u.file_name);
+            } catch (e) {
+              showToast({
+                message: e instanceof Error ? e.message : "Không thể tải file đính kèm lên.",
+                tone: "warning",
+              });
+            }
           }
-          await kadApi.tasks.sendMessage(realId, content);
+          // Kept as plain text too (not metadata-only): orchestrator.js's
+          // startTaskTurn/resumeTaskTurn read the Main Agent's prompt straight
+          // off `content`, not message metadata — the agent needs to see this
+          // mention to know a file exists at all. Metadata is only for the
+          // human-facing chip (TimelineItemRenderer).
+          let content = description;
+          if (uploadedNames.length) {
+            content += `\n\n📎 Đính kèm: ${uploadedNames.join(", ")}`;
+          }
+          await kadApi.tasks.sendMessage(
+            realId,
+            content,
+            uploadedNames.length ? uploadedNames : undefined
+          );
           setTaskId(realId);
           navigate(`/cong-viec/${realId}`, { replace: true });
         } else {
@@ -450,22 +466,45 @@ function TraoDoiCongViecInner({
 
   async function handleDockedSend() {
     const text = draft.trim();
-    const files = [...dockAttachments];
-    if (!text && files.length === 0) return;
+    const names = dockAttachments.map((a) => a.file_name);
+    if (!text && names.length === 0) return;
     setDraft("");
     setDockAttachments([]);
-    const content = files.length ? `${text || "(gửi tài liệu)"}\n\n📎 ${files.join(", ")}` : text;
-    await runAction(() => kadApi.tasks.sendMessage(taskId!, content));
+    // Text mention for the agent's prompt (orchestrator.js reads `content`,
+    // not metadata) + metadata for the human-facing chip — see the fresh-flow
+    // effect above for the same dual-write and why both are needed.
+    const content = names.length ? `${text || "(gửi tài liệu)"}\n\n📎 ${names.join(", ")}` : text;
+    await runAction(() =>
+      kadApi.tasks.sendMessage(taskId!, content, names.length ? names : undefined)
+    );
   }
 
-  function handleDockedAttach() {
-    const name = DEMO_ATTACHMENT_NAMES[dockAttachCycle % DEMO_ATTACHMENT_NAMES.length]!;
-    setDockAttachCycle((n) => n + 1);
-    setDockAttachments((prev) => (prev.includes(name) ? prev : [...prev, name]));
+  async function handleDockedFilesSelected(files: File[]) {
+    if (!taskId) return;
+    try {
+      const uploaded = await kadApi.attachments.upload(taskId, files);
+      setDockAttachments((prev) => [
+        ...prev,
+        ...uploaded.map((u) => ({ id: u.id, file_name: u.file_name })),
+      ]);
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Không thể tải file lên.",
+        tone: "warning",
+      });
+    }
   }
 
-  function handleRemoveDockAttachment(name: string) {
-    setDockAttachments((prev) => prev.filter((n) => n !== name));
+  async function handleRemoveDockAttachment(id: string) {
+    setDockAttachments((prev) => prev.filter((a) => a.id !== id));
+    try {
+      await kadApi.attachments.remove(id);
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Không thể gỡ file.",
+        tone: "warning",
+      });
+    }
   }
 
   async function stopAndSteer() {
@@ -614,8 +653,8 @@ function TraoDoiCongViecInner({
                 onChange={setDraft}
                 onSubmit={handleDockedSend}
                 placeholder="Nhắn cho Trợ lý vận hành…  (⌘Enter để gửi)"
-                attachments={dockAttachments}
-                onAttach={handleDockedAttach}
+                attachments={dockAttachments.map((a) => ({ id: a.id, name: a.file_name }))}
+                onFilesSelected={handleDockedFilesSelected}
                 onRemoveAttachment={handleRemoveDockAttachment}
               />
             </>

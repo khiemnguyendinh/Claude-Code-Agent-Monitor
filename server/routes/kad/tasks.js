@@ -8,10 +8,12 @@ const express = require("express");
 const repo = require("../../lib/kad/repo");
 const orchestrator = require("../../lib/kad/orchestrator");
 const { emitTask, emitDept } = require("../../lib/kad/events");
+const { getUploader } = require("./attachments-upload");
 
 const router = express.Router();
 const err = (res, code, message, status = 400) =>
   res.status(status).json({ error: { code, message } });
+const uploader = getUploader();
 
 // Single-department MVP helper: default to the 'rd' department if none given.
 function defaultDeptId() {
@@ -80,6 +82,9 @@ router.post("/:id/messages", (req, res) => {
   const b = req.body || {};
   if (!b.content || typeof b.content !== "string")
     return err(res, "EBADCONTENT", "content is required");
+  const attachmentNames = Array.isArray(b.attachment_names)
+    ? b.attachment_names.slice(0, 20).map(String)
+    : undefined;
   const msg = repo.tasks.addMessage({
     task_id: task.id,
     sender_type: "human",
@@ -88,6 +93,13 @@ router.post("/:id/messages", (req, res) => {
     message_type: "chat",
     channel: b.channel,
     channel_actor_ref: b.channel_actor_ref,
+    // [spec 07 §5] Lets the chat bubble render a real FileText chip
+    // (TraoDoiCongViec.tsx's TimelineItemRenderer already reads this) instead
+    // of relying only on the "📎 Đính kèm: …" text `orchestrator.js`'s
+    // startTaskTurn/resumeTaskTurn read straight off `content` for the Main
+    // Agent's prompt — keep BOTH: metadata for the human-facing chip,
+    // content text for the agent (orchestrator.js doesn't read metadata).
+    metadata: attachmentNames ? { attachmentNames } : undefined,
   });
   emitTask(task.id, "kad.message.created", msg);
   // Turn-based: the FIRST human message on a task starts a fresh planning turn;
@@ -119,6 +131,50 @@ router.get("/:id/timeline", (req, res) => {
 
 router.get("/:id/attachments", (req, res) => {
   res.json(repo.attachments.listByTask(req.params.id));
+});
+
+// spec 03: "multipart file[] -> task_attachments + copy vao tasks.working_dir,
+// tra [{id, file_name}]" — real bytes (see attachments-upload.js for the
+// traversal/size/filename safety notes). Fields other than the file array are
+// ignored; `message_id` is optional (composer attaches mid-conversation
+// against an existing message the same request adds separately).
+router.post("/:id/attachments", (req, res) => {
+  if (!uploader)
+    return err(res, "ENOUPLOAD", "file upload unavailable (multer not installed)", 503);
+  uploader.array("file", 10)(req, res, (uploadErr) => {
+    if (uploadErr) {
+      // uploadErr can be a raw fs error from resolveTaskDir's mkdirSync
+      // (ENOTDIR/EACCES etc.), which always embeds the absolute filesystem
+      // path in .message — log it server-side, never forward it verbatim.
+      console.warn(`[kad] attachment upload error (task ${req.params.id}):`, uploadErr.message);
+      return err(res, "EUPLOAD", "Không thể tải file lên.");
+    }
+    const task = repo.tasks.getTask(req.params.id);
+    if (!task) return err(res, "ENOTFOUND", "task not found", 404);
+    const files = req.files || [];
+    if (!files.length) return err(res, "ENOFILE", "no file provided");
+    const rows = repo.attachments.createFromUpload({
+      task_id: task.id,
+      message_id: req.body?.message_id,
+      files: files.map((f) => ({
+        file_name: f.originalname,
+        mime: f.mimetype,
+        size: f.size,
+        storage_path: f.path,
+      })),
+    });
+    repo.audit({
+      department_id: task.department_id,
+      task_id: task.id,
+      action: "attachments_uploaded",
+      actor_type: "human",
+      actor_id: "human",
+      target_type: "task",
+      target_id: task.id,
+      details: { count: rows.length, names: rows.map((r) => r.file_name) },
+    });
+    res.status(201).json(rows);
+  });
 });
 
 // spec/ui/09 §1 "Khi điều kiện" — task tạo ở 'blocked' + task_dependencies,

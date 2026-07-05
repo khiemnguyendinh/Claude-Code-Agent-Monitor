@@ -43,10 +43,22 @@ interface SpeechRecognitionLike {
   stop: () => void;
 }
 
-const VOICE_FALLBACK_DEMO = "Bổ sung thêm phần thực hành với Claude cho buổi 5, ưu tiên bài tập theo nhóm.";
+const VOICE_FALLBACK_DEMO =
+  "Bổ sung thêm phần thực hành với Claude cho buổi 5, ưu tiên bài tập theo nhóm.";
 
 export interface TaskComposerHandle {
   focus: () => void;
+}
+
+/**
+ * Keyed by an id (not just a display name) — two different local files can
+ * share a name (e.g. two exports both called "report.pdf"); a name-only list
+ * would silently collapse them, making the second one unremovable once
+ * attached (real bug this shape fixes — see kad/phase-02c review notes).
+ */
+export interface ComposerAttachment {
+  id: string;
+  name: string;
 }
 
 interface TaskComposerProps {
@@ -54,9 +66,10 @@ interface TaskComposerProps {
   onChange: (value: string) => void;
   onSubmit: () => void;
   placeholder: string;
-  attachments: string[];
-  onAttach: () => void;
-  onRemoveAttachment: (name: string) => void;
+  attachments: ComposerAttachment[];
+  /** Native file picker result (spec 07 §1/§5 — real files, no more demo-cycle). */
+  onFilesSelected: (files: File[]) => void;
+  onRemoveAttachment: (id: string) => void;
   /** hero = giữa trang giao việc mới (cao gấp đôi, canh giữa); compact = docked đáy chat. */
   size?: "hero" | "compact";
   sendLabel?: string;
@@ -71,7 +84,7 @@ export const TaskComposer = forwardRef<TaskComposerHandle, TaskComposerProps>(fu
     onSubmit,
     placeholder,
     attachments,
-    onAttach,
+    onFilesSelected,
     onRemoveAttachment,
     size = "compact",
     sendLabel = "Gửi",
@@ -81,6 +94,7 @@ export const TaskComposer = forwardRef<TaskComposerHandle, TaskComposerProps>(fu
   ref
 ) {
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [recording, setRecording] = useState(false);
   const recRef = useRef<SpeechRecognitionLike | null>(null);
   const baseTextRef = useRef("");
@@ -107,8 +121,10 @@ export const TaskComposer = forwardRef<TaskComposerHandle, TaskComposerProps>(fu
       return;
     }
     const SR =
-      (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike }).webkitSpeechRecognition;
+      (window as unknown as { SpeechRecognition?: new () => SpeechRecognitionLike })
+        .SpeechRecognition ||
+      (window as unknown as { webkitSpeechRecognition?: new () => SpeechRecognitionLike })
+        .webkitSpeechRecognition;
     baseTextRef.current = value ? `${value} ` : "";
     if (SR) {
       const rec = new SR();
@@ -152,17 +168,17 @@ export const TaskComposer = forwardRef<TaskComposerHandle, TaskComposerProps>(fu
     <div className="w-full">
       {attachments.length > 0 && (
         <div className="flex flex-wrap gap-1.5 mb-2">
-          {attachments.map((name) => (
+          {attachments.map((a) => (
             <span
-              key={name}
+              key={a.id}
               className="kad-caption inline-flex items-center gap-1.5 h-7 pl-2 pr-1.5 rounded-md border border-kad-border bg-kad-surface-2 text-kad-text-muted"
             >
               <FileText className="w-3.5 h-3.5 flex-shrink-0" aria-hidden />
-              {name}
+              {a.name}
               <button
                 type="button"
-                onClick={() => onRemoveAttachment(name)}
-                aria-label={`Bỏ đính kèm ${name}`}
+                onClick={() => onRemoveAttachment(a.id)}
+                aria-label={`Bỏ đính kèm ${a.name}`}
                 className="text-kad-text-faint hover:text-kad-text"
               >
                 <X className="w-3 h-3" />
@@ -176,9 +192,20 @@ export const TaskComposer = forwardRef<TaskComposerHandle, TaskComposerProps>(fu
           isHero ? "items-center px-3.5 py-3 gap-2.5" : "items-end px-2 py-2 gap-1.5"
         }`}
       >
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          hidden
+          onChange={(e) => {
+            const files = Array.from(e.target.files ?? []);
+            if (files.length) onFilesSelected(files);
+            e.target.value = ""; // allow re-selecting the same file later
+          }}
+        />
         <button
           type="button"
-          onClick={onAttach}
+          onClick={() => fileInputRef.current?.click()}
           title="Đính kèm tài liệu"
           aria-label="Đính kèm tài liệu"
           className="w-8 h-8 rounded-lg flex-shrink-0 flex items-center justify-center text-kad-text-muted hover:text-kad-text hover:bg-kad-surface-2 transition-colors"
@@ -211,7 +238,13 @@ export const TaskComposer = forwardRef<TaskComposerHandle, TaskComposerProps>(fu
           }`}
           style={{ overflowY: "hidden" }}
         />
-        <KadButton variant="primary" icon={Send} onClick={onSubmit} disabled={disabled} className="flex-shrink-0">
+        <KadButton
+          variant="primary"
+          icon={Send}
+          onClick={onSubmit}
+          disabled={disabled}
+          className="flex-shrink-0"
+        >
           {sendLabel}
         </KadButton>
       </div>

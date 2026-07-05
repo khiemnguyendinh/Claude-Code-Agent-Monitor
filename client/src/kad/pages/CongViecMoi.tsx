@@ -19,21 +19,19 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { kadApi } from "../api-client";
 import type { KadWorkflowSummary } from "../api-client";
+import { stashPendingFiles } from "../pending-uploads";
+import { SCHEDULE_FREQS, WEEKDAYS, scheduleLabel } from "../schedule-helpers";
 import { useKadToast } from "../components/Toast";
-import { TaskComposer, type TaskComposerHandle } from "../components/TaskComposer";
+import {
+  TaskComposer,
+  type ComposerAttachment,
+  type TaskComposerHandle,
+} from "../components/TaskComposer";
 import type { ScheduleFrequency } from "../types";
 
 const HERO_STEPS = ["Mô tả việc", "Trợ lý làm rõ", "Chốt brief", "Thực thi & báo cáo"];
 const DIR_OPTIONS = ["kstudy-rd/K3", "kstudy-rd/content", "Chọn thư mục khác…"];
 const FREEFORM_ID = "wf-freeform";
-
-// [spec 07 §5] Demo file đính kèm — composer chưa có picker file thật (xem
-// components/TaskComposer.tsx), bấm 📎 lần lượt gắn tên demo vào pending row.
-const DEMO_ATTACHMENT_NAMES = [
-  "Khung-chuong-trinh-K3.xlsx",
-  "Tai-lieu-tham-khao-AI-Agent.pdf",
-  "Feedback-hoc-vien-K2.docx",
-];
 
 // "Việc tự do" không phải một workflow_definitions thật — là lựa chọn
 // "không chọn quy trình nào" (spec 07 §1). Không lấy từ API để tránh bịa row.
@@ -55,33 +53,8 @@ const DEP_CONDITIONS: [string, string][] = [
   ["approved", "được duyệt"],
   ["done", "hoàn thành"],
 ];
-const FREQS: { id: ScheduleFrequency; label: string }[] = [
-  { id: "once", label: "Một lần" },
-  { id: "daily", label: "Hằng ngày" },
-  { id: "weekly", label: "Hằng tuần" },
-  { id: "monthly", label: "Hằng tháng" },
-];
-const WEEKDAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 
-function scheduleLabel(
-  freq: ScheduleFrequency,
-  time: string,
-  weekday: string,
-  day: string
-): string {
-  switch (freq) {
-    case "once":
-      return `Một lần vào ngày ${day || "1"} lúc ${time}`;
-    case "daily":
-      return `Hằng ngày lúc ${time}`;
-    case "weekly":
-      return `Hằng tuần, ${weekday} lúc ${time}`;
-    case "monthly":
-      return `Hằng tháng, ngày ${day || "1"} lúc ${time}`;
-  }
-}
-
-function newClientId(): string {
+function newLocalId(): string {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `fresh-${Math.trunc(performance.now() * 1000)}`;
@@ -92,9 +65,8 @@ export function CongViecMoi() {
   const navigate = useNavigate();
   const [value, setValue] = useState("");
   const [selectedWfId, setSelectedWfId] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<string[]>([]);
+  const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
   const [workingDir, setWorkingDir] = useState(DIR_OPTIONS[0]!);
-  const [attachCycle, setAttachCycle] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const composerRef = useRef<TaskComposerHandle>(null);
 
@@ -143,14 +115,21 @@ export function CongViecMoi() {
     composerRef.current?.focus();
   };
 
-  const handleAttach = () => {
-    const name = DEMO_ATTACHMENT_NAMES[attachCycle % DEMO_ATTACHMENT_NAMES.length]!;
-    setAttachCycle((n) => n + 1);
-    setAttachments((prev) => (prev.includes(name) ? prev : [...prev, name]));
+  // ComposerAttachment[] for TaskComposer's display — keyed by a client-local
+  // id (server ids don't exist yet, nothing has been uploaded). Two different
+  // local files can share a display name; the id keeps them independently
+  // removable instead of one silently shadowing the other.
+  const composerAttachments: ComposerAttachment[] = useMemo(
+    () => pendingFiles.map((p) => ({ id: p.id, name: p.file.name })),
+    [pendingFiles]
+  );
+
+  const handleFilesSelected = (files: File[]) => {
+    setPendingFiles((prev) => [...prev, ...files.map((file) => ({ id: newLocalId(), file }))]);
   };
 
-  const handleRemoveAttachment = (name: string) => {
-    setAttachments((prev) => prev.filter((n) => n !== name));
+  const handleRemoveAttachment = (id: string) => {
+    setPendingFiles((prev) => prev.filter((p) => p.id !== id));
   };
 
   const handleSubmit = async () => {
@@ -177,8 +156,23 @@ export function CongViecMoi() {
           title: text,
           working_dir: resolvedDir,
           workflow_id: workflowIdForApi,
-          attachment_names: attachments,
         });
+        if (pendingFiles.length) {
+          try {
+            await kadApi.attachments.upload(
+              task.id,
+              pendingFiles.map((p) => p.file)
+            );
+          } catch (uploadErr) {
+            // Đừng để lỗi upload chặn bước tạo điều kiện — việc vẫn phải vào
+            // blocked đúng như đã chọn, thay vì mồ côi không điều kiện.
+            showToast({
+              message:
+                uploadErr instanceof Error ? uploadErr.message : "Không thể tải file đính kèm lên.",
+              tone: "warning",
+            });
+          }
+        }
         await kadApi.dependencies.create(task.id, {
           depends_on_task_id: source.id,
           release_condition:
@@ -201,7 +195,10 @@ export function CongViecMoi() {
       return;
     }
 
-    // spec/ui/09 §1 — Theo lịch: tạo automation_rule (schedule), không tạo task ngay.
+    // spec/ui/09 §1 — Theo lịch: tạo automation_rule (schedule), không tạo task
+    // ngay — nên chưa có task_id để đính kèm file thật vào; đính kèm (nếu có)
+    // bị bỏ qua ở nhánh này (Phase 6.5 mới là nơi thật sự tạo task khi luật
+    // kích, lúc đó mới có chỗ để lưu attachment).
     if (activation === "schedule") {
       const label = scheduleLabel(schedFreq, schedTime, schedWeekday, schedDay);
       const shortTitle = text.length > 42 ? `${text.slice(0, 42)}…` : text;
@@ -243,11 +240,18 @@ export function CongViecMoi() {
 
     // Ngay — tạo task thật ở TraoDoiCongViec's fresh-flow effect (routeId ở
     // đây chỉ là placeholder cho URL, bị thay bằng id thật ngay sau khi tạo).
-    navigate(`/cong-viec/${newClientId()}`, {
+    // Task chưa tồn tại nên chưa có task_id để upload thật ngay bây giờ —
+    // gửi kèm File[] thật qua pending-uploads.ts, TraoDoiCongViec.tsx upload
+    // thật ngay sau khi có task_id (xem file đó).
+    const tempId = newLocalId();
+    stashPendingFiles(
+      tempId,
+      pendingFiles.map((p) => p.file)
+    );
+    navigate(`/cong-viec/${tempId}`, {
       state: {
         fresh: true,
         description: text,
-        attachments,
         workflowId: workflowIdForApi,
         workingDir: resolvedDir,
       },
@@ -274,8 +278,8 @@ export function CongViecMoi() {
         }}
         onSubmit={handleSubmit}
         placeholder="Mô tả việc như nói với nhân viên…  (⌘Enter để gửi)"
-        attachments={attachments}
-        onAttach={handleAttach}
+        attachments={composerAttachments}
+        onFilesSelected={handleFilesSelected}
         onRemoveAttachment={handleRemoveAttachment}
         disabled={submitting}
         autoFocus
@@ -375,7 +379,7 @@ export function CongViecMoi() {
             <SelectInline
               value={schedFreq}
               onChange={(v) => setSchedFreq(v as ScheduleFrequency)}
-              options={FREQS.map((f) => [f.id, f.label] as [string, string])}
+              options={SCHEDULE_FREQS.map((f) => [f.id, f.label] as [string, string])}
             />
             {schedFreq === "weekly" && (
               <SelectInline value={schedWeekday} onChange={setSchedWeekday} options={WEEKDAYS} />

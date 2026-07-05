@@ -10,10 +10,10 @@
  * covers create (from Giao việc)/read/toggle/pause, which is all it needs to.
  */
 import { useCallback, useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { Calendar, ChevronDown, ChevronRight, FileQuestion, Gauge, Plus, Zap } from "lucide-react";
 import { kadApi } from "../api-client";
 import { useKadToast } from "../components/Toast";
+import { AutomationRuleForm } from "../components/AutomationRuleForm";
 import { KadButton, KadCard, KadCardHeader, KadEmptyState } from "../components/primitives";
 import type { AutomationRule, AutomationTriggerType, RuleFireResult } from "../types";
 
@@ -45,12 +45,12 @@ interface BlockedRow {
 
 export function TuDongHoa() {
   const showToast = useKadToast();
-  const navigate = useNavigate();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [blocked, setBlocked] = useState<BlockedRow[]>([]);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [allAutomationPaused, setAllAutomationPaused] = useState(false);
+  const [showCreateForm, setShowCreateForm] = useState(false);
 
   const refreshBlocked = useCallback(async () => {
     const [blockedTasks, allTasks] = await Promise.all([
@@ -146,7 +146,7 @@ export function TuDongHoa() {
         <KadButton variant={allAutomationPaused ? "secondary" : "danger"} onClick={handlePauseAll}>
           {allAutomationPaused ? "Bật lại tất cả" : "Tạm dừng tất cả"}
         </KadButton>
-        <KadButton variant="primary" icon={Plus} onClick={() => navigate("/cong-viec/moi")}>
+        <KadButton variant="primary" icon={Plus} onClick={() => setShowCreateForm((v) => !v)}>
           Tạo luật
         </KadButton>
       </div>
@@ -155,6 +155,17 @@ export function TuDongHoa() {
         Trigger tạo ra việc; việc tự tạo vẫn vào Hàng đợi chờ anh xác nhận trước khi tiêu token.
         Chạy thử không tiêu token.
       </p>
+
+      {showCreateForm && (
+        <AutomationRuleForm
+          onCancel={() => setShowCreateForm(false)}
+          onCreated={() => {
+            setShowCreateForm(false);
+            showToast({ message: "Đã tạo luật.", tone: "success" });
+            refreshRules();
+          }}
+        />
+      )}
 
       {allAutomationPaused && (
         <div
