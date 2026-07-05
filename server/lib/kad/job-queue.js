@@ -6,15 +6,11 @@
  * jobs live in kad_job_queue, and reconcile_runs cleans orphaned runs on boot.
  *
  * Phase 1 kinds wired: reconcile_runs, resume_task, start_delegation.
- * Phase 3 adds task_dependencies auto-release — not a `kind` (nothing to
- * lease/dedup, it's a stateless scan), so it runs directly every sweep tick
- * (see dependencyWorker.checkReleases() below). Automation-rule kinds
- * (evaluate_rules/run_schedule/sla_check/...) remain unwired until Phase 6.5 —
- * unknown `kind` rows still fail loudly.
+ * Other kinds (evaluate_rules/run_schedule/sla_check/...) are created by the
+ * schema but not wired until Phase 3/6.5 — unknown kinds fail loudly.
  */
 const repo = require("./repo");
 const orchestrator = require("./orchestrator");
-const dependencyWorker = require("./dependency-worker");
 
 const TICK_MS = Number(process.env.KAD_WORKER_TICK_MS || 2000);
 let timer = null;
@@ -45,13 +41,17 @@ const handlers = {
   async pattern_detect(payload) {
     const { department_id, category } = payload;
     if (!department_id || !category) throw new PermanentJobError("pattern_detect missing fields");
-    const notes = repo.db.prepare(`
+    const notes = repo.db
+      .prepare(
+        `
       SELECT * FROM learning_notes 
       WHERE department_id=? AND correction_category=? AND created_at > datetime('now', '-30 days')
-    `).all(department_id, category);
-    
+    `
+      )
+      .all(department_id, category);
+
     // Spec 01 §5: Pattern detection >= 3 notes in same category/30 days
-    const hasPattern = notes.some(n => n.trigger_type === 'pattern_detection');
+    const hasPattern = notes.some((n) => n.trigger_type === "pattern_detection");
     if (!hasPattern && notes.length >= 3) {
       repo.learning.createNote({
         department_id,
@@ -62,7 +62,7 @@ const handlers = {
         prevention: "Cần cập nhật system_prompt hoặc workflow để giải quyết triệt để",
         affected_areas: ["system"],
         proposed_change_target: "blueprint",
-        change_status: "noted" // MVP stops here, does not auto-propose
+        change_status: "noted", // MVP stops here, does not auto-propose
       });
     }
   },
@@ -83,7 +83,6 @@ async function sweep() {
   if (sweeping) return; // coalesce — never overlap sweeps
   sweeping = true;
   try {
-    dependencyWorker.checkReleases(); // spec 02 §6b / audit-260704 §5.2 — every tick
     const jobs = repo.jobs.leaseDue(3);
     if (process.env.KAD_JOBS_TRACE && jobs.length)
       console.log(
