@@ -11,7 +11,7 @@
  * guardrails), blueprint v1 (approved, 8 agents), 8 agent_profiles — full
  * roster ACTIVE as of Phase 3 (phase-03 §1: "activate 6 agent còn lại"; main +
  * curriculum-researcher were already active since Phase 1), workflow
- * `rd-standard-flow`, 6 R&D templates (each template_versions v1 approved).
+ * `rd-standard-flow`, R&D + connector templates (each template_versions v1 approved).
  *
  * Deterministic IDs (constants below) so kad-verify / orchestrator reference by
  * known id. Re-runnable: skips if org already present.
@@ -151,11 +151,11 @@ const ROSTER = [
       web_search: false,
       request_approval: true,
       write_audit: true,
-      publish_connector: false,
+      publish_connector: true,
       modify_blueprint: false,
       modify_org_context: false,
     },
-    connector_access: { facebook: "none", wordpress: "none", web_search: "none" },
+    connector_access: { facebook: "allowed", wordpress: "allowed", web_search: "none" },
   },
   {
     id: ID.agents.architect,
@@ -325,7 +325,7 @@ const WORKFLOW_STEPS = [
   },
 ];
 
-// ---- 6 R&D templates (real structural content, grounded in kstudy skills/khuon) ----
+// ---- R&D + connector templates (real structural content, grounded in Kstudy context) ----
 const TEMPLATES = [
   {
     id: "tpl-framework",
@@ -400,6 +400,40 @@ const TEMPLATES = [
 ## Hoàn thiện: chính tả, format, references
 ## Sensitivity flags (BẮT BUỘC): metrics[y/n] people[y/n] brand[y/n]
 ## Kết luận: ĐẠT / CẦN SỬA`,
+  },
+  {
+    id: "tpl-wordpress-post",
+    type: "wordpress_post",
+    name: "Bài WordPress Kstudy",
+    purpose: "Chuẩn hóa bài blog/landing ngắn trước khi publish WordPress.",
+    content: `# {Tiêu đề SEO}
+## Hook mở bài
+## Insight chính
+## Nội dung triển khai
+- Luận điểm 1
+- Luận điểm 2
+- Luận điểm 3
+## CTA
+## Metadata
+- Excerpt:
+- Category IDs:
+- Tag IDs:
+- Schedule: Ngay hoặc ISO datetime`,
+  },
+  {
+    id: "tpl-facebook-post",
+    type: "facebook_post",
+    name: "Bài Facebook Page Kstudy",
+    purpose: "Chuẩn hóa copy Facebook theo voice Kstudy và manual handoff.",
+    content: `# Facebook post
+## Hook
+## Pain/Insight
+## Nội dung ngắn
+## CTA
+## Checklist trước đăng
+- Không claim quá mức
+- Không dùng số liệu chưa có nguồn
+- Giữ giọng Kstudy: chuyên gia gần gũi, thực chiến, thẳng`,
   },
 ];
 
@@ -544,7 +578,7 @@ function seed() {
   });
   tx();
   console.log(
-    "[kad-seed] seeded: org, org_context v1, dept rd, blueprint v1, 8 agents (full roster active — phase-03 §1), workflow, 6 templates."
+    "[kad-seed] seeded: org, org_context v1, dept rd, blueprint v1, 8 agents (full roster active — phase-03 §1), workflow, 8 templates (6 R&D + 2 connector)."
   );
 }
 

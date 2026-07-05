@@ -21,6 +21,8 @@ function useBreadcrumb(): string[] {
   }
   if (pathname === "/doi-ngu") return ["Đội ngũ"];
   if (pathname === "/hoc-lieu") return ["Học liệu"];
+  if (pathname === "/ket-noi") return ["Kết nối"];
+  if (pathname.startsWith("/phe-duyet/")) return ["Phê duyệt"];
   if (pathname === "/bao-cao") return ["Báo cáo"];
   return ["Tổng quan"];
 }

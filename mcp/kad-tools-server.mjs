@@ -199,6 +199,33 @@ const TOOLS = [
     handler: () => call("GET", "/learning-notes"),
   },
   {
+    name: "kad_connector_draft",
+    description:
+      "Tạo draft + preview cho WordPress/Facebook và gửi approval publish. Sau khi gọi hãy KẾT THÚC lượt, chờ trưởng phòng duyệt.",
+    inputSchema: S(
+      {
+        connector_type: { type: "string", enum: ["wordpress", "facebook_page"] },
+        title: str("Tiêu đề nội dung"),
+        content: str("Nội dung publish"),
+        excerpt: str("Tóm tắt ngắn, dùng cho WordPress excerpt nếu có"),
+        scheduled_at: str("ISO datetime nếu muốn schedule; bỏ trống để publish ngay sau cooldown"),
+        category_ids: { type: "array", items: { type: "integer" } },
+        tag_ids: { type: "array", items: { type: "integer" } },
+      },
+      ["connector_type", "title", "content"]
+    ),
+    handler: (a) => call("POST", "/connector-draft", { body: a }),
+  },
+  {
+    name: "kad_connector_publish",
+    description:
+      "Publish/schedule nội dung đã được duyệt qua connector. Server sẽ chặn nếu approval chưa approved hoặc chưa hết cooldown.",
+    inputSchema: S({ approval_id: str("Approval id publish_wordpress/publish_facebook") }, [
+      "approval_id",
+    ]),
+    handler: (a) => call("POST", "/connector-publish", { body: a }),
+  },
+  {
     name: "kad_report_progress",
     description: "Báo tiến độ (hiện realtime trên UI).",
     inputSchema: S({ content: str() }, ["content"]),

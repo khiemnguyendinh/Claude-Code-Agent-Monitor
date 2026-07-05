@@ -2125,6 +2125,331 @@ async function runS5() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
+async function runS6() {
+  console.log("\n=== KAD verify — Scenario S6 (Connector Hub + Notifications) ===\n");
+  const TMP_DB6 = path.join(os.tmpdir(), `kad-verify-s6-${process.pid}.db`);
+  for (const f of [TMP_DB6, TMP_DB6 + "-wal", TMP_DB6 + "-shm"])
+    try {
+      fs.unlinkSync(f);
+    } catch {}
+  process.env.DASHBOARD_DB_PATH = TMP_DB6;
+  process.env.DASHBOARD_TOKEN = "";
+  process.env.KAD_WORKER_TICK_MS = "3600000";
+
+  const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (seed.status !== 0) {
+    console.error("seed failed:", seed.stderr || seed.stdout);
+    process.exit(1);
+  }
+
+  const { createApp } = require(path.join(ROOT, "server/index.js"));
+  const kad = require(path.join(ROOT, "server/routes/kad"));
+  const { getInternalToken } = require(path.join(ROOT, "server/lib/kad/internal-auth"));
+  const app = createApp();
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const BASE = `http://127.0.0.1:${port}`;
+  process.env.KAD_PUBLIC_BASE_URL = BASE;
+  kad.initKad({ apiBase: BASE });
+
+  const api = async (method, p, body) => {
+    const resp = await fetch(BASE + p, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+  const internal = async (method, p, { runCtx, body } = {}) => {
+    const h = { "content-type": "application/json", "x-kad-internal-token": getInternalToken() };
+    if (runCtx)
+      Object.assign(h, {
+        "x-kad-run-id": runCtx.run,
+        "x-kad-task-id": runCtx.task,
+        "x-kad-agent-id": runCtx.agent,
+      });
+    const resp = await fetch(BASE + "/api/kad/internal" + p, {
+      method,
+      headers: h,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+
+  const Database = require("better-sqlite3");
+  const sdb = new Database(TMP_DB6, { readonly: true });
+  const one = (q, ...a) => sdb.prepare(q).get(...a);
+  const sql = (q, ...a) => sdb.prepare(q).all(...a);
+  const repo = require(path.join(ROOT, "server/lib/kad/repo"));
+  const dept = repo.catalog.getDepartmentBySlug("rd");
+  const mainAgent = repo.catalog.getMainAgent(dept.id);
+
+  const cleanup = async () => {
+    sdb.close();
+    try {
+      require(path.join(ROOT, "server/lib/kad/job-queue")).stopWorker();
+    } catch {}
+    server.close();
+    for (const f of [TMP_DB6, TMP_DB6 + "-wal", TMP_DB6 + "-shm"])
+      try {
+        fs.unlinkSync(f);
+      } catch {}
+  };
+
+  try {
+    const providers = await api("GET", "/api/webhooks/providers");
+    const providerTypes = (providers.body.providers || []).map((p) => p.type);
+    check("S6.N0 webhook provider registry includes lark", providerTypes.includes("lark"));
+
+    const wpConn = await api("POST", "/api/kad/connectors", {
+      connector_type: "wordpress",
+      name: "WordPress Test",
+      config: {
+        site_url_env: "KAD_WORDPRESS_URL",
+        username_env: "KAD_WORDPRESS_USERNAME",
+        app_password_env: "KAD_WORDPRESS_APP_PASSWORD",
+      },
+    });
+    check("S6.C1 create WordPress connector", wpConn.status === 201 && wpConn.body.id);
+    check(
+      "S6.C1b connector stores env pointers, not raw app password",
+      JSON.stringify(wpConn.body.config || {}).includes("KAD_WORDPRESS_APP_PASSWORD") &&
+        !JSON.stringify(wpConn.body.config || {}).includes(process.env.KAD_WORDPRESS_APP_PASSWORD || "__missing__")
+    );
+
+    const badSecret = await api("POST", "/api/kad/connectors", {
+      connector_type: "wordpress",
+      name: "Bad Secret Connector",
+      config: { app_password: "should-not-store" },
+    });
+    check(
+      "S6.C2 raw secret in connector config blocked",
+      badSecret.status === 400 && badSecret.body.error?.code === "ESECRET_CONFIG",
+      `status=${badSecret.status} code=${badSecret.body.error?.code}`
+    );
+
+    const fbConn = await api("POST", "/api/kad/connectors", {
+      connector_type: "facebook_page",
+      name: "Facebook Manual",
+      config: { page_name: "Kstudy Test Page" },
+    });
+    check("S6.C3 create Facebook manual connector", fbConn.status === 201 && fbConn.body.id);
+    const fbHealth = await api("POST", `/api/kad/connectors/${fbConn.body.id}/health-check`, {});
+    check(
+      "S6.C4 Facebook health = manual_handoff configured",
+      fbHealth.status === 200 && fbHealth.body.mode === "manual_handoff"
+    );
+
+    const task = await api("POST", "/api/kad/tasks", {
+      title: "S6 connector publish test",
+      description: "Verify connector draft preview approval publish cycle.",
+    });
+    const ctxMain = { run: "run-s6-main", task: task.body.id, agent: mainAgent.id };
+
+    const draft = await internal("POST", "/connector-draft", {
+      runCtx: ctxMain,
+      body: {
+        connector_type: "wordpress",
+        title: `KAD Verify ${new Date().toISOString()}`,
+        content: "Bài verify Phase 6. Có thể xoá sau khi nghiệm thu.",
+        excerpt: "KAD Phase 6 verify",
+      },
+    });
+    check("S6.D1 kad_connector_draft → pending approval", draft.status === 200 && draft.body.status === "pending");
+    const approvalId = draft.body.approval_id;
+    const actionId = draft.body.publish_action_id;
+    check(
+      "S6.D2 SQL: connector_draft artifact + draft/preview/publish actions",
+      one("SELECT COUNT(*) n FROM artifacts WHERE task_id=? AND artifact_type='connector_draft'", task.body.id).n ===
+        1 &&
+        one("SELECT COUNT(*) n FROM connector_actions WHERE task_id=?", task.body.id).n >= 3
+    );
+    const approvalRow = one("SELECT * FROM approvals WHERE id=?", approvalId);
+    check(
+      "S6.D3 approval type publish_wordpress + SLA 4h",
+      approvalRow.approval_type === "publish_wordpress" && approvalRow.sla_reminder_hours === 4
+    );
+    check(
+      "S6.D4 cooldown_until is about 5 minutes",
+      new Date(approvalRow.cooldown_until).getTime() - Date.now() >= 290000,
+      approvalRow.cooldown_until
+    );
+    check(
+      "S6.D5 approval notification row created with /phe-duyet deep link",
+      one(
+        "SELECT COUNT(*) n FROM notifications WHERE kind='approval_pending' AND link_path=?",
+        `/phe-duyet/${approvalId}`
+      ).n === 1
+    );
+
+    const preApproval = await api("POST", `/api/kad/connector-actions/${actionId}/execute`, {});
+    check(
+      "S6.G1 publish before approval BLOCKED with EAPPROVAL_NOT_APPROVED",
+      preApproval.status === 409 && preApproval.body.error?.code === "EAPPROVAL_NOT_APPROVED",
+      `status=${preApproval.status} code=${preApproval.body.error?.code}`
+    );
+
+    const decision = await api("POST", `/api/kad/approvals/${approvalId}/decide`, {
+      decision: "approved",
+    });
+    check("S6.G2 approve publish approval", decision.status === 200 && decision.body.approval.status === "approved");
+    const preCooldown = await api("POST", `/api/kad/connector-actions/${actionId}/execute`, {});
+    check(
+      "S6.G3 publish before cooldown BLOCKED with ECOOLDOWN_ACTIVE",
+      preCooldown.status === 409 && preCooldown.body.error?.code === "ECOOLDOWN_ACTIVE",
+      `status=${preCooldown.status} code=${preCooldown.body.error?.code}`
+    );
+    check(
+      "S6.G4 audit recorded blocked publish attempts",
+      one(
+        "SELECT COUNT(*) n FROM audit_log WHERE action='connector_publish_blocked' AND task_id=?",
+        task.body.id
+      ).n >= 2
+    );
+
+    const fbDraft = await internal("POST", "/connector-draft", {
+      runCtx: ctxMain,
+      body: {
+        connector_type: "facebook_page",
+        title: "KAD Verify Facebook Manual",
+        content: "Nội dung đã duyệt để đăng tay lên Facebook Page.",
+      },
+    });
+    const fbApprovalId = fbDraft.body.approval_id;
+    const fbActionId = fbDraft.body.publish_action_id;
+    await api("POST", `/api/kad/approvals/${fbApprovalId}/decide`, { decision: "approved" });
+    repo.db
+      .prepare("UPDATE approvals SET cooldown_until=? WHERE id=?")
+      .run(new Date(Date.now() - 1000).toISOString(), fbApprovalId);
+    const fbDone = await api("POST", `/api/kad/connector-actions/${fbActionId}/execute`, {
+      manual_external_url: "https://facebook.com/kstudy.test/posts/s6",
+    });
+    check(
+      "S6.F1 Facebook manual handoff completes after approval+cooldown",
+      fbDone.status === 200 &&
+        fbDone.body.action.status === "completed" &&
+        fbDone.body.action.result?.mode === "manual_handoff"
+    );
+    check(
+      "S6.F2 manual handoff writes external_url",
+      one("SELECT external_url FROM connector_actions WHERE id=?", fbActionId).external_url ===
+        "https://facebook.com/kstudy.test/posts/s6"
+    );
+
+    // Deterministic notification fan-out through the existing webhook engine.
+    const received = [];
+    const hook = http.createServer((req, res) => {
+      let body = "";
+      req.on("data", (d) => (body += d.toString()));
+      req.on("end", () => {
+        received.push({ url: req.url, body });
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      });
+    });
+    await new Promise((r) => hook.listen(0, "127.0.0.1", r));
+    const hookUrl = `http://127.0.0.1:${hook.address().port}/kad-notify`;
+    const genericTarget = await api("POST", "/api/webhooks", {
+      name: "S6 local webhook",
+      type: "generic",
+      url: hookUrl,
+      enabled: true,
+    });
+    check("S6.N1 create local webhook target", genericTarget.status === 201);
+    repo.notifications.createNotification({
+      department_id: dept.id,
+      kind: "approval_pending",
+      title: "S6 notification",
+      body: "Approval mới cần duyệt.",
+      link_path: "/phe-duyet/s6-local",
+      target_id: "s6-local",
+    });
+    const n0 = Date.now();
+    while (received.length === 0 && Date.now() - n0 < 5000) await sleep(200);
+    check("S6.N2 notification delivered through webhook engine", received.length === 1);
+    hook.close();
+
+    const wpReady =
+      process.env.KAD_VERIFY_WORDPRESS_PUBLISH === "1" &&
+      process.env.KAD_WORDPRESS_URL &&
+      process.env.KAD_WORDPRESS_USERNAME &&
+      process.env.KAD_WORDPRESS_APP_PASSWORD;
+    if (wpReady) {
+      repo.db
+        .prepare("UPDATE approvals SET cooldown_until=? WHERE id=?")
+        .run(new Date(Date.now() - 1000).toISOString(), approvalId);
+      const realPublish = await api("POST", `/api/kad/connector-actions/${actionId}/execute`, {});
+      check(
+        "S6.R1 REAL WordPress publish completed",
+        realPublish.status === 200 &&
+          realPublish.body.action.status === "completed" &&
+          /^https:\/\//.test(realPublish.body.action.external_url || ""),
+        `status=${realPublish.status} url=${realPublish.body.action?.external_url || ""}`
+      );
+    } else {
+      blocked(
+        "S6.R1 REAL WordPress publish",
+        "set KAD_VERIFY_WORDPRESS_PUBLISH=1 plus KAD_WORDPRESS_URL/KAD_WORDPRESS_USERNAME/KAD_WORDPRESS_APP_PASSWORD for test/staging site"
+      );
+    }
+
+    const tgToken = process.env.KAD_VERIFY_TELEGRAM_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN;
+    const tgChat = process.env.KAD_VERIFY_TELEGRAM_CHAT_ID || process.env.TELEGRAM_CHAT_ID;
+    if (tgToken && tgChat) {
+      const tgTarget = await api("POST", "/api/webhooks", {
+        name: "S6 Telegram",
+        type: "telegram",
+        enabled: true,
+        config: { bot_token: tgToken, chat_id: tgChat },
+      });
+      check("S6.R2 Telegram target created", tgTarget.status === 201);
+      repo.notifications.createNotification({
+        department_id: dept.id,
+        kind: "approval_pending",
+        title: "KAD S6 Telegram verify",
+        body: "Notification thật từ KAD Phase 6.",
+        link_path: "/phe-duyet/s6-telegram",
+        target_id: "s6-telegram",
+      });
+      const t0 = Date.now();
+      let delivered = false;
+      while (Date.now() - t0 < 15000) {
+        const row = one(
+          "SELECT status FROM webhook_deliveries WHERE target_type='telegram' ORDER BY id DESC LIMIT 1"
+        );
+        delivered = row && row.status === "success";
+        if (delivered) break;
+        await sleep(500);
+      }
+      check("S6.R3 REAL Telegram notification delivered", delivered);
+    } else {
+      blocked(
+        "S6.R3 REAL Telegram notification",
+        "set KAD_VERIFY_TELEGRAM_BOT_TOKEN/KAD_VERIFY_TELEGRAM_CHAT_ID or TELEGRAM_BOT_TOKEN/TELEGRAM_CHAT_ID"
+      );
+    }
+
+    const auditActions = sql("SELECT action FROM audit_log ORDER BY created_at ASC").map((r) => r.action);
+    check(
+      "S6.A1 audit includes connector lifecycle",
+      ["connector_created", "connector_publish_requested", "connector_publish_blocked"].every((a) =>
+        auditActions.includes(a)
+      ),
+      auditActions.join(",")
+    );
+  } finally {
+    await cleanup();
+  }
+
+  console.log(results.join("\n"));
+  console.log(`\n=== S6: ${pass} passed, ${fail} failed ===`);
+  process.exit(fail > 0 ? 1 : 0);
+}
+
 if (process.argv.includes("--s2")) {
   runS2().catch((e) => { console.error("verify S2 crashed:", e); process.exit(1); });
 } else if (process.argv.includes("--s3")) {
@@ -2135,6 +2460,8 @@ if (process.argv.includes("--s2")) {
   runS4().catch((e) => { console.error("verify S4 crashed:", e); process.exit(1); });
 } else if (process.argv.includes("--s5")) {
   runS5().catch((e) => { console.error("verify S5 crashed:", e); process.exit(1); });
+} else if (process.argv.includes("--s6")) {
+  runS6().catch((e) => { console.error("verify S6 crashed:", e); process.exit(1); });
 } else {
   main().catch((e) => { console.error("verify crashed:", e); process.exit(1); });
 }

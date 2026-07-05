@@ -10,6 +10,7 @@ const repo = require("../../lib/kad/repo");
 const webSearch = require("../../lib/kad/web-search");
 const cost = require("../../lib/kad/cost");
 const workflowEngine = require("../../lib/kad/workflow-engine");
+const connectorService = require("../../lib/kad/connectors");
 const { requireInternalToken } = require("../../lib/kad/internal-auth");
 const { emitTask, emitDept } = require("../../lib/kad/events");
 
@@ -19,6 +20,21 @@ router.use(express.json({ limit: "2mb" }));
 
 const bad = (res, code, message, status = 400) =>
   res.status(status).json({ error: { code, message } });
+
+function notifyApprovalCreated(task, approval) {
+  try {
+    repo.notifications.createNotification({
+      department_id: task && task.department_id,
+      kind: "approval_pending",
+      title: "Cần phê duyệt",
+      body: approval.title,
+      link_path: `/phe-duyet/${approval.id}`,
+      target_id: approval.id,
+    });
+  } catch (e) {
+    console.warn("[kad-internal] approval notification failed:", e && e.message);
+  }
+}
 
 // Resolve run context (task + agent) from headers; verify against DB.
 function ctx(req, res) {
@@ -82,6 +98,7 @@ router.post("/plan-task", (req, res) => {
   });
   emitTask(c.task.id, "kad.approval.created", approval);
   emitDept(c.task.department_id, "kad.approval.created", approval); // Tổng quan inbox (spec/ui/02 §6) is department-scoped
+  notifyApprovalCreated(c.task, approval);
   res.json({
     approval_id: approval.id,
     status: "pending",
@@ -224,6 +241,7 @@ router.post("/request-approval", (req, res) => {
   });
   emitTask(c.task.id, "kad.approval.created", approval);
   emitDept(c.task.department_id, "kad.approval.created", approval);
+  notifyApprovalCreated(c.task, approval);
   res.json({
     approval_id: approval.id,
     status: "pending",
@@ -572,6 +590,60 @@ router.post("/web-search", async (req, res) => {
     res
       .status(e.code === "ENOWEBSEARCH" ? 503 : 400)
       .json({ error: { code: e.code || "EWEBSEARCH", message: e.message } });
+  }
+});
+
+// kad_connector_draft — Phase 6. Creates connector_draft artifact, preview
+// action, pending publish/schedule action, and publish approval with 5m cooldown.
+router.post("/connector-draft", (req, res) => {
+  const c = ctx(req, res);
+  if (!c) return;
+  const b = req.body || {};
+  try {
+    const result = connectorService.draftConnector({
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      connector_type: b.connector_type,
+      content: {
+        title: b.title,
+        body: b.body || b.content || b.content_to_publish,
+        excerpt: b.excerpt,
+        scheduled_at: b.scheduled_at,
+        category_ids: b.category_ids,
+        tag_ids: b.tag_ids,
+      },
+    });
+    res.json(result);
+  } catch (e) {
+    res
+      .status(e.status || 400)
+      .json({ error: { code: e.code || "ECONNECTOR", message: e.message, details: e.details } });
+  }
+});
+
+// kad_connector_publish — Phase 6. Publish is hard-blocked unless the linked
+// approval is approved AND its cooldown_until has passed.
+router.post("/connector-publish", async (req, res) => {
+  const c = ctx(req, res);
+  if (!c) return;
+  const approvalId = req.body && req.body.approval_id;
+  if (!approvalId) return bad(res, "EBADAPPROVAL", "approval_id is required");
+  try {
+    const action = await connectorService.executeByApproval(approvalId, {
+      actor_type: "agent",
+      actor_id: c.agent.id,
+    });
+    res.json({
+      status: action.status,
+      action_id: action.id,
+      external_url: action.external_url,
+      external_id: action.external_id,
+      result: action.result,
+    });
+  } catch (e) {
+    res
+      .status(e.status || 400)
+      .json({ error: { code: e.code || "ECONNECTOR", message: e.message, details: e.details } });
   }
 });
 

@@ -378,7 +378,7 @@ describe("test probe + clear-data", () => {
 });
 
 describe("provider registry", () => {
-  it("exposes 14 first-class providers (+ generic = 15 types)", () => {
+  it("exposes 15 first-class providers (+ generic = 16 types)", () => {
     const firstClass = [
       "slack",
       "discord",
@@ -387,6 +387,7 @@ describe("provider registry", () => {
       "mattermost",
       "rocketchat",
       "telegram",
+      "lark",
       "pagerduty",
       "opsgenie",
       "splunk_oncall",
@@ -395,12 +396,12 @@ describe("provider registry", () => {
       "n8n",
       "pipedream",
     ];
-    assert.equal(firstClass.length, 14);
+    assert.equal(firstClass.length, 15);
     for (const t of firstClass) {
       assert.ok(providers.WEBHOOK_TYPES.includes(t), `${t} missing`);
     }
     assert.ok(providers.WEBHOOK_TYPES.includes("generic"));
-    assert.equal(providers.WEBHOOK_TYPES.length, 15);
+    assert.equal(providers.WEBHOOK_TYPES.length, 16);
   });
 
   it("GET /api/webhooks/providers returns redacted metadata", async () => {
@@ -441,6 +442,28 @@ describe("provider payload formatting", () => {
     assert.equal(p.chat_id, "123");
     assert.equal(p.parse_mode, "HTML");
     assert.ok(p.text.includes("a&lt;b&gt;c")); // escaped
+  });
+
+  it("lark: sendMessage shape with chat_id + bearer auth", () => {
+    const p = providers.formatPayload("lark", SAMPLE_ALERT, {
+      chat_id: "oc_123",
+      access_token: "TOKEN",
+    });
+    assert.equal(p.receive_id, "oc_123");
+    assert.equal(p.msg_type, "text");
+    assert.ok(JSON.parse(p.content).text.includes("Too many errors"));
+    const req = webhooks.buildRequest(
+      {
+        id: "target-lark",
+        name: "lark",
+        type: "lark",
+        url: "",
+        config: { chat_id: "oc_123", access_token: "TOKEN" },
+      },
+      SAMPLE_ALERT
+    );
+    assert.equal(req.headers.Authorization, "Bearer TOKEN");
+    assert.ok(req.url.includes("receive_id_type=chat_id"));
   });
 
   it("pagerduty: Events API v2 with routing_key, severity, dedup_key", () => {

@@ -63,6 +63,7 @@ const MAIN_NAV: NavEntry[] = [
   { to: "/he-thong/kanban", label: "Công việc", icon: Columns3 },
   { to: "/doi-ngu", label: "Đội ngũ", icon: Users },
   { to: "/hoc-lieu", label: "Kho học liệu", icon: BookOpen },
+  { to: "/ket-noi", label: "Kết nối", icon: Plug },
 ];
 
 // "Hệ thống" group: Hệ Thống (root monitor dashboard) / Analytics (3-tab:

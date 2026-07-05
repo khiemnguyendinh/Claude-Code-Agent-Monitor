@@ -19,6 +19,7 @@ module.exports = {
   approvals: require("./approvals"),
   artifacts: require("./artifacts"),
   notifications: require("./notifications"),
+  connectors: require("./connectors"),
   learning: require("./learning"),
   jobs: require("./jobs"),
   catalog: require("./catalog"),
