@@ -354,7 +354,12 @@ async function main() {
     mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
     const listed = await rpc("tools/list", {});
     const toolNames = (listed.result.tools || []).map((t) => t.name);
-    check("MCP tools/list = 12 KAD tools", toolNames.length === 12, toolNames.join(","));
+    // 13 = 12 Phase-1/2 tools + kad_flag_sensitivity (Phase 3B, spec 04 §2).
+    check(
+      "MCP tools/list = 13 KAD tools (incl. kad_flag_sensitivity)",
+      toolNames.length === 13 && toolNames.includes("kad_flag_sensitivity"),
+      toolNames.join(",")
+    );
     const planCall = await rpc("tools/call", {
       name: "kad_plan_task",
       arguments: { plan: "## Kế hoạch\n1. x" },
@@ -1059,6 +1064,418 @@ async function runS2() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
+/**
+ * Scenario S3 (Phase 3B, phase-03 §2-5 + DoD): the R&D workflow engine — step
+ * machine, QC gate B, conditional/internal auto-approval, sensitive detection
+ * layer 2. Driven through the REAL server + internal endpoints with simulated run
+ * contexts (the SAME internal API the agents' MCP tools call) — so every gate is
+ * the REAL engine code, not a mock; only the model's text is stood in for. Asserts
+ * real SQL. The live full-course spawn (ENGINE leg) is auth-blocked in this env.
+ * Own isolated process (server/db.js is a module-level singleton). Run: --s3.
+ */
+async function runS3() {
+  console.log(
+    "\n=== KAD verify — Scenario S3 (Phase 3B: workflow engine + QC gate B + auto-approve + sensitive) ===\n"
+  );
+  const TMP_DB3 = path.join(os.tmpdir(), `kad-verify-s3-${process.pid}.db`);
+  for (const f of [TMP_DB3, TMP_DB3 + "-wal", TMP_DB3 + "-shm"])
+    try {
+      fs.unlinkSync(f);
+    } catch {}
+  process.env.DASHBOARD_DB_PATH = TMP_DB3;
+  process.env.DASHBOARD_TOKEN = "";
+  process.env.KAD_WORKER_TICK_MS = "3600000"; // worker off — assert engine gate logic directly (no spawns)
+
+  const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (seed.status !== 0) {
+    console.error("seed failed:", seed.stderr || seed.stdout);
+    process.exit(1);
+  }
+
+  const { createApp } = require(path.join(ROOT, "server/index.js"));
+  const kad = require(path.join(ROOT, "server/routes/kad"));
+  const { getInternalToken } = require(path.join(ROOT, "server/lib/kad/internal-auth"));
+  const app = createApp();
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const BASE = `http://127.0.0.1:${port}`;
+  kad.initKad({ apiBase: BASE });
+
+  const api = async (method, p, body) => {
+    const resp = await fetch(BASE + p, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+  const internal = async (method, p, { runCtx, body } = {}) => {
+    const h = { "content-type": "application/json", "x-kad-internal-token": getInternalToken() };
+    if (runCtx)
+      Object.assign(h, {
+        "x-kad-run-id": runCtx.run,
+        "x-kad-task-id": runCtx.task,
+        "x-kad-agent-id": runCtx.agent,
+      });
+    const resp = await fetch(BASE + "/api/kad/internal" + p, {
+      method,
+      headers: h,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+
+  // Read through the server's OWN db connection (repo) — a separate readonly
+  // connection can lag on cross-connection WAL visibility (see S1 note).
+  const repo = require(path.join(ROOT, "server/lib/kad/repo"));
+  const workflowEngine = require(path.join(ROOT, "server/lib/kad/workflow-engine"));
+  const deptId = repo.catalog.getDepartmentBySlug("rd").id;
+  const AG = {
+    main: "agent-main-rd",
+    architect: "agent-sub-program-architect",
+    researcher: "agent-sub-curriculum-researcher",
+    syllabus: "agent-sub-syllabus-designer",
+    lesson: "agent-sub-lesson-planner",
+    slide: "agent-sub-slide-builder",
+    video: "agent-sub-video-script-writer",
+    reviewer: "agent-sub-quality-reviewer",
+  };
+
+  check(
+    "S3.0 full roster active (main + 6 sub-agents activated, phase-03 §1)",
+    repo.catalog.listAgents(deptId, { status: "active" }).length >= 8
+  );
+
+  const created = await api("POST", "/api/kad/tasks", {
+    title: "AI Automation cơ bản cho SME (2 module)",
+    workflow_id: "wf-rd-standard-flow",
+  });
+  const T = created.body.id;
+  const ctxFor = (agent) => ({ run: `run-s3-${agent}`, task: T, agent });
+  const save = (agent, body) => internal("POST", "/save-artifact", { runCtx: ctxFor(agent), body });
+  const reqAppr = (agent, body) =>
+    internal("POST", "/request-approval", { runCtx: ctxFor(agent), body });
+  const deleg = (body) => internal("POST", "/create-delegation", { runCtx: ctxFor(AG.main), body });
+  const flag = (agent, body) =>
+    internal("POST", "/flag-sensitivity", { runCtx: ctxFor(agent), body });
+  const decide = (id, decision, reason) =>
+    api("POST", `/api/kad/approvals/${id}/decide`, { decision, reason });
+  const stepOf = () => repo.tasks.getTask(T).workflow_step;
+  const apprs = () => repo.approvals.listByTask(T);
+  const artStatus = (type) => {
+    const a = repo.artifacts.listArtifacts({ task_id: T, type });
+    return a.length ? a[a.length - 1].status : null;
+  };
+
+  check(
+    "S3.1 task created workflow-bound",
+    created.status === 201 && repo.tasks.getTask(T).workflow_id === "wf-rd-standard-flow"
+  );
+
+  // --- A. plan → approve; step machine starts ---
+  const plan = await internal("POST", "/plan-task", {
+    runCtx: ctxFor(AG.main),
+    body: { plan: "## Kế hoạch\nresearch → framework → syllabus → học liệu → bàn giao" },
+  });
+  check("S3.2 plan approval pending", plan.status === 200 && !!plan.body.approval_id);
+  await decide(plan.body.approval_id, "approved");
+  check("S3.3 step→research after plan approved", stepOf() === "research", stepOf());
+
+  // --- B. order gate negatives (framework before syllabus; syllabus before materials) ---
+  const dOrder1 = await deleg({ to_agent: "sub-syllabus-designer", instruction: "làm syllabus" });
+  check(
+    "S3.4 order gate: syllabus before approved framework blocked (EORDER)",
+    dOrder1.status === 409 && dOrder1.body.error && dOrder1.body.error.code === "EORDER",
+    JSON.stringify(dOrder1.body)
+  );
+  const dOrder2 = await deleg({ to_agent: "sub-lesson-planner", instruction: "làm lesson" });
+  check(
+    "S3.5 order gate: materials before approved syllabus blocked (EORDER)",
+    dOrder2.status === 409 && dOrder2.body.error && dOrder2.body.error.code === "EORDER"
+  );
+
+  // --- C. research → internal_auto (always auto, system record) ---
+  const rr = await save(AG.researcher, {
+    artifact_type: "research_report",
+    title: "Nghiên cứu nhu cầu SME",
+    content: "Nhu cầu học automation cho SME: ưu tiên công cụ phổ cập. Nguồn: khảo sát nội bộ.",
+  });
+  check("S3.6 research auto-approved (internal_auto)", rr.body.auto_approved === true);
+  const rrAppr = apprs().find((a) => a.approval_type === "internal_auto");
+  check(
+    "S3.6b internal_auto record: reviewer=system, approved, decision_reason",
+    !!rrAppr &&
+      rrAppr.reviewer === "system" &&
+      rrAppr.status === "approved" &&
+      rrAppr.decision_reason === "auto: internal step"
+  );
+  check("S3.6c research_report artifact approved", artStatus("research_report") === "approved");
+  check("S3.7 step→framework", stepOf() === "framework", stepOf());
+
+  // --- D. wrong-condition auto-approve: slide before syllabus approved → NOT auto (human) ---
+  const early = await save(AG.slide, {
+    artifact_type: "slide_outline",
+    title: "Slide sớm (sai điều kiện)",
+    content: "- Slide 1: mở đầu",
+  });
+  check(
+    "S3.8 slide NOT auto-approved without approved syllabus (parent check real)",
+    !early.body.auto_approved && artStatus("slide_outline") === "draft"
+  );
+  check(
+    "S3.8b no system approval for premature slide",
+    !apprs().some((a) => a.reviewer === "system" && a.artifact_id === early.body.artifact_id)
+  );
+
+  // --- D2. framework + QC gate B ---
+  const fw = await save(AG.architect, {
+    artifact_type: "program_framework",
+    title: "Khung chương trình AI Automation SME",
+    content: "## Mục tiêu KASH\n## Learning pathway: 2 module\n## Đánh giá capstone",
+  });
+  const fwId = fw.body.artifact_id;
+  check(
+    "S3.9 framework saved draft (reviewer-bound, not auto)",
+    !fw.body.auto_approved && artStatus("program_framework") === "draft"
+  );
+  const fwBlocked = await reqAppr(AG.main, {
+    approval_type: "artifact",
+    title: "Duyệt khung",
+    artifact_id: fwId,
+  });
+  check(
+    "S3.10 QC gate B blocks framework approval before QR (EQRREQUIRED)",
+    fwBlocked.status === 409 && fwBlocked.body.error && fwBlocked.body.error.code === "EQRREQUIRED",
+    JSON.stringify(fwBlocked.body)
+  );
+  await save(AG.reviewer, {
+    artifact_type: "quality_report",
+    title: "QR khung",
+    content: "## Báo cáo kiểm tra\n### Kết quả: ĐẠT\nĐầy đủ, chính xác, đúng brand.",
+    parent_artifact_id: fwId,
+  });
+  const fwReq = await reqAppr(AG.main, {
+    approval_type: "artifact",
+    title: "Duyệt khung",
+    artifact_id: fwId,
+  });
+  check(
+    "S3.11 framework approval allowed after QR ĐẠT",
+    fwReq.status === 200 && !!fwReq.body.approval_id
+  );
+  await decide(fwReq.body.approval_id, "approved");
+  check("S3.11b framework artifact approved", artStatus("program_framework") === "approved");
+  check("S3.12 step→syllabus", stepOf() === "syllabus", stepOf());
+
+  // --- E. syllabus + QC gate B ---
+  const syl = await save(AG.syllabus, {
+    artifact_type: "syllabus",
+    title: "Syllabus AI Automation SME",
+    content: "## Danh sách buổi\n| Buổi | Tên | Mục tiêu |\n## Khung năng lực KASH",
+  });
+  const sylId = syl.body.artifact_id;
+  const sylBlocked = await reqAppr(AG.main, {
+    approval_type: "artifact",
+    title: "Duyệt syllabus",
+    artifact_id: sylId,
+  });
+  check(
+    "S3.13 QC gate B blocks syllabus approval before QR",
+    sylBlocked.status === 409 && sylBlocked.body.error.code === "EQRREQUIRED"
+  );
+  await save(AG.reviewer, {
+    artifact_type: "quality_report",
+    title: "QR syllabus",
+    content: "### Kết quả: ĐẠT",
+    parent_artifact_id: sylId,
+  });
+  const sylReq = await reqAppr(AG.main, {
+    approval_type: "artifact",
+    title: "Duyệt syllabus",
+    artifact_id: sylId,
+  });
+  await decide(sylReq.body.approval_id, "approved");
+  check("S3.14 syllabus approved", artStatus("syllabus") === "approved");
+  check("S3.15 step→materials", stepOf() === "materials", stepOf());
+
+  // --- F. materials: internal_auto + conditional auto (parent approved) ---
+  const lp = await save(AG.lesson, {
+    artifact_type: "lesson_plan",
+    title: "Lesson buổi 1",
+    content: "## Tiến trình theo phút\n## Bài tập",
+  });
+  check(
+    "S3.16 lesson_plan internal_auto approved",
+    lp.body.auto_approved && artStatus("lesson_plan") === "approved"
+  );
+  const sl = await save(AG.slide, {
+    artifact_type: "slide_outline",
+    title: "Slide buổi 1",
+    content: "- Slide 1: mục tiêu\n- Slide 2: demo",
+  });
+  check(
+    "S3.17 slide auto-approved: reviewer=system + reason 'auto: parent approved (syllabus)'",
+    sl.body.auto_approved &&
+      apprs().some(
+        (a) =>
+          a.artifact_id === sl.body.artifact_id &&
+          a.reviewer === "system" &&
+          a.decision_reason === "auto: parent approved (syllabus)"
+      )
+  );
+  const vs = await save(AG.video, {
+    artifact_type: "video_script",
+    title: "Video buổi 1",
+    content: "## Cốt lõi\n## Mở rộng",
+  });
+  check(
+    "S3.18 video auto-approved: reason 'auto: parent approved (lesson_plan)'",
+    vs.body.auto_approved &&
+      apprs().some(
+        (a) =>
+          a.artifact_id === vs.body.artifact_id &&
+          a.decision_reason === "auto: parent approved (lesson_plan)"
+      )
+  );
+
+  // --- G. sensitive detection layer 2 ---
+  const sens = await save(AG.lesson, {
+    artifact_type: "other",
+    title: "Case study (số liệu giả định)",
+    content: "Doanh nghiệp X tăng 300% doanh thu, tiết kiệm 50 triệu đồng/tháng sau khóa.",
+  });
+  check(
+    "S3.19 sensitive artifact BLOCKED (server scan → sensitive_content pending)",
+    sens.body.sensitive_pending === true
+  );
+  const sensAppr = apprs().find(
+    (a) => a.approval_type === "sensitive_content" && a.artifact_id === sens.body.artifact_id
+  );
+  check(
+    "S3.19b sensitive_content approval: pending, human, subtype=metrics",
+    !!sensAppr &&
+      sensAppr.status === "pending" &&
+      sensAppr.reviewer === "human" &&
+      sensAppr.sensitivity_subtype === "metrics",
+    JSON.stringify(sensAppr)
+  );
+  check(
+    "S3.19c sensitive artifact NOT auto-approved (block precedes auto)",
+    !apprs().some((a) => a.artifact_id === sens.body.artifact_id && a.reviewer === "system")
+  );
+  const clean = await save(AG.lesson, {
+    artifact_type: "other",
+    title: "Ghi chú nội bộ",
+    content: "Ghi chú quy trình nội bộ, không số liệu nhạy cảm.",
+  });
+  const flg = await flag(AG.reviewer, { artifact_id: clean.body.artifact_id, metrics: true });
+  check(
+    "S3.20 kad_flag_sensitivity (layer 1) → sensitive_content approval",
+    flg.body.sensitive_pending === true &&
+      apprs().some(
+        (a) => a.approval_type === "sensitive_content" && a.artifact_id === clean.body.artifact_id
+      )
+  );
+
+  // --- H. bàn giao (handoff) — QC gate satisfied (framework/syllabus carry QR) ---
+  const rep = await internal("POST", "/present-report", {
+    runCtx: ctxFor(AG.main),
+    body: {
+      summary: "Đã xong khung + syllabus + học liệu buổi 1.",
+      artifact_ids: [fwId, sylId],
+    },
+  });
+  check(
+    "S3.21 present-report allowed (gated artifacts have QR)",
+    rep.status === 200 && !!rep.body.message_id
+  );
+  const rd = await api("POST", `/api/kad/tasks/${T}/report/${rep.body.message_id}/decide`, {
+    decision: "approved",
+  });
+  check(
+    "S3.22 report approved → task done",
+    rd.status === 200 && repo.tasks.getTask(T).status === "done"
+  );
+  check("S3.23 step→handoff", stepOf() === "handoff", stepOf());
+
+  // Delegation → correct artifact_type wiring (what the live sub-agent is told to
+  // produce): the map the live runDelegation uses to type each artifact for the gates.
+  check(
+    "S3.24 delegation output-type wiring (architect→framework, slide→slide_outline)",
+    workflowEngine.outputTypeForAgent(
+      repo.tasks.getTask(T),
+      repo.catalog.getAgent(AG.architect)
+    ) === "program_framework" &&
+      workflowEngine.outputTypeForAgent(repo.tasks.getTask(T), repo.catalog.getAgent(AG.slide)) ===
+        "slide_outline"
+  );
+
+  // S3.25 (regression, review F1): QC gate B keys on artifact TYPE only — a
+  // non-gated INTERNAL artifact containing a statistic must NOT be QR-blocked
+  // (its sensitivity is handled by the sensitive_content approval, and it never
+  // routes through the Quality Reviewer, so demanding a QR would dead-end it).
+  const statInternal = repo.artifacts
+    .listArtifacts({ task_id: T })
+    .find((a) => a.artifact_type === "other" && /%|triệu/.test(a.content || ""));
+  check(
+    "S3.25 QC gate does NOT demand QR for a non-gated stat-bearing internal artifact",
+    !!statInternal &&
+      workflowEngine.assertQualityGate(repo.tasks.getTask(T), statInternal.id).ok === true
+  );
+
+  // S3.26 (regression, review F3): auto-approval is idempotent — re-invoking
+  // onArtifactSaved on an already-auto-approved artifact must NOT create a second
+  // reviewer='system' approval row.
+  const sysBefore = apprs().filter(
+    (a) => a.artifact_id === sl.body.artifact_id && a.reviewer === "system"
+  ).length;
+  workflowEngine.onArtifactSaved({
+    task: repo.tasks.getTask(T),
+    artifact: repo.artifacts.getArtifact(sl.body.artifact_id),
+    agent: repo.catalog.getAgent(AG.slide),
+  });
+  const sysAfter = apprs().filter(
+    (a) => a.artifact_id === sl.body.artifact_id && a.reviewer === "system"
+  ).length;
+  check(
+    "S3.26 auto-approval idempotent (no duplicate system approval on re-invoke)",
+    sysBefore === 1 && sysAfter === 1
+  );
+
+  // ENGINE leg — real `claude` spawns DO work here (S1.E1/E3 prove a real Main turn
+  // calls kad_plan_task and parks at waiting_approval through this same
+  // orchestrator+MCP+engine path). The full 8-agent course is NOT run by default:
+  // each task costs ~1.3-1.7M tokens/turn × many turns × 6 sub-agents. Opt in with
+  // KAD_LIVE_S3=1 to drive it live (also needs TAVILY_API_KEY for the researcher).
+  if (process.env.KAD_LIVE_S3) {
+    blocked(
+      "S3.E1 live full-course spawn (KAD_LIVE_S3 set)",
+      "live full-course driver not yet automated in-harness — run the course via the UI/API; S1 proves the real-spawn path works"
+    );
+  } else {
+    blocked(
+      "S3.E1 live full-course spawn (real claude, 8 agents end-to-end)",
+      "not run by default (cost/time — ~1.3-1.7M tokens/turn). Real spawns proven working by S1.E1/E3; INFRA legs above exercise the REAL engine/gate code via the internal API. Enable with KAD_LIVE_S3=1"
+    );
+  }
+
+  console.log(results.join("\n"));
+  console.log(`\n=== S3: ${pass} passed, ${fail} failed ===`);
+  try {
+    require(path.join(ROOT, "server/lib/kad/job-queue")).stopWorker();
+  } catch {}
+  server.close();
+  for (const f of [TMP_DB3, TMP_DB3 + "-wal", TMP_DB3 + "-shm"])
+    try {
+      fs.unlinkSync(f);
+    } catch {}
+  process.exit(fail > 0 ? 1 : 0);
+}
+
 // ---------------------------------------------------------------------------
 // S3-deps (Phase 3c track — task_dependencies auto-release, spec 02 §6b,
 // spec 03 §5.4, audit-260704 §5.2). No engine spawn needed: releasing a
@@ -1233,18 +1650,11 @@ async function runS3Deps() {
 }
 
 if (process.argv.includes("--s2")) {
-  runS2().catch((e) => {
-    console.error("verify S2 crashed:", e);
-    process.exit(1);
-  });
+  runS2().catch((e) => { console.error("verify S2 crashed:", e); process.exit(1); });
+} else if (process.argv.includes("--s3")) {
+  runS3().catch((e) => { console.error("verify S3 crashed:", e); process.exit(1); });
 } else if (process.argv.includes("--s3-deps")) {
-  runS3Deps().catch((e) => {
-    console.error("verify S3-deps crashed:", e);
-    process.exit(1);
-  });
+  runS3Deps().catch((e) => { console.error("verify S3-deps crashed:", e); process.exit(1); });
 } else {
-  main().catch((e) => {
-    console.error("verify crashed:", e);
-    process.exit(1);
-  });
+  main().catch((e) => { console.error("verify crashed:", e); process.exit(1); });
 }

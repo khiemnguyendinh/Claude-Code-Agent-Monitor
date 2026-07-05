@@ -7,6 +7,7 @@
 const express = require("express");
 const repo = require("../../lib/kad/repo");
 const orchestrator = require("../../lib/kad/orchestrator");
+const workflowEngine = require("../../lib/kad/workflow-engine");
 const { emitTask, emitDept } = require("../../lib/kad/events");
 const { getUploader } = require("./attachments-upload");
 
@@ -375,6 +376,12 @@ router.post("/:id/report/:messageId/decide", (req, res) => {
     task_id: task.id,
     status: repo.tasks.getTask(task.id).status,
   });
+  // Bàn giao approved → task done → advance workflow_step to 'handoff'.
+  try {
+    workflowEngine.syncStep(task.id);
+  } catch (e) {
+    console.warn(`[kad] report/decide: syncStep failed for task ${task.id}:`, e && e.message);
+  }
   if (b.decision === "needs_changes") {
     try {
       repo.jobs.enqueue({
