@@ -17,6 +17,10 @@ import { projectFromCwd } from "../lib/event-grouping";
 
 interface SessionCardProps {
   session: Session;
+  /** Real KAD task title when this session was spawned by a task delegation
+   *  (engine_session_id match, spec/ui/08 "tên phiên = tên công việc"). Takes
+   *  priority over the cwd heuristic, below only a real user-given name. */
+  taskTitle?: string;
   onClick?: () => void;
 }
 
@@ -27,19 +31,21 @@ function formatCost(cost: number): string {
   return `$${cost.toFixed(4)}`;
 }
 
-export function SessionCard({ session, onClick }: SessionCardProps) {
+export function SessionCard({ session, taskTitle, onClick }: SessionCardProps) {
   const navigate = useNavigate();
   const { t } = useTranslation("kanban");
   const isActive = session.status === "active";
   const isWaiting = isSessionAwaitingInput(session);
   const status = effectiveSessionStatus(session);
   // Tên phiên do Claude Code tự sinh ("Session <id8>") không mang tên công
-  // việc. Bản tạm: nếu tên rỗng/tự sinh thì suy tên thư mục làm việc (cwd)
-  // làm nhãn dễ đọc. Bản chuẩn lấy tên công việc thật qua map task↔session
-  // (/api/kad/*) — xem spec/ui/08-gop-cong-viec-kanban.md.
+  // việc. [Phase 7 hardening, spec/ui/08] "tên phiên = tên công việc": khi
+  // session này gắn với 1 KAD task (map task↔session qua engine_session_id,
+  // truyền vào từ KanbanBoard), ưu tiên tên công việc thật; nếu không, suy tên
+  // thư mục làm việc (cwd) làm nhãn dễ đọc.
   const rawName = session.name?.trim() || "";
   const isGenericName = /^Session [0-9a-f]{8}$/i.test(rawName);
-  const title = (!isGenericName && rawName) || projectFromCwd(session.cwd) || t("session.anonymous");
+  const title =
+    (!isGenericName && rawName) || taskTitle || projectFromCwd(session.cwd) || t("session.anonymous");
   const agentCount = session.agent_count ?? 0;
   const model = formatModelName(session.model);
   const lastActivity = session.last_activity || session.ended_at || session.started_at;

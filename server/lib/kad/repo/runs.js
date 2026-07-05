@@ -71,4 +71,26 @@ function countActive() {
   return db.prepare("SELECT COUNT(*) n FROM task_runs WHERE status IN ('pending','running')").get().n;
 }
 
-module.exports = { createRun, getRun, setEngineSession, updateRun, listByTask, listUnfinished, countActive };
+/** Bulk map of engine_session_id -> {task_id, task_title} for every run that
+ * has one, joined to its task. Powers "tên phiên = tên công việc" (spec/ui/08)
+ * without an N+1 request per session/agent card on the Kanban board. */
+function listSessionTaskMap() {
+  return db
+    .prepare(
+      `SELECT r.engine_session_id AS session_id, r.task_id AS task_id, t.title AS task_title
+       FROM task_runs r JOIN tasks t ON t.id = r.task_id
+       WHERE r.engine_session_id IS NOT NULL`
+    )
+    .all();
+}
+
+module.exports = {
+  createRun,
+  getRun,
+  setEngineSession,
+  updateRun,
+  listByTask,
+  listUnfinished,
+  countActive,
+  listSessionTaskMap,
+};

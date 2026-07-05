@@ -14,6 +14,7 @@ const connectorService = require("../../lib/kad/connectors");
 const larkAdapter = require("../../lib/kad/lark-adapter");
 const { requireInternalToken } = require("../../lib/kad/internal-auth");
 const { emitTask, emitDept } = require("../../lib/kad/events");
+const v = require("../../lib/kad/validate");
 
 const router = express.Router();
 router.use(requireInternalToken);
@@ -21,6 +22,35 @@ router.use(express.json({ limit: "2mb" }));
 
 const bad = (res, code, message, status = 400) =>
   res.status(status).json({ error: { code, message } });
+
+// Mirrors the CHECK constraints in kad-001-init.sql (spec 02 §5, §"Approvals")
+// so a bad engine tool call 400s here instead of an uncaught SqliteError 500.
+const ARTIFACT_TYPES = [
+  "program_framework",
+  "research_report",
+  "syllabus",
+  "lesson_plan",
+  "slide_outline",
+  "video_script",
+  "quality_report",
+  "connector_draft",
+  "other",
+];
+const APPROVAL_TYPES = [
+  "plan",
+  "strategy",
+  "artifact",
+  "publish_facebook",
+  "publish_wordpress",
+  "blueprint_change",
+  "template_change",
+  "org_context_change",
+  "workflow_change",
+  "sensitive_content",
+  "helper_create",
+  "internal_auto",
+];
+const SENSITIVITY_SUBTYPES = ["metrics", "people", "brand"];
 
 function notifyApprovalCreated(task, approval) {
   try {
@@ -68,6 +98,8 @@ router.post("/plan-task", (req, res) => {
   if (c.agent.agent_type !== "main") return bad(res, "EPERM", "only main agent may plan", 403);
   const plan = (req.body && req.body.plan) || "";
   if (!plan) return bad(res, "EBADPLAN", "plan is required");
+  const verr = v.checkString(plan, "plan", { required: true, maxLen: 100000 });
+  if (verr) return bad(res, verr.code, verr.message);
   let approval;
   repo.tx(() => {
     repo.tasks.addMessage({
@@ -120,6 +152,11 @@ router.post("/ask-intake", (req, res) => {
   const b = req.body || {};
   const question = (b.question || "").trim();
   if (!question) return bad(res, "EBADQUESTION", "question is required");
+  const verr = v.firstError(
+    v.checkString(question, "question", { maxLen: 2000 }),
+    v.checkArray(b.options, "options", { maxItems: 4 })
+  );
+  if (verr) return bad(res, verr.code, verr.message);
   const options = Array.isArray(b.options) ? b.options.slice(0, 4).map(String) : undefined;
   let msg;
   repo.tx(() => {
@@ -165,6 +202,15 @@ router.post("/propose-brief", (req, res) => {
   const required = ["goal", "deliverable", "workflow_name", "due_label"];
   const missing = required.filter((k) => !b[k]);
   if (missing.length) return bad(res, "EBADBRIEF", `missing fields: ${missing.join(", ")}`);
+  const verr = v.firstError(
+    v.checkString(b.goal, "goal", { maxLen: 5000 }),
+    v.checkString(b.deliverable, "deliverable", { maxLen: 5000 }),
+    v.checkString(b.workflow_name, "workflow_name", { maxLen: 300 }),
+    v.checkString(b.due_label, "due_label", { maxLen: 100 }),
+    v.checkString(b.framework_label, "framework_label", { maxLen: 300 }),
+    v.checkString(b.assumption, "assumption", { maxLen: 5000 })
+  );
+  if (verr) return bad(res, verr.code, verr.message);
   const brief = {
     goal: b.goal,
     deliverable: b.deliverable,
@@ -215,6 +261,13 @@ router.post("/request-approval", (req, res) => {
   if (!c) return;
   const b = req.body || {};
   const type = b.approval_type || "artifact";
+  const verr = v.firstError(
+    v.checkEnum(type, "approval_type", APPROVAL_TYPES),
+    v.checkEnum(b.sensitivity_subtype, "sensitivity_subtype", SENSITIVITY_SUBTYPES),
+    v.checkString(b.title, "title", { maxLen: 300 }),
+    v.checkString(b.description, "description", { maxLen: 20000 })
+  );
+  if (verr) return bad(res, verr.code, verr.message);
   // QC gate B (spec 01 §3.2): a reviewer-bound artifact (framework/syllabus) or a
   // sensitive one may not be presented to the human until a passing Quality
   // Reviewer report exists for it. Enforced server-side, not left to the agent.
@@ -265,6 +318,11 @@ router.post("/create-delegation", (req, res) => {
     return bad(res, "EPLANUNAPPROVED", "kế hoạch chưa được duyệt — không thể giao việc", 403);
   }
   const b = req.body || {};
+  const dverr = v.firstError(
+    v.checkString(b.instruction, "instruction", { maxLen: 20000 }),
+    v.checkArray(b.input_artifact_ids, "input_artifact_ids", { maxItems: 50 })
+  );
+  if (dverr) return bad(res, dverr.code, dverr.message);
   const to =
     b.to_agent &&
     (repo.catalog.getAgentByName(c.task.department_id, b.to_agent) ||
@@ -327,6 +385,12 @@ router.post("/save-artifact", (req, res) => {
   const b = req.body || {};
   if (!b.artifact_type || !b.title)
     return bad(res, "EBADARTIFACT", "artifact_type and title required");
+  const verr = v.firstError(
+    v.checkEnum(b.artifact_type, "artifact_type", ARTIFACT_TYPES),
+    v.checkString(b.title, "title", { maxLen: 300 }),
+    v.checkString(b.content, "content", { maxLen: 1000000 })
+  );
+  if (verr) return bad(res, verr.code, verr.message);
   let art;
   repo.tx(() => {
     art = repo.artifacts.createArtifact({
@@ -476,6 +540,8 @@ router.post("/report-progress", (req, res) => {
   if (!c) return;
   const content = (req.body && req.body.content) || "";
   if (!content) return bad(res, "EBADCONTENT", "content required");
+  const rverr = v.checkString(content, "content", { maxLen: 20000 });
+  if (rverr) return bad(res, rverr.code, rverr.message);
   const msg = repo.tasks.addMessage({
     task_id: c.task.id,
     sender_type: "agent",
@@ -503,6 +569,13 @@ router.post("/present-report", (req, res) => {
   if (!summary) return bad(res, "EBADREPORT", "summary is required");
   if (!artifactIds.length)
     return bad(res, "EBADREPORT", "artifact_ids is required (from kad_save_artifact)");
+  const prverr = v.firstError(
+    v.checkString(summary, "summary", { maxLen: 20000 }),
+    v.checkArray(artifactIds, "artifact_ids", { maxItems: 50 }),
+    v.checkArray(b.needs_decision, "needs_decision", { maxItems: 20 }),
+    v.checkString(b.blocker, "blocker", { maxLen: 5000 })
+  );
+  if (prverr) return bad(res, prverr.code, prverr.message);
   const artifacts = artifactIds.map((id) => repo.artifacts.getArtifact(id)).filter(Boolean);
   if (!artifacts.length) return bad(res, "EBADARTIFACT", "no valid artifact_ids");
 
@@ -580,6 +653,11 @@ router.post("/web-search", async (req, res) => {
   if (!c) return;
   if (!c.agent.permissions.web_search) return bad(res, "EPERM", "no web_search permission", 403);
   const q = (req.body && req.body.query) || "";
+  const wverr = v.firstError(
+    v.checkString(q, "query", { maxLen: 500 }),
+    v.checkNumber(req.body && req.body.max_results, "max_results", { min: 1, max: 20 })
+  );
+  if (wverr) return bad(res, wverr.code, wverr.message);
   try {
     const result = await webSearch.search(q, {
       maxResults: (req.body && req.body.max_results) || 5,
@@ -609,6 +687,17 @@ router.post("/connector-draft", (req, res) => {
   const c = ctx(req, res);
   if (!c) return;
   const b = req.body || {};
+  const cverr = v.firstError(
+    v.checkEnum(b.connector_type, "connector_type", ["facebook_page", "wordpress"], {
+      required: true,
+    }),
+    v.checkString(b.title, "title", { maxLen: 300 }),
+    v.checkString(b.body || b.content || b.content_to_publish, "body", { maxLen: 200000 }),
+    v.checkString(b.excerpt, "excerpt", { maxLen: 2000 }),
+    v.checkArray(b.category_ids, "category_ids", { maxItems: 50 }),
+    v.checkArray(b.tag_ids, "tag_ids", { maxItems: 50 })
+  );
+  if (cverr) return bad(res, cverr.code, cverr.message);
   try {
     const result = connectorService.draftConnector({
       task_id: c.task.id,

@@ -24,6 +24,7 @@ import { useNotifications } from "./hooks/useNotifications";
 import { eventBus } from "./lib/eventBus";
 import type { WSMessage } from "./lib/types";
 import { KadShell } from "./kad/components/KadShell";
+import { KadErrorBoundary } from "./kad/components/KadErrorBoundary";
 import { TongQuan } from "./kad/pages/TongQuan";
 import { MucTieuChienLuoc } from "./kad/pages/MucTieuChienLuoc";
 import { CongViecMoi } from "./kad/pages/CongViecMoi";
@@ -67,7 +68,13 @@ export default function App() {
         <Routes>
           {/* KAD ("Kstudy Flat") — Tổng quan / Công việc / Đội ngũ + kho phụ.
               New screens per plans/260703-2330-kad-v2-build/spec/ui/*.md. */}
-          <Route element={<KadShell wsConnected={connected} />}>
+          <Route
+            element={
+              <KadErrorBoundary>
+                <KadShell wsConnected={connected} />
+              </KadErrorBoundary>
+            }
+          >
             <Route index element={<TongQuan />} />
             <Route path="muc-tieu-chien-luoc" element={<MucTieuChienLuoc />} />
             {/* 2026-07-04: board "Công việc" (5 cột task KAD) đã gộp vào trang
@@ -91,7 +98,14 @@ export default function App() {
               under /he-thong/* (dark theme preserved on purpose). */}
           <Route path="he-thong" element={<Layout wsConnected={connected} />}>
             <Route index element={<Dashboard />} />
-            <Route path="kanban" element={<KanbanBoard />} />
+            <Route
+              path="kanban"
+              element={
+                <KadErrorBoundary label="Bảng Công việc">
+                  <KanbanBoard />
+                </KadErrorBoundary>
+              }
+            />
             <Route path="sessions" element={<Sessions />} />
             <Route path="sessions/:id" element={<SessionDetail />} />
             <Route path="activity" element={<ActivityFeed />} />

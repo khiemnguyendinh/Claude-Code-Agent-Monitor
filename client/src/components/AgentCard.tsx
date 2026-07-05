@@ -32,11 +32,16 @@ interface AgentCardProps {
    *  cost). Subagent display ignores this. When omitted, the card falls
    *  back to the original minimal layout. */
   session?: Session;
+  /** Real KAD task title when this session was spawned by a task delegation
+   *  (spec/ui/08 "tên phiên = tên công việc"). Used in place of the
+   *  auto-generated placeholder for the main-agent card, below only a real
+   *  user-given session name. */
+  taskTitle?: string;
   label?: string;
   onClick?: () => void;
 }
 
-export function AgentCard({ agent, session, label, onClick }: AgentCardProps) {
+export function AgentCard({ agent, session, taskTitle, label, onClick }: AgentCardProps) {
   const navigate = useNavigate();
   const { t } = useTranslation("kanban");
   const isWaiting = agent.status === "waiting" || isAgentAwaitingInput(agent);
@@ -67,7 +72,12 @@ export function AgentCard({ agent, session, label, onClick }: AgentCardProps) {
   // Real (user-given) session name - the auto-generated "Session <id8>"
   // fallback carries no extra info next to the ID, so it is suppressed.
   const sessionName = session?.name?.trim() || "";
-  const realSessionName = /^Session [0-9a-f]{8}$/i.test(sessionName) ? "" : sessionName;
+  // [Phase 7 hardening, spec/ui/08] "tên phiên = tên công việc": a real
+  // user-given session name still wins, but the generic placeholder now falls
+  // back to the KAD task title (via engine_session_id) before cwd is used
+  // downstream in mainAgentDisplayName.
+  const realSessionName =
+    (/^Session [0-9a-f]{8}$/i.test(sessionName) ? "" : sessionName) || taskTitle || "";
   // A subagent's own model lives in its metadata (resolved from its transcript,
   // not the parent session's — see issue #185). Use it everywhere this card
   // shows a model so a Haiku QA agent under an Opus orchestrator reads as

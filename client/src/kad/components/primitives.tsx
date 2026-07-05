@@ -3,7 +3,13 @@
  * (Form & input), plus empty/skeleton states matching 01-app-shell §6.
  */
 import { forwardRef } from "react";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from "react";
+import type {
+  ButtonHTMLAttributes,
+  CSSProperties,
+  InputHTMLAttributes,
+  ReactNode,
+  TextareaHTMLAttributes,
+} from "react";
 import type { LucideIcon } from "lucide-react";
 import { Loader2 } from "lucide-react";
 
@@ -83,14 +89,17 @@ export function KadCard({
   className = "",
   children,
   padding = "md",
+  style,
 }: {
   className?: string;
   children: ReactNode;
   padding?: "sm" | "md";
+  style?: CSSProperties;
 }) {
   return (
     <div
       className={`bg-kad-surface border border-kad-border rounded-xl ${padding === "sm" ? "p-4" : "p-5"} ${className}`}
+      style={style}
     >
       {children}
     </div>

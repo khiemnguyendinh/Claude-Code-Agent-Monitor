@@ -12,6 +12,7 @@ const express = require("express");
 const repo = require("../../lib/kad/repo");
 const automation = require("../../lib/kad/automation");
 const { emitDept } = require("../../lib/kad/events");
+const v = require("../../lib/kad/validate");
 
 const router = express.Router();
 const err = (res, code, message, status = 400) =>
@@ -35,6 +36,14 @@ router.post("/automation-rules", (req, res) => {
     return err(res, "EBADTRIGGER", "invalid trigger_type");
   if (!["create_task", "notify", "run_briefing", "pause_department"].includes(b.action_type))
     return err(res, "EBADACTION", "invalid action_type");
+  const verr = v.firstError(
+    v.checkString(b.name, "name", { maxLen: 200 }),
+    v.checkObject(b.trigger_config, "trigger_config", { required: true }),
+    v.checkObject(b.action_config, "action_config", { required: true }),
+    v.checkNumber(b.cooldown_seconds, "cooldown_seconds", { min: 0, max: 31536000 }),
+    v.checkNumber(b.max_fires, "max_fires", { min: 0, max: 1000000 })
+  );
+  if (verr) return err(res, verr.code, verr.message);
   const department_id = b.department_id || defaultDeptId();
   const rule = repo.automationRules.createRule({
     department_id,
@@ -65,6 +74,14 @@ router.patch("/automation-rules/:id", (req, res) => {
   const b = req.body || {};
   if (b.status !== undefined && !["active", "paused", "archived"].includes(b.status))
     return err(res, "EBADSTATUS", "invalid status");
+  const verr = v.firstError(
+    v.checkString(b.name, "name", { maxLen: 200 }),
+    v.checkObject(b.trigger_config, "trigger_config"),
+    v.checkObject(b.action_config, "action_config"),
+    v.checkNumber(b.cooldown_seconds, "cooldown_seconds", { min: 0, max: 31536000 }),
+    v.checkNumber(b.max_fires, "max_fires", { min: 0, max: 1000000 })
+  );
+  if (verr) return err(res, verr.code, verr.message);
   const updated = repo.automationRules.updateRule(rule.id, {
     name: b.name,
     trigger_config: b.trigger_config,

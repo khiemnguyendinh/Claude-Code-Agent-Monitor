@@ -1,26 +1,31 @@
 /**
  * "Đang chạy trực tiếp" (live flow) — vốn là 04-man-doi-ngu §1c; 2026-07-04
  * chuyển sang tab "Công việc" của trang /he-thong/kanban (spec/ui/08) theo yêu
- * cầu Khiêm. Nguồn thật: TASK_CARDS status=doing + assignedAgentId = các
- * delegation đang active (không phải dữ liệu mô phỏng riêng). `onOpenTask` do
- * nơi nhúng quyết định — mở khay peek (khi có PeekDrawerHost) hoặc điều hướng.
+ * cầu Khiêm. [Phase 7 hardening] nguồn thật: `/api/kad/tasks` status=doing +
+ * assignedAgentId (do KanbanBoard fetch, truyền xuống) — thay TASK_CARDS mock.
+ * `onOpenTask` do nơi nhúng quyết định — mở khay peek (khi có PeekDrawerHost)
+ * hoặc điều hướng.
  */
 import { Zap } from "lucide-react";
-import { TASK_CARDS, findAgent } from "../mockData";
 import { AgentAvatar } from "./Avatar";
 import { KadCard, KadEmptyState } from "./primitives";
 import { StatusChip } from "./StatusChip";
 import { formatRelativeTime } from "../format";
-import type { AgentProfile, TaskCard } from "../types";
+import type { AgentProfile } from "../types";
+import type { KadTask } from "../api-client";
 
 export function LiveFlowSection({
   mainAgent,
+  tasks,
+  agentsById,
   onOpenTask,
 }: {
   mainAgent: AgentProfile | undefined;
+  tasks: KadTask[];
+  agentsById: Map<string, AgentProfile>;
   onOpenTask: (taskId: string) => void;
 }) {
-  const running = TASK_CARDS.filter((t) => t.status === "doing" && t.assignedAgentId);
+  const running = tasks.filter((t) => t.status === "doing" && t.assignedAgentId);
 
   return (
     <div>
@@ -42,7 +47,13 @@ export function LiveFlowSection({
         ) : (
           <div>
             {running.map((task) => (
-              <FlowRow key={task.id} mainAgent={mainAgent} task={task} onOpen={() => onOpenTask(task.id)} />
+              <FlowRow
+                key={task.id}
+                mainAgent={mainAgent}
+                task={task}
+                agentsById={agentsById}
+                onOpen={() => onOpenTask(task.id)}
+              />
             ))}
           </div>
         )}
@@ -54,10 +65,12 @@ export function LiveFlowSection({
 function FlowRow({
   mainAgent,
   task,
+  agentsById,
   onOpen,
 }: {
   mainAgent: AgentProfile | undefined;
-  task: TaskCard;
+  task: KadTask;
+  agentsById: Map<string, AgentProfile>;
   onOpen: () => void;
 }) {
   if (!task.assignedAgentId) return null;
@@ -85,7 +98,8 @@ function FlowRow({
       <div className="min-w-0 flex-1">
         <p className="kad-body text-kad-text truncate">{task.title}</p>
         <p className="kad-caption text-kad-text-faint">
-          {findAgent(task.assignedAgentId)?.displayName} · {formatRelativeTime(task.updatedAt)}
+          {(task.assignedAgentId && agentsById.get(task.assignedAgentId)?.displayName) || "—"} ·{" "}
+          {formatRelativeTime(task.updatedAt)}
         </p>
       </div>
       <StatusChip kind="doing" label="Đang chạy" />

@@ -3016,6 +3016,206 @@ async function runS6_6() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
+async function runS7() {
+  // Phase 7 — Hardening: request validation, local rate limiting, secret scan,
+  // and SQLite backup/restore round-trip. INFRA-only (no engine spawn needed —
+  // every assertion here is about the HTTP/DB layer, not agent behavior).
+  const TMP = path.join(os.tmpdir(), `kad-verify-s7-${process.pid}.db`);
+  for (const f of [TMP, TMP + "-wal", TMP + "-shm"])
+    try {
+      fs.unlinkSync(f);
+    } catch {}
+  process.env.DASHBOARD_DB_PATH = TMP;
+  process.env.DASHBOARD_TOKEN = "";
+  process.env.KAD_WORKER_TICK_MS = "3600000";
+  // Low limit so a small, fast burst can prove 429 without thousands of requests.
+  process.env.KAD_RATE_LIMIT_PER_MIN = "20";
+
+  const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (seed.status !== 0) {
+    console.error("seed failed:", seed.stderr || seed.stdout);
+    process.exit(1);
+  }
+
+  const { createApp } = require(path.join(ROOT, "server/index.js"));
+  const kad = require(path.join(ROOT, "server/routes/kad"));
+  const jobQueue = require(path.join(ROOT, "server/lib/kad/job-queue"));
+  const app = createApp();
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const BASE = `http://127.0.0.1:${port}`;
+  kad.initKad({ apiBase: BASE });
+
+  const api = async (method, p, body) => {
+    const resp = await fetch(BASE + p, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+
+  const Database = require("better-sqlite3");
+
+  console.log("\n=== KAD verify — Scenario S7 (hardening @ " + BASE + ") ===\n");
+
+  try {
+    // ---------- 1) Input validation (server/lib/kad/validate.js) ----------
+    const badTitle = await api("POST", "/api/kad/tasks", { description: "no title" });
+    check("S7.1 missing title → 400", badTitle.status === 400 && badTitle.body?.error?.code);
+
+    const badPriority = await api("POST", "/api/kad/tasks", {
+      title: "Việc test",
+      priority: "urgent-ish-not-real",
+    });
+    check(
+      "S7.2 invalid priority on CREATE → 400 (was unchecked before hardening)",
+      badPriority.status === 400 && badPriority.body?.error?.code?.includes("PRIORITY")
+    );
+
+    const oversizedTitle = await api("POST", "/api/kad/tasks", { title: "x".repeat(400) });
+    check("S7.3 oversized title → 400", oversizedTitle.status === 400);
+
+    const goodTask = await api("POST", "/api/kad/tasks", { title: "Việc hợp lệ cho S7" });
+    check("S7.4 valid payload still 201s", goodTask.status === 201);
+
+    const badPatchStatus = await api("PATCH", `/api/kad/tasks/${goodTask.body.id}`, {
+      status: "not-a-real-status",
+    });
+    check("S7.5 invalid status on PATCH → 400", badPatchStatus.status === 400);
+
+    const badRule = await api("POST", "/api/kad/automation-rules", {
+      name: "bad rule",
+      trigger_type: "schedule",
+      action_type: "notify",
+      trigger_config: "not-an-object",
+      action_config: {},
+    });
+    check(
+      "S7.6 non-object trigger_config → 400",
+      badRule.status === 400 && badRule.body?.error?.code?.includes("TRIGGERCONFIG")
+    );
+
+    // ---------- 2) Local rate limiting (server/lib/kad/rate-limit.js) ----------
+    const burst = await Promise.all(Array.from({ length: 30 }, () => api("GET", "/api/kad/agents")));
+    check(
+      "S7.7 burst past limit(20/min) → at least one 429",
+      burst.some((r) => r.status === 429),
+      `statuses: ${burst.map((r) => r.status).join(",")}`
+    );
+    const limited = burst.find((r) => r.status === 429);
+    check("S7.8 429 body has ERATELIMIT code", limited?.body?.error?.code === "ERATELIMIT");
+
+    // ---------- 3) Secret scan (scripts/kad-secret-scan.mjs) ----------
+    const scan = spawnSync(
+      process.execPath,
+      [
+        path.join(ROOT, "scripts/kad-secret-scan.mjs"),
+        "--db-path",
+        TMP,
+        "--skip-transcripts",
+        "--json",
+      ],
+      { encoding: "utf8" }
+    );
+    check(
+      "S7.9 secret scan clean on seeded DB (exit 0)",
+      scan.status === 0,
+      scan.stdout || scan.stderr
+    );
+
+    // ---------- 4) Backup (WAL checkpoint + VACUUM INTO) while server is LIVE ----------
+    const beforeCounts = {
+      departments: new Database(TMP, { readonly: true })
+        .prepare("SELECT COUNT(*) n FROM departments")
+        .get().n,
+      tasks: new Database(TMP, { readonly: true }).prepare("SELECT COUNT(*) n FROM tasks").get().n,
+    };
+    const backupPath = path.join(os.tmpdir(), `kad-verify-s7-backup-${process.pid}.db`);
+    const backup = spawnSync(
+      process.execPath,
+      [path.join(ROOT, "scripts/kad-db-backup.mjs"), "--db-path", TMP, "--out", backupPath],
+      { encoding: "utf8" }
+    );
+    check(
+      "S7.10 backup script succeeds against LIVE db",
+      backup.status === 0 && fs.existsSync(backupPath),
+      backup.stdout || backup.stderr
+    );
+    check("S7.11 backup file non-trivial size", fs.statSync(backupPath).size > 0);
+
+    // ---------- 5) Stop the server BEFORE deleting the file it has open ----------
+    try {
+      jobQueue.stopWorker();
+    } catch {}
+    server.close();
+    await sleep(50);
+
+    // ---------- 6) Delete DB, restore from backup, verify a FRESH connection works ----------
+    for (const f of [TMP, TMP + "-wal", TMP + "-shm"])
+      try {
+        fs.unlinkSync(f);
+      } catch {}
+    check("S7.12 original DB deleted", !fs.existsSync(TMP));
+
+    const restore = spawnSync(
+      process.execPath,
+      [path.join(ROOT, "scripts/kad-db-restore.mjs"), backupPath, "--target", TMP, "--yes"],
+      { encoding: "utf8" }
+    );
+    check("S7.13 restore script succeeds", restore.status === 0, restore.stdout || restore.stderr);
+    check("S7.14 restored file exists", fs.existsSync(TMP));
+
+    const afterDb = new Database(TMP); // fresh connection — proves the restored file is fully usable
+    const afterCounts = {
+      departments: afterDb.prepare("SELECT COUNT(*) n FROM departments").get().n,
+      tasks: afterDb.prepare("SELECT COUNT(*) n FROM tasks").get().n,
+    };
+    check(
+      "S7.15 restored data matches pre-backup (departments)",
+      afterCounts.departments === beforeCounts.departments,
+      `before=${beforeCounts.departments} after=${afterCounts.departments}`
+    );
+    check(
+      "S7.16 restored data matches pre-backup (tasks, incl. goodTask from S7.4)",
+      afterCounts.tasks === beforeCounts.tasks,
+      `before=${beforeCounts.tasks} after=${afterCounts.tasks}`
+    );
+    // Real write against the restored file — "hệ thống chạy tiếp", not just readable.
+    afterDb.exec(
+      `INSERT INTO audit_log (id, action, actor_type, created_at) VALUES ('s7-post-restore-write','s7_probe','system','${new Date().toISOString()}')`
+    );
+    const wrote = afterDb.prepare("SELECT COUNT(*) n FROM audit_log WHERE id='s7-post-restore-write'").get();
+    check("S7.17 write+read on restored DB works", wrote.n === 1);
+    afterDb.close();
+
+    for (const f of [backupPath]) {
+      try {
+        fs.unlinkSync(f);
+      } catch {}
+    }
+  } finally {
+    try {
+      jobQueue.stopWorker();
+    } catch {}
+    try {
+      server.close();
+    } catch {}
+    for (const f of [TMP, TMP + "-wal", TMP + "-shm"])
+      try {
+        fs.unlinkSync(f);
+      } catch {}
+  }
+
+  console.log(results.join("\n"));
+  console.log(`\n=== S7: ${pass} passed, ${fail} failed ===`);
+  process.exit(fail > 0 ? 1 : 0);
+}
+
 if (process.argv.includes("--s2")) {
   runS2().catch((e) => {
     console.error("verify S2 crashed:", e);
@@ -3054,6 +3254,11 @@ if (process.argv.includes("--s2")) {
 } else if (process.argv.includes("--s6_6") || process.argv.includes("--s66")) {
   runS6_6().catch((e) => {
     console.error("verify S6.6 crashed:", e);
+    process.exit(1);
+  });
+} else if (process.argv.includes("--s7")) {
+  runS7().catch((e) => {
+    console.error("verify S7 crashed:", e);
     process.exit(1);
   });
 } else {

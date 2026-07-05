@@ -15,7 +15,8 @@ import {
   TASK_DETAIL_SYLLABUS_K3,
 } from "../mockData";
 import { kadApi } from "../api-client";
-import type { Artifact } from "../types";
+import { taskToProject } from "../project-from-task";
+import type { Artifact, Project } from "../types";
 import { useKadStore } from "../store";
 import { useKadToast } from "./Toast";
 import { AgentAvatar } from "./Avatar";
@@ -185,8 +186,53 @@ function TaskPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) 
 
 // ── Project ────────────────────────────────────────────────────────────
 
+// [Phase 7 hardening] mirrors ArtifactPeek's dual-mode pattern above: a mock
+// id (from any screen still on mockData) resolves synchronously via
+// `findProject`; a real id (KanbanBoard's board now passes real task ids)
+// falls through to a live fetch — task + its workflow's steps, same
+// derivation KanbanBoard's own "Tiến độ dự án" strip uses (project-from-task.ts).
 function ProjectPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
-  const project = findProject(id);
+  const mockProject = findProject(id);
+  const [real, setReal] = useState<Project | null>(null);
+  const [realArtifacts, setRealArtifacts] = useState<Artifact[]>([]);
+  const [loading, setLoading] = useState(!mockProject);
+
+  useEffect(() => {
+    if (mockProject) return;
+    let cancelled = false;
+    setLoading(true);
+    setReal(null);
+    (async () => {
+      try {
+        const task = await kadApi.tasks.get(id);
+        if (!task.workflowId) return; // freeform task, not a workflow "project"
+        const [workflow, artifacts] = await Promise.all([
+          kadApi.workflows.get(task.workflowId),
+          kadApi.artifacts.list({ task_id: id }),
+        ]);
+        if (cancelled) return;
+        setReal(taskToProject(task, workflow.steps, new Map()));
+        setRealArtifacts(artifacts);
+      } catch {
+        if (!cancelled) setReal(null);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, mockProject]);
+
+  const project = mockProject || real;
+
+  if (!mockProject && loading) {
+    return (
+      <div className="p-4">
+        <KadEmptyState icon={MessageSquare} message="Đang tải dự án…" />
+      </div>
+    );
+  }
   if (!project) return <KadEmptyState icon={MessageSquare} message="Không tìm thấy dự án." />;
 
   return (
@@ -201,12 +247,14 @@ function ProjectPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarge
       <Field label="Workflow & tiến độ">
         <SegmentedProgress steps={project.steps} height={6} showLabels />
       </Field>
-      <Field label="Thành viên AI & tiến độ">
-        <AgentProgressList items={agentProgress(project.agentIdsInvolved, project.steps)} />
-      </Field>
+      {mockProject && (
+        <Field label="Thành viên AI & tiến độ">
+          <AgentProgressList items={agentProgress(project.agentIdsInvolved, project.steps)} />
+        </Field>
+      )}
       <Field label="Files & học liệu">
         <FilesPanel
-          artifacts={artifactsForProject(id)}
+          artifacts={mockProject ? artifactsForProject(id) : realArtifacts}
           onOpen={(aid) => onOpenPeek({ type: "artifact", id: aid })}
           emptyHint="Chưa có học liệu cho dự án này."
         />
