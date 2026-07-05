@@ -8,10 +8,10 @@
  * paraphrase of stated positioning, per plan §2 anti-mock rule.
  *
  * Seeds: 1 org + org_context v1 (approved), dept `rd` (active, with budget
- * guardrails), blueprint v1 (approved, 8 agents), 8 agent_profiles (main +
- * curriculum-researcher ACTIVE for Phase 1, other 6 inactive until Phase 3),
- * workflow `rd-standard-flow`, 6 R&D templates (each template_versions v1
- * approved).
+ * guardrails), blueprint v1 (approved, 8 agents), 8 agent_profiles — full
+ * roster ACTIVE as of Phase 3 (phase-03 §1: "activate 6 agent còn lại"; main +
+ * curriculum-researcher were already active since Phase 1), workflow
+ * `rd-standard-flow`, 6 R&D templates (each template_versions v1 approved).
  *
  * Deterministic IDs (constants below) so kad-verify / orchestrator reference by
  * known id. Re-runnable: skips if org already present.
@@ -162,7 +162,7 @@ const ROSTER = [
     agent_type: "sub",
     name: "sub-program-architect",
     display_name: "Kiến trúc sư chương trình",
-    status: "inactive",
+    status: "active",
     role_description: "Khung chương trình, learning pathway.",
     permissions: {
       read_org_context: true,
@@ -195,7 +195,7 @@ const ROSTER = [
     agent_type: "sub",
     name: "sub-syllabus-designer",
     display_name: "Thiết kế syllabus",
-    status: "inactive",
+    status: "active",
     role_description: "Module, thứ tự, learning outcomes, assessment.",
     permissions: {
       read_org_context: true,
@@ -211,7 +211,7 @@ const ROSTER = [
     agent_type: "sub",
     name: "sub-lesson-planner",
     display_name: "Lập kế hoạch bài giảng",
-    status: "inactive",
+    status: "active",
     role_description: "Hoạt động, bài tập, ghi chú giảng viên.",
     permissions: {
       read_org_context: false,
@@ -227,7 +227,7 @@ const ROSTER = [
     agent_type: "sub",
     name: "sub-slide-builder",
     display_name: "Xây dựng slide",
-    status: "inactive",
+    status: "active",
     role_description: "Slide outline, nội dung, brief hình ảnh theo brand.",
     permissions: {
       read_org_context: true,
@@ -243,7 +243,7 @@ const ROSTER = [
     agent_type: "sub",
     name: "sub-video-script-writer",
     display_name: "Viết kịch bản video",
-    status: "inactive",
+    status: "active",
     role_description: "Script video, kế hoạch quay.",
     permissions: {
       read_org_context: false,
@@ -259,15 +259,17 @@ const ROSTER = [
     agent_type: "sub",
     name: "sub-quality-reviewer",
     display_name: "Kiểm tra chất lượng",
-    status: "inactive",
+    status: "active",
     role_description:
       "4 tiêu chí chính (đầy đủ, chính xác, sư phạm, thương hiệu) + hoàn thiện + flag 3 sensitivity dimensions.",
     permissions: {
       read_org_context: true,
       read_templates: true,
+      read_artifacts: true, // spec 01 §3.1: "read mọi artifact của task" — data only, enforcement is P3B (QC gate B wiring)
       web_search: false,
       request_approval: true,
       write_audit: true,
+      flag_sensitivity: true, // spec 04 §2 kad_flag_sensitivity — tool not yet registered (P3B); permission seeded ahead of wiring
     },
     connector_access: { facebook: "none", wordpress: "none", web_search: "none" },
   },
@@ -542,7 +544,7 @@ function seed() {
   });
   tx();
   console.log(
-    "[kad-seed] seeded: org, org_context v1, dept rd, blueprint v1, 8 agents (main+researcher active), workflow, 6 templates."
+    "[kad-seed] seeded: org, org_context v1, dept rd, blueprint v1, 8 agents (full roster active — phase-03 §1), workflow, 6 templates."
   );
 }
 
