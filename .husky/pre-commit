@@ -22,11 +22,18 @@ cd "$ROOT"
 # a file, review the result after the auto-format.
 STAGED="$(git diff --cached --name-only --diff-filter=ACMR)"
 if [ -n "$STAGED" ]; then
-  PRETTIER="$ROOT/node_modules/.bin/prettier"
-  [ -x "$PRETTIER" ] || PRETTIER="npx --no-install prettier"
-
   echo "🎨 Formatting staged files with Prettier..."
-  git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 $PRETTIER --write --ignore-unknown
+  # $ROOT (and so the local prettier path) can contain spaces — passing it
+  # unquoted to `xargs -0 $PRETTIER ...` lets the shell word-split the PATH
+  # itself before xargs ever sees it (breaks on any repo checked out under a
+  # directory with a space, e.g. "AI Agent Workspace"). The `npx` fallback is
+  # a genuine multi-word command and must stay unquoted/split; branch instead
+  # of trying to store both shapes in one variable.
+  if [ -x "$ROOT/node_modules/.bin/prettier" ]; then
+    git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 "$ROOT/node_modules/.bin/prettier" --write --ignore-unknown
+  else
+    git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 npx --no-install prettier --write --ignore-unknown
+  fi
   git diff --cached --name-only --diff-filter=ACMR -z | xargs -0 git add
 else
   echo "🎨 No staged files to format."

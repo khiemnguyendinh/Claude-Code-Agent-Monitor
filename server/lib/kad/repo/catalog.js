@@ -32,20 +32,30 @@ function getAgent(id) {
 }
 function getAgentByName(departmentId, name) {
   return hydrateAgent(
-    db.prepare("SELECT * FROM agent_profiles WHERE department_id=? AND name=?").get(departmentId, name)
+    db
+      .prepare("SELECT * FROM agent_profiles WHERE department_id=? AND name=?")
+      .get(departmentId, name)
   );
 }
 function getMainAgent(departmentId) {
   return hydrateAgent(
     db
-      .prepare("SELECT * FROM agent_profiles WHERE department_id=? AND agent_type='main' AND status='active' LIMIT 1")
+      .prepare(
+        "SELECT * FROM agent_profiles WHERE department_id=? AND agent_type='main' AND status='active' LIMIT 1"
+      )
       .get(departmentId)
   );
 }
 function listAgents(departmentId, { status } = {}) {
   const rows = status
-    ? db.prepare("SELECT * FROM agent_profiles WHERE department_id=? AND status=? ORDER BY agent_type, name").all(departmentId, status)
-    : db.prepare("SELECT * FROM agent_profiles WHERE department_id=? ORDER BY agent_type, name").all(departmentId);
+    ? db
+        .prepare(
+          "SELECT * FROM agent_profiles WHERE department_id=? AND status=? ORDER BY agent_type, name"
+        )
+        .all(departmentId, status)
+    : db
+        .prepare("SELECT * FROM agent_profiles WHERE department_id=? ORDER BY agent_type, name")
+        .all(departmentId);
   return rows.map(hydrateAgent);
 }
 
@@ -53,17 +63,39 @@ function listAgents(departmentId, { status } = {}) {
 function getCurrentOrgContext(orgId) {
   // Latest approved version. If orgId omitted, pick the only org (MVP single-org).
   const row = orgId
-    ? db.prepare("SELECT * FROM organization_context_versions WHERE org_id=? AND status='approved' ORDER BY version DESC LIMIT 1").get(orgId)
-    : db.prepare("SELECT * FROM organization_context_versions WHERE status='approved' ORDER BY version DESC LIMIT 1").get();
+    ? db
+        .prepare(
+          "SELECT * FROM organization_context_versions WHERE org_id=? AND status='approved' ORDER BY version DESC LIMIT 1"
+        )
+        .get(orgId)
+    : db
+        .prepare(
+          "SELECT * FROM organization_context_versions WHERE status='approved' ORDER BY version DESC LIMIT 1"
+        )
+        .get();
   return row ? { ...row, data: parseJson(row.data, {}) } : null;
 }
 
 // ---- blueprint ----
 function getApprovedBlueprint(departmentId) {
   const row = db
-    .prepare("SELECT * FROM department_blueprints WHERE department_id=? AND status='approved' ORDER BY version DESC LIMIT 1")
+    .prepare(
+      "SELECT * FROM department_blueprints WHERE department_id=? AND status='approved' ORDER BY version DESC LIMIT 1"
+    )
     .get(departmentId);
   return row ? { ...row, data: parseJson(row.data, {}) } : null;
+}
+
+// ---- workflow definitions ----
+function getWorkflow(id) {
+  const row = db.prepare("SELECT * FROM workflow_definitions WHERE id=?").get(id);
+  return row
+    ? {
+        ...row,
+        trigger_keywords: parseJson(row.trigger_keywords, []),
+        steps: parseJson(row.steps, []),
+      }
+    : null;
 }
 
 // ---- templates ----
@@ -72,16 +104,22 @@ function listTemplates(departmentId, { type, status = "active" } = {}) {
   const args = [departmentId];
   if (type) (where.push("template_type=?"), args.push(type));
   if (status) (where.push("status=?"), args.push(status));
-  return db.prepare(`SELECT * FROM template_library WHERE ${where.join(" AND ")} ORDER BY name`).all(...args);
+  return db
+    .prepare(`SELECT * FROM template_library WHERE ${where.join(" AND ")} ORDER BY name`)
+    .all(...args);
 }
 /** Latest approved version content of a template by type. */
 function getApprovedTemplateByType(departmentId, type) {
   const tpl = db
-    .prepare("SELECT * FROM template_library WHERE (department_id=? OR department_id IS NULL) AND template_type=? AND status='active' LIMIT 1")
+    .prepare(
+      "SELECT * FROM template_library WHERE (department_id=? OR department_id IS NULL) AND template_type=? AND status='active' LIMIT 1"
+    )
     .get(departmentId, type);
   if (!tpl) return null;
   const ver = db
-    .prepare("SELECT * FROM template_versions WHERE template_id=? AND status='approved' ORDER BY version DESC LIMIT 1")
+    .prepare(
+      "SELECT * FROM template_versions WHERE template_id=? AND status='approved' ORDER BY version DESC LIMIT 1"
+    )
     .get(tpl.id);
   if (!ver) return null;
   return { template: tpl, version: ver };
@@ -110,6 +148,7 @@ module.exports = {
   getMainAgent,
   listAgents,
   getCurrentOrgContext,
+  getWorkflow,
   getApprovedBlueprint,
   listTemplates,
   getApprovedTemplateByType,

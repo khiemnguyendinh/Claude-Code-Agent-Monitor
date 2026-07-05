@@ -31,7 +31,15 @@ function mcpToolsFor(agent) {
   const p = agent.permissions || {};
   const tools = ["kad_report_progress", "kad_save_artifact"];
   if (agent.agent_type === "main") {
-    tools.push("kad_plan_task", "kad_request_approval", "kad_create_delegation", "kad_get_delegation_result");
+    tools.push(
+      "kad_plan_task",
+      "kad_request_approval",
+      "kad_create_delegation",
+      "kad_get_delegation_result",
+      "kad_ask_intake",
+      "kad_propose_brief",
+      "kad_present_report"
+    );
   } else {
     tools.push("kad_request_approval");
   }
@@ -86,7 +94,34 @@ function cleanupRunDir(dir) {
  * Spawn a single agent turn. Handles guardrail, run row, mcp config, adapter run,
  * token accounting, and turn-end classification (waiting_approval vs completed).
  */
-async function spawnAgentRun({ task, agent, systemPrompt, userMessage, resumeSessionId, isDelegation = false }) {
+async function spawnAgentRun({
+  task,
+  agent,
+  systemPrompt,
+  userMessage,
+  resumeSessionId,
+  isDelegation = false,
+}) {
+  // Single-flight per task, BEFORE the guardrail (spec 04 §3 step 2a). A human
+  // (or fast UI automation) can reply to an intake_question/chip the instant it
+  // renders — but `kad.message.created` for that question and the spawning
+  // process actually EXITING are two separate async events, so the reply's
+  // resume can be triggered while the PREVIOUS turn's `claude --resume
+  // <sameSessionId>` is still alive. Two processes resuming the SAME engine
+  // session concurrently is undefined/corrupting (observed live: token usage
+  // ballooning past the per-task cap, and the earlier turn's own resume_task
+  // job staying 'leased' long after its work should have finished). Wait for
+  // any in-flight run on THIS task to settle before spawning another —
+  // max_concurrent_runs (below) caps the GLOBAL count, not per-task, so it
+  // does not catch this case.
+  for (let i = 0; i < 20; i++) {
+    const active = repo.runs
+      .listByTask(task.id)
+      .some((r) => r.status === "running" || r.status === "pending");
+    if (!active) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
+
   // GUARDRAIL FIRST (spec 04 §3 step 2a). Node is single-threaded and better-sqlite3
   // is synchronous: this check() and the createRun below run with NO await between
   // them, so they are atomic w.r.t. other turns — no TOCTOU window on the caps.
@@ -98,15 +133,34 @@ async function spawnAgentRun({ task, agent, systemPrompt, userMessage, resumeSes
 
   // Create run + move it to 'running' + task→doing + audit in ONE transaction, so a
   // crash can't leave a 'pending' run against an already-'doing' task (state invariant).
-  const run = repo.runs.createRun({ task_id: task.id, agent_id: agent.id, engine: agent.engine || "claude", input: { userMessage, resume: !!resumeSessionId } });
+  const run = repo.runs.createRun({
+    task_id: task.id,
+    agent_id: agent.id,
+    engine: agent.engine || "claude",
+    input: { userMessage, resume: !!resumeSessionId },
+  });
   repo.tx(() => {
     repo.runs.updateRun(run.id, { status: "running" });
     repo.tasks.updateTask(task.id, { status: "doing" });
-    repo.audit({ department_id: task.department_id, task_id: task.id, agent_id: agent.id, action: "run_started", actor_type: "agent", actor_id: agent.id, target_type: "run", target_id: run.id, details: { resume: !!resumeSessionId } });
+    repo.audit({
+      department_id: task.department_id,
+      task_id: task.id,
+      agent_id: agent.id,
+      action: "run_started",
+      actor_type: "agent",
+      actor_id: agent.id,
+      target_type: "run",
+      target_id: run.id,
+      details: { resume: !!resumeSessionId },
+    });
   });
   emitTask(task.id, "kad.run.status", { run_id: run.id, task_id: task.id, status: "running" });
 
-  const { path: mcpConfigPath, dir: runDir } = writeMcpConfig({ runId: run.id, taskId: task.id, agentId: agent.id });
+  const { path: mcpConfigPath, dir: runDir } = writeMcpConfig({
+    runId: run.id,
+    taskId: task.id,
+    agentId: agent.id,
+  });
   const adapter = getAdapter(agent.engine || "claude");
   const approvalsBefore = repo.approvals.listByTask(task.id).length;
 
@@ -141,12 +195,32 @@ async function spawnAgentRun({ task, agent, systemPrompt, userMessage, resumeSes
   // turn as 'completed' and skip the resume (durable-marker correctness).
   const approvalsAfter = repo.approvals.listByTask(task.id);
   const createdApproval = approvalsAfter.length > approvalsBefore;
-  const boundaryApproval = repo.approvals.latestPending(task.id) || approvalsAfter[approvalsAfter.length - 1];
+  const boundaryApproval =
+    repo.approvals.latestPending(task.id) || approvalsAfter[approvalsAfter.length - 1];
 
   if (result.error) {
     repo.tx(() => {
-      repo.runs.updateRun(run.id, { status: "failed", output: { error: result.error }, tokens_used: result.tokens, engine_session_id: result.engineSessionId });
-      repo.audit({ department_id: task.department_id, task_id: task.id, agent_id: agent.id, action: "run_completed", actor_type: "agent", actor_id: agent.id, target_type: "run", target_id: run.id, details: { status: "failed", authFail: !!result.authFail, error: String(result.error).slice(0, 300) } });
+      repo.runs.updateRun(run.id, {
+        status: "failed",
+        output: { error: result.error },
+        tokens_used: result.tokens,
+        engine_session_id: result.engineSessionId,
+      });
+      repo.audit({
+        department_id: task.department_id,
+        task_id: task.id,
+        agent_id: agent.id,
+        action: "run_completed",
+        actor_type: "agent",
+        actor_id: agent.id,
+        target_type: "run",
+        target_id: run.id,
+        details: {
+          status: "failed",
+          authFail: !!result.authFail,
+          error: String(result.error).slice(0, 300),
+        },
+      });
     });
     emitTask(task.id, "kad.run.status", { run_id: run.id, task_id: task.id, status: "failed" });
     return { run, result, failed: true };
@@ -155,17 +229,52 @@ async function spawnAgentRun({ task, agent, systemPrompt, userMessage, resumeSes
   if (createdApproval) {
     // Turn ended at an approval boundary — durable marker; process already exited.
     repo.tx(() => {
-      repo.runs.updateRun(run.id, { status: "waiting_approval", output: { text: result.output }, tokens_used: result.tokens });
+      repo.runs.updateRun(run.id, {
+        status: "waiting_approval",
+        output: { text: result.output },
+        tokens_used: result.tokens,
+      });
       repo.tasks.updateTask(task.id, { status: "waiting_human" });
-      repo.audit({ department_id: task.department_id, task_id: task.id, agent_id: agent.id, action: "run_completed", actor_type: "agent", actor_id: agent.id, target_type: "run", target_id: run.id, details: { status: "waiting_approval", approval_id: boundaryApproval && boundaryApproval.id } });
+      repo.audit({
+        department_id: task.department_id,
+        task_id: task.id,
+        agent_id: agent.id,
+        action: "run_completed",
+        actor_type: "agent",
+        actor_id: agent.id,
+        target_type: "run",
+        target_id: run.id,
+        details: {
+          status: "waiting_approval",
+          approval_id: boundaryApproval && boundaryApproval.id,
+        },
+      });
     });
-    emitTask(task.id, "kad.run.status", { run_id: run.id, task_id: task.id, status: "waiting_approval" });
+    emitTask(task.id, "kad.run.status", {
+      run_id: run.id,
+      task_id: task.id,
+      status: "waiting_approval",
+    });
     return { run, result, waitingApproval: boundaryApproval };
   }
 
   repo.tx(() => {
-    repo.runs.updateRun(run.id, { status: "completed", output: { text: result.output }, tokens_used: result.tokens });
-    repo.audit({ department_id: task.department_id, task_id: task.id, agent_id: agent.id, action: "run_completed", actor_type: "agent", actor_id: agent.id, target_type: "run", target_id: run.id, details: { status: "completed" } });
+    repo.runs.updateRun(run.id, {
+      status: "completed",
+      output: { text: result.output },
+      tokens_used: result.tokens,
+    });
+    repo.audit({
+      department_id: task.department_id,
+      task_id: task.id,
+      agent_id: agent.id,
+      action: "run_completed",
+      actor_type: "agent",
+      actor_id: agent.id,
+      target_type: "run",
+      target_id: run.id,
+      details: { status: "completed" },
+    });
   });
   emitTask(task.id, "kad.run.status", { run_id: run.id, task_id: task.id, status: "completed" });
   return { run, result, completed: true };
@@ -190,7 +299,10 @@ async function startTaskTurn(taskId) {
   const main = repo.catalog.getMainAgent(task.department_id);
   if (!main) throw new Error("no active main agent for department");
   const systemPrompt = prompts.buildSystemPrompt(task.department_id);
-  const lastHuman = repo.tasks.listMessages(taskId).filter((m) => m.sender_type === "human").pop();
+  const lastHuman = repo.tasks
+    .listMessages(taskId)
+    .filter((m) => m.sender_type === "human")
+    .pop();
   const userMessage = prompts.buildPlanningMessage({
     userGoal: (lastHuman && lastHuman.content) || task.title,
     additionalContext: task.description || "",
@@ -213,7 +325,13 @@ async function resumeTaskTurn(taskId, { message, engineSessionId } = {}) {
   const summary = renderStateSummary(task);
   const resumeSid = engineSessionId || lastEngineSession(taskId, main.id);
   const userMessage = `${message || "Trạng thái công việc vừa thay đổi."}\n\n--- Trạng thái hiện tại (NGUỒN SỰ THẬT — dựa vào đây, có thể đã có nhiều thay đổi) ---\n${summary}`;
-  return spawnAgentRun({ task, agent: main, systemPrompt, userMessage, resumeSessionId: resumeSid });
+  return spawnAgentRun({
+    task,
+    agent: main,
+    systemPrompt,
+    userMessage,
+    resumeSessionId: resumeSid,
+  });
 }
 
 /** Run a delegation (sub-agent turn); called by worker (start_delegation). */
@@ -224,7 +342,9 @@ async function runDelegation(delegationId) {
   const sub = repo.catalog.getAgent(deleg.to_agent_id);
   if (!sub) throw new Error("sub agent not found");
 
-  const org = repo.catalog.getCurrentOrgContext(task && task.department_id ? repo.catalog.getDepartment(task.department_id).org_id : null);
+  const org = repo.catalog.getCurrentOrgContext(
+    task && task.department_id ? repo.catalog.getDepartment(task.department_id).org_id : null
+  );
   const systemPrompt = `Bạn là ${sub.display_name} thuộc phòng R&D Kstudy. ${sub.role_description || ""} Luôn dùng tiếng Việt. Chỉ hành động qua tool KAD được cấp.`;
   const userMessage = prompts.buildDelegationPrompt({
     subAgent: sub,
@@ -238,19 +358,41 @@ async function runDelegation(delegationId) {
   repo.delegations.updateDelegation(delegationId, { status: "running" });
   emitTask(task.id, "kad.delegation.status", { ...repo.delegations.getDelegation(delegationId) });
 
-  const outcome = await spawnAgentRun({ task, agent: sub, systemPrompt, userMessage, isDelegation: true });
+  const outcome = await spawnAgentRun({
+    task,
+    agent: sub,
+    systemPrompt,
+    userMessage,
+    isDelegation: true,
+  });
   if (outcome.blocked) {
     repo.delegations.updateDelegation(delegationId, { status: "failed" });
     return outcome;
   }
 
   // Link the run + newest artifact this delegation produced.
-  const arts = repo.artifacts.listArtifacts({ task_id: task.id }).filter((a) => a.agent_id === sub.id);
+  const arts = repo.artifacts
+    .listArtifacts({ task_id: task.id })
+    .filter((a) => a.agent_id === sub.id);
   const newestArt = arts[arts.length - 1];
   const status = outcome.failed ? "failed" : "done";
   repo.tx(() => {
-    repo.delegations.updateDelegation(delegationId, { status, run_id: outcome.run && outcome.run.id, output_artifact_id: newestArt && newestArt.id });
-    repo.audit({ department_id: task.department_id, task_id: task.id, agent_id: sub.id, action: "delegation_created", actor_type: "system", actor_id: "orchestrator", target_type: "delegation", target_id: delegationId, details: { status, artifact_id: newestArt && newestArt.id } });
+    repo.delegations.updateDelegation(delegationId, {
+      status,
+      run_id: outcome.run && outcome.run.id,
+      output_artifact_id: newestArt && newestArt.id,
+    });
+    repo.audit({
+      department_id: task.department_id,
+      task_id: task.id,
+      agent_id: sub.id,
+      action: "delegation_created",
+      actor_type: "system",
+      actor_id: "orchestrator",
+      target_type: "delegation",
+      target_id: delegationId,
+      details: { status, artifact_id: newestArt && newestArt.id },
+    });
   });
   emitTask(task.id, "kad.delegation.status", { ...repo.delegations.getDelegation(delegationId) });
 
@@ -258,7 +400,10 @@ async function runDelegation(delegationId) {
   if (!outcome.failed) {
     repo.jobs.enqueue({
       kind: "resume_task",
-      payload: { task_id: task.id, message: `Nghiên cứu của ${sub.display_name} đã xong (artifact ${newestArt ? newestArt.id : "?"}). Hãy tổng hợp và xin duyệt nếu cần.` },
+      payload: {
+        task_id: task.id,
+        message: `Nghiên cứu của ${sub.display_name} đã xong (artifact ${newestArt ? newestArt.id : "?"}). Hãy tổng hợp và xin duyệt nếu cần.`,
+      },
       dedupKey: `resume:${task.id}`,
     });
   } else {
@@ -266,9 +411,20 @@ async function runDelegation(delegationId) {
     const rc = (deleg.retry_count || 0) + 1;
     if (rc <= 2) {
       repo.delegations.updateDelegation(delegationId, { status: "pending", retry_count: rc });
-      repo.jobs.enqueue({ kind: "start_delegation", payload: { delegation_id: delegationId }, runAfter: new Date(Date.now() + 3000).toISOString() });
+      repo.jobs.enqueue({
+        kind: "start_delegation",
+        payload: { delegation_id: delegationId },
+        runAfter: new Date(Date.now() + 3000).toISOString(),
+      });
     } else {
-      repo.jobs.enqueue({ kind: "resume_task", payload: { task_id: task.id, message: `Delegation cho ${sub.display_name} thất bại sau ${rc} lần. Hãy quyết định escalate hay hỏi trưởng phòng.` }, dedupKey: `resume:${task.id}` });
+      repo.jobs.enqueue({
+        kind: "resume_task",
+        payload: {
+          task_id: task.id,
+          message: `Delegation cho ${sub.display_name} thất bại sau ${rc} lần. Hãy quyết định escalate hay hỏi trưởng phòng.`,
+        },
+        dedupKey: `resume:${task.id}`,
+      });
     }
   }
   return outcome;
@@ -282,10 +438,27 @@ function reconcileRuns() {
   const orphans = repo.runs.listUnfinished();
   for (const r of orphans) {
     repo.tx(() => {
-      repo.runs.updateRun(r.id, { status: "failed", output: { error: "reconciled: process not alive after restart" } });
+      repo.runs.updateRun(r.id, {
+        status: "failed",
+        output: { error: "reconciled: process not alive after restart" },
+      });
       const task = r.task_id && repo.tasks.getTask(r.task_id);
-      if (task && task.status === "doing") repo.tasks.updateTask(task.id, { status: "waiting_human" });
-      repo.audit({ task_id: r.task_id, agent_id: r.agent_id, action: "run_completed", actor_type: "system", actor_id: "reconcile", target_type: "run", target_id: r.id, details: { status: "failed", reason: "orphan_reconciled", task_reset: !!(task && task.status === "doing") } });
+      if (task && task.status === "doing")
+        repo.tasks.updateTask(task.id, { status: "waiting_human" });
+      repo.audit({
+        task_id: r.task_id,
+        agent_id: r.agent_id,
+        action: "run_completed",
+        actor_type: "system",
+        actor_id: "reconcile",
+        target_type: "run",
+        target_id: r.id,
+        details: {
+          status: "failed",
+          reason: "orphan_reconciled",
+          task_reset: !!(task && task.status === "doing"),
+        },
+      });
     });
     cleanupRunDir(path.join(getDataDir(), "kad-runs", r.id));
   }
@@ -294,7 +467,9 @@ function reconcileRuns() {
 
 // ---- helpers ----
 function lastEngineSession(taskId, agentId) {
-  const runs = repo.runs.listByTask(taskId).filter((r) => r.agent_id === agentId && r.engine_session_id);
+  const runs = repo.runs
+    .listByTask(taskId)
+    .filter((r) => r.agent_id === agentId && r.engine_session_id);
   return runs.length ? runs[runs.length - 1].engine_session_id : undefined;
 }
 
@@ -309,4 +484,12 @@ function renderStateSummary(task) {
   ].join("\n");
 }
 
-module.exports = { setApiBase, startTaskTurn, resumeTaskTurn, runDelegation, reconcileRuns, spawnAgentRun, mcpToolsFor };
+module.exports = {
+  setApiBase,
+  startTaskTurn,
+  resumeTaskTurn,
+  runDelegation,
+  reconcileRuns,
+  spawnAgentRun,
+  mcpToolsFor,
+};

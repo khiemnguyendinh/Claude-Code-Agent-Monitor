@@ -26,11 +26,16 @@ const handlers = {
     if (n) console.log(`[kad-worker] reconcile_runs: cleaned ${n} orphan run(s)`);
   },
   async resume_task(payload) {
-    if (!payload || !payload.task_id) throw new PermanentJobError("resume_task payload missing task_id");
-    await orchestrator.resumeTaskTurn(payload.task_id, { message: payload.message, engineSessionId: payload.engine_session_id });
+    if (!payload || !payload.task_id)
+      throw new PermanentJobError("resume_task payload missing task_id");
+    await orchestrator.resumeTaskTurn(payload.task_id, {
+      message: payload.message,
+      engineSessionId: payload.engine_session_id,
+    });
   },
   async start_delegation(payload) {
-    if (!payload || !payload.delegation_id) throw new PermanentJobError("start_delegation payload missing delegation_id");
+    if (!payload || !payload.delegation_id)
+      throw new PermanentJobError("start_delegation payload missing delegation_id");
     await orchestrator.runDelegation(payload.delegation_id);
   },
 };
@@ -38,6 +43,11 @@ const handlers = {
 async function runOne(job) {
   const handler = handlers[job.kind];
   if (!handler) throw new Error(`no handler for job kind '${job.kind}'`);
+  if (process.env.KAD_JOBS_TRACE)
+    console.log(
+      `[job-queue TRACE] running job=${job.id} kind=${job.kind} dedup=${job.dedup_key}`,
+      JSON.stringify(job.payload)
+    );
   await handler(job.payload || {});
 }
 
@@ -46,6 +56,11 @@ async function sweep() {
   sweeping = true;
   try {
     const jobs = repo.jobs.leaseDue(3);
+    if (process.env.KAD_JOBS_TRACE && jobs.length)
+      console.log(
+        `[job-queue TRACE] sweep leased ${jobs.length} job(s):`,
+        jobs.map((j) => `${j.id}(${j.kind})`)
+      );
     for (const job of jobs) {
       try {
         await runOne(job);

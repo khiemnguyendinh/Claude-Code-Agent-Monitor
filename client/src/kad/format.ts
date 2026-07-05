@@ -95,3 +95,12 @@ export function isOverdue(iso: string | null, now: number = Date.now()): boolean
   if (!iso) return false;
   return new Date(iso).getTime() < now;
 }
+
+/** Report Card cost line duration — "6 phút" · "1 giờ 5 phút" (06-components §13). */
+export function formatDurationSeconds(seconds: number): string {
+  const totalMinutes = Math.max(1, Math.round(seconds / 60));
+  if (totalMinutes < 60) return `${totalMinutes} phút`;
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
+  return mins > 0 ? `${hours} giờ ${mins} phút` : `${hours} giờ`;
+}

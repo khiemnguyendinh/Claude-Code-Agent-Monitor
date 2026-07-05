@@ -19,9 +19,18 @@ function hydrate(row) {
 function enqueue({ kind, payload, runAfter, dedupKey, maxAttempts }) {
   if (dedupKey) {
     const existing = db
-      .prepare("SELECT * FROM kad_job_queue WHERE dedup_key=? AND status IN ('pending','leased') LIMIT 1")
+      .prepare(
+        "SELECT * FROM kad_job_queue WHERE dedup_key=? AND status IN ('pending','leased') LIMIT 1"
+      )
       .get(dedupKey);
-    if (existing) return hydrate(existing);
+    if (existing) {
+      if (process.env.KAD_JOBS_TRACE)
+        console.log(
+          `[jobs.enqueue TRACE] dedup=${dedupKey} PRE-CHECK HIT existing=${existing.id} status=${existing.status} — returning as-is, NEW payload DISCARDED:`,
+          JSON.stringify(payload)
+        );
+      return hydrate(existing);
+    }
   }
   const id = newId("job");
   try {
@@ -38,16 +47,58 @@ function enqueue({ kind, payload, runAfter, dedupKey, maxAttempts }) {
       now: nowIso(),
     });
   } catch (e) {
-    // Defensive: if a dedup_key insert lost a race with the idx_jobq_dedup partial
-    // unique index, treat it as the intended no-op and return the winner. (In the
-    // single-threaded Node model the pre-check above already prevents this; this is
-    // belt-and-braces so a UNIQUE violation can never crash the caller.)
+    // idx_jobq_dedup (migration) is `UNIQUE(dedup_key) WHERE dedup_key IS NOT
+    // NULL` — NOT scoped to pending/leased, so a dedup_key can only ever be
+    // used ONCE in the table's lifetime at the SQLite level, even after that
+    // job reaches a terminal status. A task's dedup_key ("resume:<taskId>")
+    // is legitimately re-enqueued many times over its life (brief lock, plan
+    // approval, report decide, ...) — each one, once the prior job is
+    // done/failed, would otherwise hit this UNIQUE violation and throw out of
+    // the caller (e.g. POST /approvals/:id/decide), silently dropping the
+    // resume and leaving the task stuck forever with no further agent turn.
+    // Reuse (reset) the existing row instead of inserting a new one, so the
+    // one-row-per-dedup_key DB invariant holds while repeat triggers still work.
     if (dedupKey && /UNIQUE|constraint/i.test(String(e && e.message))) {
-      const existing = db.prepare("SELECT * FROM kad_job_queue WHERE dedup_key=? AND status IN ('pending','leased') LIMIT 1").get(dedupKey);
-      if (existing) return hydrate(existing);
+      const existing = db
+        .prepare(
+          "SELECT * FROM kad_job_queue WHERE dedup_key=? AND status IN ('pending','leased') LIMIT 1"
+        )
+        .get(dedupKey);
+      if (existing) {
+        if (process.env.KAD_JOBS_TRACE)
+          console.log(
+            `[jobs.enqueue TRACE] dedup=${dedupKey} INSERT raced, existing=${existing.id} status=${existing.status} — returning as-is, NEW payload DISCARDED`
+          );
+        return hydrate(existing);
+      }
+      const terminal = db
+        .prepare("SELECT * FROM kad_job_queue WHERE dedup_key=? LIMIT 1")
+        .get(dedupKey);
+      if (terminal) {
+        if (process.env.KAD_JOBS_TRACE)
+          console.log(
+            `[jobs.enqueue TRACE] dedup=${dedupKey} REUSING terminal job=${terminal.id} (was ${terminal.status}) — resetting to pending with new payload:`,
+            JSON.stringify(payload)
+          );
+        db.prepare(
+          `UPDATE kad_job_queue
+           SET kind=@kind, payload_json=@payload, run_after=@run_after, status='pending',
+               attempts=0, max_attempts=@max, lease_until=NULL, last_error=NULL
+           WHERE id=@id`
+        ).run({
+          id: terminal.id,
+          kind,
+          payload: JSON.stringify(payload || {}),
+          run_after: runAfter || nowIso(),
+          max: maxAttempts ?? 5,
+        });
+        return getJob(terminal.id);
+      }
     }
     throw e;
   }
+  if (process.env.KAD_JOBS_TRACE)
+    console.log(`[jobs.enqueue TRACE] dedup=${dedupKey || "(none)"} FRESH INSERT job=${id}`);
   return getJob(id);
 }
 
@@ -73,10 +124,13 @@ function leaseDue(limit = 5) {
       )
       .all({ now, limit });
     const leased = [];
-    const upd = db.prepare("UPDATE kad_job_queue SET status='leased', lease_until=@lease, attempts=attempts+1 WHERE id=@id AND status IN ('pending','leased')");
+    const upd = db.prepare(
+      "UPDATE kad_job_queue SET status='leased', lease_until=@lease, attempts=attempts+1 WHERE id=@id AND status IN ('pending','leased')"
+    );
     for (const r of rows) {
       const res = upd.run({ lease: leaseUntil, id: r.id });
-      if (res.changes === 1) leased.push(hydrate({ ...r, status: "leased", attempts: r.attempts + 1 }));
+      if (res.changes === 1)
+        leased.push(hydrate({ ...r, status: "leased", attempts: r.attempts + 1 }));
     }
     return leased;
   });
@@ -93,16 +147,22 @@ function fail(id, errMsg, opts = {}) {
   const job = getJob(id);
   if (!job) return;
   if (opts.permanent || job.attempts >= job.max_attempts) {
-    db.prepare("UPDATE kad_job_queue SET status='failed', last_error=@e, lease_until=NULL WHERE id=@id").run({ e: String(errMsg).slice(0, 500), id });
+    db.prepare(
+      "UPDATE kad_job_queue SET status='failed', last_error=@e, lease_until=NULL WHERE id=@id"
+    ).run({ e: String(errMsg).slice(0, 500), id });
   } else {
     const backoffMs = Math.min(30000, 1000 * 2 ** job.attempts);
     const runAfter = new Date(Date.now() + backoffMs).toISOString();
-    db.prepare("UPDATE kad_job_queue SET status='pending', run_after=@ra, last_error=@e, lease_until=NULL WHERE id=@id").run({ ra: runAfter, e: String(errMsg).slice(0, 500), id });
+    db.prepare(
+      "UPDATE kad_job_queue SET status='pending', run_after=@ra, last_error=@e, lease_until=NULL WHERE id=@id"
+    ).run({ ra: runAfter, e: String(errMsg).slice(0, 500), id });
   }
 }
 
 function pendingCount() {
-  return db.prepare("SELECT COUNT(*) n FROM kad_job_queue WHERE status IN ('pending','leased')").get().n;
+  return db
+    .prepare("SELECT COUNT(*) n FROM kad_job_queue WHERE status IN ('pending','leased')")
+    .get().n;
 }
 
 module.exports = { enqueue, getJob, leaseDue, complete, fail, pendingCount };
