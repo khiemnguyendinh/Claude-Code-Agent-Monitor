@@ -1982,14 +1982,159 @@ async function runS3Deps() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
-if (process.argv.includes("--s4")) {
-  runS4().catch((e) => { console.error("verify S4 crashed:", e); process.exit(1); });
-} else if (process.argv.includes("--s2")) {
+async function runS5() {
+  const { createRequire } = require("node:module");
+  const path = require("node:path");
+  const os = require("node:os");
+  const fs = require("node:fs");
+  const http = require("node:http");
+  const { spawnSync } = require("node:child_process");
+
+  const ROOT = process.cwd();
+  const TMP_DB5 = path.join(os.tmpdir(), `kad-verify-s5-${process.pid}.db`);
+  for (const f of [TMP_DB5, TMP_DB5 + "-wal", TMP_DB5 + "-shm"])
+    try { fs.unlinkSync(f); } catch {}
+  process.env.DASHBOARD_DB_PATH = TMP_DB5;
+  process.env.KAD_WORKER_TICK_MS = "3600000"; // disable auto-sweep
+
+  let pass = 0, fail = 0;
+  const results = [];
+  function check(name, cond, detail = "") {
+    if (cond) { pass++; results.push(`  ✅ ${name}`); }
+    else { fail++; results.push(`  ❌ ${name}${detail ? " — " + detail : ""}`); }
+  }
+
+  const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
+    env: process.env, encoding: "utf8"
+  });
+  if (seed.status !== 0) throw new Error("seed failed");
+
+  const { createApp } = require(path.join(ROOT, "server/index.js"));
+  const kad = require(path.join(ROOT, "server/routes/kad"));
+  const { getInternalToken } = require(path.join(ROOT, "server/lib/kad/internal-auth"));
+  const app = createApp();
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const port = server.address().port;
+  const BASE = `http://127.0.0.1:${port}`;
+  kad.initKad({ apiBase: BASE });
+
+  const api = async (method, p, body) => {
+    const resp = await fetch(BASE + p, {
+      method, headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+
+  const Database = require("better-sqlite3");
+  const sdb5 = new Database(TMP_DB5, { readonly: true });
+  const one = (q, ...a) => sdb5.prepare(q).get(...a);
+
+  const repo = require(path.join(ROOT, "server/lib/kad/repo"));
+  const worker = require(path.join(ROOT, "server/lib/kad/job-queue"));
+  const mainAgent = repo.catalog.getMainAgent(repo.catalog.getDepartmentBySlug("rd").id);
+
+  console.log("\n=== KAD verify — Scenario S5 (Learning Loop) ===\n");
+
+  const briefTask = await api("POST", "/api/kad/tasks", {
+    title: "Test Learning Loop task",
+  });
+  const taskId = briefTask.body.id;
+
+  // Create mock artifact and approval
+  const artId = repo.artifacts.createArtifact({
+    task_id: taskId, agent_id: mainAgent.id, artifact_type: "syllabus",
+    title: "Test artifact", content: "Sai brand Kstudy", status: "review"
+  }).id;
+  const appr = repo.approvals.createApproval({
+    task_id: taskId, requested_by: mainAgent.id, approval_type: "artifact",
+    artifact_id: artId, title: "Duyệt artifact", description: "Sai brand Kstudy"
+  });
+
+  // 1. Human reject triggers analyze_learning_note async
+  const rej = await api("POST", `/api/kad/approvals/${appr.id}/decide`, { 
+    decision: "rejected", reason: "Sai brand voice trầm trọng" 
+  });
+  check("POST /approvals/:id/decide rejected", rej.status === 200);
+
+  // Wait for async execution
+  let note = null;
+  for (let i = 0; i < 40; i++) {
+    note = one("SELECT * FROM learning_notes WHERE task_id=?", taskId);
+    if (note) break;
+    await new Promise(r => setTimeout(r, 1000));
+  }
+  
+  check("Learning note created via Claude", !!note && note.change_status === "noted", note ? note.correction_category : "none");
+  check("Learning note parsed properly", note && note.root_cause !== "Sai brand voice trầm trọng", "Expected detailed analysis from LLM");
+
+  // 2. Pattern detection
+  // Create 2 more mock notes in the same category manually to trigger pattern_detect
+  repo.learning.createNote({
+    department_id: mainAgent.department_id,
+    correction_category: "brand_mismatch",
+    trigger_type: "human_rejection",
+    severity: "major",
+    feedback_content: "Sai brand",
+    change_status: "noted"
+  });
+  repo.learning.createNote({
+    department_id: mainAgent.department_id,
+    correction_category: "brand_mismatch",
+    trigger_type: "human_rejection",
+    severity: "major",
+    feedback_content: "Lại sai brand",
+    change_status: "noted"
+  });
+
+  repo.jobs.enqueue({
+    kind: "pattern_detect",
+    payload: { department_id: mainAgent.department_id, category: "brand_mismatch" },
+    dedupKey: "pattern_detect:test"
+  });
+  
+  await worker.sweep(); // Process pattern_detect job
+  
+  const patternNote = one("SELECT * FROM learning_notes WHERE trigger_type='pattern_detection'");
+  check("Pattern detection triggers and creates a note", !!patternNote && patternNote.change_status === "noted");
+  check("Pattern detection doesn't auto-propose", !!patternNote && patternNote.change_status === "noted");
+
+  // 3. MCP tool `kad_list_learning_notes`
+  // The internal API `ctx(req, res)` expects `x-kad-task-id` etc. and internal auth
+  const internalHeaders = {
+    "x-kad-internal-token": getInternalToken(),
+    "x-kad-task-id": taskId,
+    "x-kad-run-id": "mock-run",
+    "x-kad-agent-id": mainAgent.id
+  };
+  const mcpNotes2 = await fetch(BASE + "/api/kad/internal/learning-notes", {
+    headers: internalHeaders
+  });
+  const mcpNotesBody = await mcpNotes2.json().catch(() => ({}));
+  check("MCP internal API returns notes", mcpNotes2.status === 200 && mcpNotesBody.notes && mcpNotesBody.notes.length > 0);
+
+  sdb5.close();
+  try { worker.stopWorker(); } catch {}
+  server.close();
+  for (const f of [TMP_DB5, TMP_DB5 + "-wal", TMP_DB5 + "-shm"])
+    try { fs.unlinkSync(f); } catch {}
+
+  console.log(results.join("\n"));
+  console.log(`\n=== S5: ${pass} passed, ${fail} failed ===`);
+  process.exit(fail > 0 ? 1 : 0);
+}
+
+if (process.argv.includes("--s2")) {
   runS2().catch((e) => { console.error("verify S2 crashed:", e); process.exit(1); });
 } else if (process.argv.includes("--s3")) {
   runS3().catch((e) => { console.error("verify S3 crashed:", e); process.exit(1); });
 } else if (process.argv.includes("--s3-deps")) {
   runS3Deps().catch((e) => { console.error("verify S3-deps crashed:", e); process.exit(1); });
+} else if (process.argv.includes("--s4")) {
+  runS4().catch((e) => { console.error("verify S4 crashed:", e); process.exit(1); });
+} else if (process.argv.includes("--s5")) {
+  runS5().catch((e) => { console.error("verify S5 crashed:", e); process.exit(1); });
 } else {
   main().catch((e) => { console.error("verify crashed:", e); process.exit(1); });
 }

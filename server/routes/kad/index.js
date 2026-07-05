@@ -14,6 +14,7 @@ const dependenciesRouter = require("./dependencies");
 const automationRulesRouter = require("./automation-rules");
 const attachmentsRouter = require("./attachments");
 const knowledgeRouter = require("./knowledge");
+const learningRouter = require("./learning");
 
 const router = express.Router();
 router.use("/tasks", tasksRouter);
@@ -25,6 +26,7 @@ router.use("/", miscRouter); // /agents, /reports, /notifications, /audit
 router.use("/", dependenciesRouter); // /dependencies/:depId
 router.use("/", automationRulesRouter); // /automation-rules, /automation/*
 router.use("/", attachmentsRouter); // /attachments/:id
+router.use("/learning-notes", learningRouter);
 
 let started = false;
 

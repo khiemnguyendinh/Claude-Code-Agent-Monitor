@@ -42,6 +42,30 @@ const handlers = {
       throw new PermanentJobError("start_delegation payload missing delegation_id");
     await orchestrator.runDelegation(payload.delegation_id);
   },
+  async pattern_detect(payload) {
+    const { department_id, category } = payload;
+    if (!department_id || !category) throw new PermanentJobError("pattern_detect missing fields");
+    const notes = repo.db.prepare(`
+      SELECT * FROM learning_notes 
+      WHERE department_id=? AND correction_category=? AND created_at > datetime('now', '-30 days')
+    `).all(department_id, category);
+    
+    // Spec 01 §5: Pattern detection >= 3 notes in same category/30 days
+    const hasPattern = notes.some(n => n.trigger_type === 'pattern_detection');
+    if (!hasPattern && notes.length >= 3) {
+      repo.learning.createNote({
+        department_id,
+        trigger_type: "pattern_detection",
+        correction_category: category,
+        severity: "critical",
+        root_cause: `Phát hiện lỗi lặp lại (${notes.length} lần trong 30 ngày) cho danh mục: ${category}`,
+        prevention: "Cần cập nhật system_prompt hoặc workflow để giải quyết triệt để",
+        affected_areas: ["system"],
+        proposed_change_target: "blueprint",
+        change_status: "noted" // MVP stops here, does not auto-propose
+      });
+    }
+  },
 };
 
 async function runOne(job) {

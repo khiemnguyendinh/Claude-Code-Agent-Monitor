@@ -193,6 +193,12 @@ const TOOLS = [
     handler: (a) => call("GET", "/template", { query: { type: a.type } }),
   },
   {
+    name: "kad_list_learning_notes",
+    description: "Đọc các learning notes (bài học kinh nghiệm) gần đây để tránh lặp lại lỗi.",
+    inputSchema: S({}),
+    handler: () => call("GET", "/learning-notes"),
+  },
+  {
     name: "kad_report_progress",
     description: "Báo tiến độ (hiện realtime trên UI).",
     inputSchema: S({ content: str() }, ["content"]),

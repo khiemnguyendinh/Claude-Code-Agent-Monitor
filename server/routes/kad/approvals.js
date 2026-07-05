@@ -8,6 +8,7 @@ const express = require("express");
 const repo = require("../../lib/kad/repo");
 const workflowEngine = require("../../lib/kad/workflow-engine");
 const { emitTask, emitDept } = require("../../lib/kad/events");
+const { analyzeLearningNote } = require("../../lib/kad/learning-loop");
 
 const router = express.Router();
 const err = (res, code, message, status = 400) =>
@@ -72,15 +73,15 @@ router.post("/:id/decide", (req, res) => {
       details: { decision: b.decision, approval_type: a.approval_type },
     });
     if (b.decision === "rejected" || b.decision === "needs_changes") {
-      repo.learning.createNote({
+      analyzeLearningNote({
         department_id: task && task.department_id,
         task_id: a.task_id,
         artifact_id: a.artifact_id,
         trigger_type: b.decision === "rejected" ? "human_rejection" : "human_revision",
         feedback_content: b.reason || `${a.approval_type} bị ${b.decision}`,
-        severity: "major",
-        affected_areas: ["flow"],
-      });
+        artifact_title: a.title,
+        artifact_content: a.description
+      }).catch(console.error);
     }
   });
 

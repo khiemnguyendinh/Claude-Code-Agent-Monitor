@@ -32,6 +32,7 @@ import { TraoDoiCongViec } from "./kad/pages/TraoDoiCongViec";
 import { DoiNgu } from "./kad/pages/DoiNgu";
 import { HocLieu } from "./kad/pages/HocLieu";
 import { BaoCao } from "./kad/pages/BaoCao";
+import { LearningNotes } from "./kad/pages/LearningNotes";
 
 // Old top-level paths the monitor used before KAD claimed "/" for Tổng quan.
 // Kept as redirects (not deletions) so existing bookmarks/tabs still land
@@ -79,6 +80,7 @@ export default function App() {
             <Route path="doi-ngu" element={<DoiNgu />} />
             <Route path="hoc-lieu" element={<HocLieu />} />
             <Route path="bao-cao" element={<BaoCao />} />
+            <Route path="bao-cao/learning" element={<LearningNotes />} />
           </Route>
 
           {/* Monitor gốc — pages/functionality untouched, only reparented
