@@ -14,9 +14,31 @@ const { execFileSync } = require("child_process");
 
 const { getUpdatesStatus } = require("../lib/update-check");
 
+// When this suite runs from inside a git hook (e.g. a pre-commit test run),
+// git has already exported GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE for the hook
+// process. Those env vars override normal cwd-based repo discovery, so every
+// "isolated" tmp-dir repo below would silently operate on the REAL repository
+// instead — as seen in practice: `git init <tmpdir>` still creates the tmpdir
+// repo, but the *following* add/commit/push land in the ambient repo's index,
+// corrupting real history. Strip them so child git processes are always
+// scoped to the `cwd` we pass in, regardless of the ambient hook env.
+const GIT_ENV = { ...process.env };
+for (const k of [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_INDEX_FILE",
+  "GIT_COMMON_DIR",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_CEILING_DIRECTORIES",
+]) {
+  delete GIT_ENV[k];
+}
+
 function git(cwd, args) {
   return execFileSync("git", args, {
     cwd,
+    env: GIT_ENV,
     stdio: ["ignore", "pipe", "pipe"],
     encoding: "utf8",
   }).trim();
@@ -28,6 +50,7 @@ function makeBareRemote(parent, name) {
   // -c init.defaultBranch=master works on every git that supports -c init.*,
   // i.e. far older than --initial-branch.
   execFileSync("git", ["-c", "init.defaultBranch=master", "init", "--bare", repo], {
+    env: GIT_ENV,
     stdio: "ignore",
   });
   return repo;
@@ -36,7 +59,10 @@ function makeBareRemote(parent, name) {
 function makeWorkingRepo(parent, dir, originUrl) {
   const repo = path.join(parent, dir);
   fs.mkdirSync(repo, { recursive: true });
-  execFileSync("git", ["-c", "init.defaultBranch=master", "init", repo], { stdio: "ignore" });
+  execFileSync("git", ["-c", "init.defaultBranch=master", "init", repo], {
+    env: GIT_ENV,
+    stdio: "ignore",
+  });
   fs.writeFileSync(path.join(repo, "README.md"), "fixture\n");
   git(repo, ["-c", "user.email=t@t", "-c", "user.name=t", "add", "."]);
   git(repo, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"]);
@@ -153,7 +179,10 @@ describe("getUpdatesStatus — no remotes configured", () => {
   it("returns a soft no-remotes payload", async () => {
     const repo = path.join(tmpDir, "noremote");
     fs.mkdirSync(repo, { recursive: true });
-    execFileSync("git", ["-c", "init.defaultBranch=master", "init", repo], { stdio: "ignore" });
+    execFileSync("git", ["-c", "init.defaultBranch=master", "init", repo], {
+      env: GIT_ENV,
+      stdio: "ignore",
+    });
     fs.writeFileSync(path.join(repo, "README.md"), "lonely\n");
     git(repo, ["-c", "user.email=t@t", "-c", "user.name=t", "add", "."]);
     git(repo, ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-m", "init"]);
