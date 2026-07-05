@@ -29,4 +29,5 @@ module.exports = {
   attachments: require("./task-attachments"),
   orgContext: require("./org-context"),
   templates: require("./templates"),
+  reports: require("./reports"),
 };

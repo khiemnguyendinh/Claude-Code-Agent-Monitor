@@ -3031,6 +3031,202 @@ async function runS6_6() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
+/**
+ * Scenario S7-reports (Phase 7A) — reports + audit viewer API. Pure read-only
+ * report leg: creates real KAD rows plus real monitor token_usage, then
+ * asserts the report endpoints aggregate from existing tables instead of mock
+ * data. Named distinctly from Phase 7B's `runS7` (input validation/rate-limit/
+ * backup-restore hardening, --s7) since both phase-07 tracks landed a
+ * same-numbered scenario independently — see plan §5 merge discipline.
+ */
+async function runS7Reports() {
+  const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
+    env: process.env,
+    encoding: "utf8",
+  });
+  if (seed.status !== 0) {
+    console.error("seed failed:", seed.stderr || seed.stdout);
+    process.exit(1);
+  }
+
+  const { createApp } = require(path.join(ROOT, "server/index.js"));
+  const kad = require(path.join(ROOT, "server/routes/kad"));
+  const repo = require(path.join(ROOT, "server/lib/kad/repo"));
+  const app = createApp();
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  const BASE = `http://127.0.0.1:${server.address().port}`;
+  kad.initKad({ apiBase: BASE });
+
+  const api = async (method, p, body) => {
+    const resp = await fetch(BASE + p, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return { status: resp.status, body: await resp.json().catch(() => ({})) };
+  };
+
+  const Database = require("better-sqlite3");
+  const sdb = new Database(TMP_DB, { readonly: true });
+  const one = (q, ...a) => sdb.prepare(q).get(...a);
+
+  console.log("\n=== KAD verify — Scenario S7 Reports & Audit (isolated @ " + BASE + ") ===\n");
+
+  try {
+    const dept = repo.catalog.getDepartmentBySlug("rd");
+    const mainAgent = repo.catalog.getMainAgent(dept.id);
+    const now = new Date().toISOString();
+    const twoHoursAgo = new Date(Date.now() - 2 * 3_600_000).toISOString();
+
+    const doneTask = repo.tasks.createTask({
+      department_id: dept.id,
+      title: "S7 báo cáo task hoàn thành",
+      actor_type: "human",
+      actor_id: "verify",
+    });
+    repo.tasks.updateTask(doneTask.id, { status: "done" });
+    const openTask = repo.tasks.createTask({
+      department_id: dept.id,
+      title: "S7 báo cáo task đang làm",
+      actor_type: "human",
+      actor_id: "verify",
+    });
+    repo.tasks.updateTask(openTask.id, { status: "doing" });
+
+    const appr = repo.approvals.createApproval({
+      task_id: doneTask.id,
+      requested_by: mainAgent.id,
+      approval_type: "artifact",
+      title: "S7 duyệt artifact",
+      status: "pending",
+    });
+    repo.approvals.decide(appr.id, { decision: "approved", reason: "S7 verify" });
+    repo.db
+      .prepare("UPDATE approvals SET created_at=?, decided_at=?, updated_at=? WHERE id=?")
+      .run(twoHoursAgo, now, now, appr.id);
+
+    const run = repo.runs.createRun({
+      task_id: doneTask.id,
+      agent_id: mainAgent.id,
+      engine: "claude",
+    });
+    repo.runs.updateRun(run.id, {
+      status: "completed",
+      engine_session_id: "s7-monitor-session",
+    });
+    repo.db
+      .prepare(
+        `INSERT INTO sessions (id, name, status, cwd, model, started_at, ended_at, metadata)
+         VALUES (?,?,?,?,?,?,?,?)`
+      )
+      .run(
+        "s7-monitor-session",
+        "S7 monitor token session",
+        "completed",
+        ROOT,
+        "claude-sonnet-5-verify",
+        twoHoursAgo,
+        now,
+        "{}"
+      );
+    repo.db
+      .prepare(
+        `INSERT INTO token_usage
+         (session_id, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens)
+         VALUES (?,?,?,?,?,?)`
+      )
+      .run("s7-monitor-session", "claude-sonnet-5-verify", 100000, 20000, 30000, 10000);
+    repo.audit({
+      department_id: dept.id,
+      task_id: doneTask.id,
+      agent_id: mainAgent.id,
+      action: "s7_audit_probe",
+      actor_type: "agent",
+      actor_id: mainAgent.id,
+      channel: "web",
+      target_type: "task",
+      target_id: doneTask.id,
+      details: { scenario: "S7" },
+    });
+
+    const kpi = await api("GET", "/api/kad/reports/kpi?range=7d");
+    check("S7.1 GET /reports/kpi ok", kpi.status === 200);
+    check(
+      "S7.2 approval turnaround reads approvals",
+      kpi.body.approval_decided_count >= 1 && kpi.body.approval_turnaround_avg_hours >= 1,
+      JSON.stringify(kpi.body)
+    );
+    check(
+      "S7.3 completion rate reads tasks",
+      kpi.body.task_completion_total >= 2 && kpi.body.task_completion_rate_7d > 0,
+      JSON.stringify(kpi.body)
+    );
+    check(
+      "S7.4 quality pass rate reads artifact approvals",
+      kpi.body.quality_total >= 1 && kpi.body.quality_pass_rate === 100,
+      JSON.stringify(kpi.body)
+    );
+    check(
+      "S7.5 cost joins monitor token_usage by engine_session_id",
+      kpi.body.cost.token_usage_rows >= 1 &&
+        kpi.body.cost.total_tokens === 160000 &&
+        kpi.body.cost.by_agent.some((r) => r.agent_id === mainAgent.id) &&
+        kpi.body.cost.by_task.some((r) => r.task_id === doneTask.id),
+      JSON.stringify(kpi.body.cost)
+    );
+    check(
+      "S7.6 Verified real / still mock marks cost real",
+      kpi.body.verified.some((r) => r.item === "cost_by_agent_task" && r.status === "real")
+    );
+
+    const overview = await api("GET", "/api/kad/reports/overview?range=7d");
+    check(
+      "S7.7 /reports/overview includes Phase 7 KPI/cost",
+      overview.status === 200 && overview.body.kpi?.cost?.token_usage_rows >= 1
+    );
+
+    const auditByTask = await api(
+      "GET",
+      `/api/kad/audit?task=${encodeURIComponent(doneTask.id)}&action=s7_audit_probe`
+    );
+    check(
+      "S7.8 /audit filters by task+action",
+      auditByTask.status === 200 &&
+        auditByTask.body.length === 1 &&
+        auditByTask.body[0].task_id === doneTask.id
+    );
+
+    const auditByAgent = await api(
+      "GET",
+      `/api/kad/audit?agent=${encodeURIComponent(mainAgent.id)}&from=${encodeURIComponent(twoHoursAgo)}&to=${encodeURIComponent(new Date(Date.now() + 1000).toISOString())}`
+    );
+    check(
+      "S7.9 /audit filters by agent+time",
+      auditByAgent.status === 200 && auditByAgent.body.some((r) => r.action === "s7_audit_probe")
+    );
+
+    check(
+      "S7.10 SQL token_usage row remains monitor-owned",
+      one("SELECT COUNT(*) n FROM token_usage WHERE session_id=?", "s7-monitor-session").n === 1
+    );
+  } finally {
+    try {
+      require(path.join(ROOT, "server/lib/kad/job-queue")).stopWorker();
+    } catch {}
+    sdb.close();
+    server.close();
+    for (const f of [TMP_DB, TMP_DB + "-wal", TMP_DB + "-shm"])
+      try {
+        fs.unlinkSync(f);
+      } catch {}
+  }
+
+  console.log(results.join("\n"));
+  console.log(`\n=== S7: ${pass} passed, ${fail} failed ===`);
+  process.exit(fail > 0 ? 1 : 0);
+}
+
 if (process.argv.includes("--s2")) {
   runS2().catch((e) => {
     console.error("verify S2 crashed:", e);
@@ -3069,6 +3265,11 @@ if (process.argv.includes("--s2")) {
 } else if (process.argv.includes("--s6_6") || process.argv.includes("--s66")) {
   runS6_6().catch((e) => {
     console.error("verify S6.6 crashed:", e);
+    process.exit(1);
+  });
+} else if (process.argv.includes("--s7-reports")) {
+  runS7Reports().catch((e) => {
+    console.error("verify S7-reports crashed:", e);
     process.exit(1);
   });
 } else {

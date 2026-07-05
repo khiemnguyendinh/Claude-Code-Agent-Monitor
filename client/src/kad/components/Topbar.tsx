@@ -24,6 +24,7 @@ function useBreadcrumb(): string[] {
   if (pathname === "/ket-noi") return ["Kết nối"];
   if (pathname.startsWith("/phe-duyet/")) return ["Phê duyệt"];
   if (pathname === "/bao-cao") return ["Báo cáo"];
+  if (pathname === "/nhat-ky") return ["Nhật ký"];
   return ["Tổng quan"];
 }
 
@@ -39,7 +40,9 @@ export function Topbar({ onOpenPalette }: { onOpenPalette: () => void }) {
         {crumbs.map((c, i) => (
           <span key={i} className="flex items-center gap-1.5 min-w-0">
             {i > 0 && <span className="text-kad-text-faint">/</span>}
-            <span className={`truncate ${i === crumbs.length - 1 ? "text-kad-text-strong font-medium" : ""}`}>
+            <span
+              className={`truncate ${i === crumbs.length - 1 ? "text-kad-text-strong font-medium" : ""}`}
+            >
               {c}
             </span>
           </span>
@@ -86,7 +89,9 @@ export function Topbar({ onOpenPalette }: { onOpenPalette: () => void }) {
               </div>
               <div className="max-h-[360px] overflow-y-auto">
                 {notifications.length === 0 ? (
-                  <p className="kad-body text-kad-text-faint text-center py-8">Không có thông báo.</p>
+                  <p className="kad-body text-kad-text-faint text-center py-8">
+                    Không có thông báo.
+                  </p>
                 ) : (
                   notifications.map((n) => (
                     <button
@@ -98,10 +103,14 @@ export function Topbar({ onOpenPalette }: { onOpenPalette: () => void }) {
                       }}
                       className="w-full flex items-start gap-2 px-4 py-2.5 hover:bg-kad-surface-2 text-left border-b border-kad-border last:border-0"
                     >
-                      {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-kad-accent mt-1.5 flex-shrink-0" />}
+                      {!n.readAt && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-kad-accent mt-1.5 flex-shrink-0" />
+                      )}
                       <span className={n.readAt ? "pl-3.5" : ""}>
                         <span className="kad-body text-kad-text block">{n.body}</span>
-                        <span className="kad-caption text-kad-text-faint">{formatRelativeTime(n.createdAt)}</span>
+                        <span className="kad-caption text-kad-text-faint">
+                          {formatRelativeTime(n.createdAt)}
+                        </span>
                       </span>
                     </button>
                   ))

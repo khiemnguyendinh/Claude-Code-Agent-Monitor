@@ -40,20 +40,26 @@ router.get("/workflows/:id", (req, res) => {
   res.json(wf);
 });
 
-// Trimmed overview shipped from Phase 2 (spec 03): tasks_by_status, pending
-// approvals, active runs.
+// Overview keeps the Phase 2 fields and adds Phase 7 KPI/cost read models.
 router.get("/reports/overview", (req, res) => {
   const id = deptId(req);
   const tasks = repo.tasks.listTasks({ department_id: id, limit: 500 });
   const byStatus = {};
   for (const t of tasks) byStatus[t.status] = (byStatus[t.status] || 0) + 1;
+  const kpi = repo.reports.kpi({ department_id: id, range: req.query.range || "7d" });
   res.json({
     department_id: id,
     tasks_by_status: byStatus,
     pending_approvals: repo.approvals.listPending({ department_id: id }).length,
     active_runs: repo.runs.countActive(),
     pending_jobs: repo.jobs.pendingCount(),
+    kpi,
+    cost: kpi.cost,
   });
+});
+
+router.get("/reports/kpi", (req, res) => {
+  res.json(repo.reports.kpi({ department_id: deptId(req), range: req.query.range || "7d" }));
 });
 
 // [GAP spec/ui/02 §5] Standup rút gọn — deterministic (see repo/standup.js),
