@@ -49,4 +49,14 @@ function listRecent({ department_id, category, severity, limit = 50 } = {}) {
     .map((r) => ({ ...r, affected_areas: parseJson(r.affected_areas, []) }));
 }
 
-module.exports = { createNote, getNote, listRecent };
+function updateStatus(id, newStatus) {
+  const now = nowIso();
+  db.prepare("UPDATE learning_notes SET change_status=@status, updated_at=@now WHERE id=@id").run({
+    id,
+    status: newStatus,
+    now
+  });
+  return getNote(id);
+}
+
+module.exports = { createNote, getNote, listRecent, updateStatus };

@@ -429,6 +429,22 @@ router.get("/template", (req, res) => {
   });
 });
 
+// kad_list_learning_notes
+router.get("/learning-notes", (req, res) => {
+  const c = ctx(req, res);
+  if (!c) return;
+  const notes = repo.learning.listRecent({ department_id: c.task.department_id, limit: 10 });
+  res.json({
+    notes: notes.map((n) => ({
+      category: n.correction_category,
+      severity: n.severity,
+      root_cause: n.root_cause,
+      prevention: n.prevention,
+      target: n.proposed_change_target
+    }))
+  });
+});
+
 // kad_report_progress — any agent → status message.
 router.post("/report-progress", (req, res) => {
   const c = ctx(req, res);
