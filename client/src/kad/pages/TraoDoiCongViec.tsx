@@ -37,7 +37,7 @@ import {
   type KadWorkflow,
   type MessageRow,
 } from "../api-client";
-import { subscribeKadScope, taskScope } from "../ws-client";
+import { onKadWsConnectionChange, subscribeKadScope, taskScope } from "../ws-client";
 import { takePendingFiles } from "../pending-uploads";
 import { usePeek } from "../components/PeekDrawer";
 import { useKadToast } from "../components/Toast";
@@ -203,6 +203,38 @@ function TraoDoiCongViecInner({
     if (initRef.current) return;
     initRef.current = true;
     let unsubscribe: (() => void) | null = null;
+    let realIdKnown: string | null = null;
+
+    // The WS connection can drop (laptop sleep, flaky wifi) and reconnect —
+    // `subscribeKadScope` resubscribes the channel automatically, but any
+    // event broadcast during the gap is gone for good (no server-side replay).
+    // Re-fetch task + timeline once we regain connectivity so anything missed
+    // (an agent run finishing, a message, a status flip) still shows up
+    // instead of leaving the screen stuck on stale state. Skip the very first
+    // "connected" firing — that's just the initial connect the load below
+    // already covers, not a recovery.
+    let sawFirstConnect = false;
+    const unsubscribeConn = onKadWsConnectionChange((isConnected) => {
+      if (!isConnected) return;
+      if (!sawFirstConnect) {
+        sawFirstConnect = true;
+        return;
+      }
+      const id = realIdKnown;
+      if (!id) return;
+      kadApi.tasks
+        .get(id)
+        .then(setTask)
+        .catch(() => {});
+      kadApi.tasks
+        .timeline(id)
+        .then((timelineRows) => {
+          setTimeline(timelineRows);
+          const lastRun = [...timelineRows].reverse().find((t) => t.kind === "run");
+          setIsRunning(!!lastRun && lastRun.kind === "run" && lastRun.data.status === "running");
+        })
+        .catch(() => {});
+    });
 
     (async () => {
       let realId = routeId;
@@ -215,6 +247,7 @@ function TraoDoiCongViecInner({
             workflow_id: freshWorkflowId,
           });
           realId = created.id;
+          realIdKnown = realId;
           unsubscribe = subscribeKadScope(taskScope(realId), (ev) => handleWsEvent(ev));
           // Real File objects from CongViecMoi.tsx's composer, handed off via
           // pending-uploads.ts (no task_id existed yet when they were picked).
@@ -251,6 +284,7 @@ function TraoDoiCongViecInner({
           setTaskId(realId);
           navigate(`/cong-viec/${realId}`, { replace: true });
         } else {
+          realIdKnown = realId;
           unsubscribe = subscribeKadScope(taskScope(realId), (ev) => handleWsEvent(ev));
         }
 
@@ -300,10 +334,15 @@ function TraoDoiCongViecInner({
         case "kad.artifact.created":
           if (typeof ev.data.artifact_id === "string") {
             const artifactId = ev.data.artifact_id;
-            kadApi.artifacts.get(artifactId).then((a) => {
-              upsertTimelineItem({ kind: "artifact", at: a.createdAt, data: a });
-              setSelectedArtifactId((cur) => cur ?? artifactId);
-            });
+            kadApi.artifacts
+              .get(artifactId)
+              .then((a) => {
+                upsertTimelineItem({ kind: "artifact", at: a.createdAt, data: a });
+                setSelectedArtifactId((cur) => cur ?? artifactId);
+              })
+              .catch((e) =>
+                console.warn(`[kad] failed to load artifact ${artifactId}:`, e && e.message)
+              );
           }
           break;
         case "kad.run.status":
@@ -321,6 +360,7 @@ function TraoDoiCongViecInner({
 
     return () => {
       unsubscribe?.();
+      unsubscribeConn();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -425,14 +465,18 @@ function TraoDoiCongViecInner({
   // Every mutating call is wrapped so a failed request surfaces as a toast
   // instead of a silent unhandled rejection (composer/cards optimistically
   // rely on the WS echo to update state, so there's nothing else to roll back).
-  async function runAction(fn: () => Promise<unknown>) {
+  /** Returns whether `fn` succeeded so callers can roll back optimistic state
+   * on failure instead of assuming the request landed. */
+  async function runAction(fn: () => Promise<unknown>): Promise<boolean> {
     try {
       await fn();
+      return true;
     } catch (e) {
       showToast({
         message: e instanceof Error ? e.message : "Có lỗi xảy ra, thử lại.",
         tone: "warning",
       });
+      return false;
     }
   }
 
@@ -466,7 +510,8 @@ function TraoDoiCongViecInner({
 
   async function handleDockedSend() {
     const text = draft.trim();
-    const names = dockAttachments.map((a) => a.file_name);
+    const attachmentsSnapshot = dockAttachments;
+    const names = attachmentsSnapshot.map((a) => a.file_name);
     if (!text && names.length === 0) return;
     setDraft("");
     setDockAttachments([]);
@@ -474,9 +519,17 @@ function TraoDoiCongViecInner({
     // not metadata) + metadata for the human-facing chip — see the fresh-flow
     // effect above for the same dual-write and why both are needed.
     const content = names.length ? `${text || "(gửi tài liệu)"}\n\n📎 ${names.join(", ")}` : text;
-    await runAction(() =>
+    const ok = await runAction(() =>
       kadApi.tasks.sendMessage(taskId!, content, names.length ? names : undefined)
     );
+    // The files were already durably uploaded (handleDockedFilesSelected) —
+    // only the message send failed, so restore the draft/attachments instead
+    // of silently discarding what the human typed and dropping the reference
+    // to attachments that are still sitting on the server.
+    if (!ok) {
+      setDraft(text);
+      setDockAttachments(attachmentsSnapshot);
+    }
   }
 
   async function handleDockedFilesSelected(files: File[]) {
@@ -508,8 +561,12 @@ function TraoDoiCongViecInner({
   }
 
   async function stopAndSteer() {
-    await runAction(() => kadApi.tasks.cancelRun(taskId!));
-    setIsRunning(false);
+    // Only clear the "đang viết" state once the cancel actually landed — the
+    // agent run is still live server-side on failure, and `kad.run.status`
+    // will re-confirm that over WS; flipping optimistically here would let
+    // the human send new instructions while the original run keeps going.
+    const ok = await runAction(() => kadApi.tasks.cancelRun(taskId!));
+    if (ok) setIsRunning(false);
     composerRef.current?.focus();
   }
 

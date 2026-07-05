@@ -15,6 +15,22 @@ const err = (res, code, message, status = 400) =>
   res.status(status).json({ error: { code, message } });
 const uploader = getUploader();
 
+// Mirrors the CHECK constraints in kad-001-init.sql — validate here so a bad
+// value 400s with a structured error instead of an uncaught SqliteError 500.
+const TASK_STATUSES = [
+  "blocked",
+  "inbox",
+  "triaged",
+  "doing",
+  "waiting_human",
+  "review",
+  "needs_changes",
+  "done",
+  "failed",
+  "archived",
+];
+const TASK_PRIORITIES = ["urgent", "high", "normal", "low"];
+
 // Single-department MVP helper: default to the 'rd' department if none given.
 function defaultDeptId() {
   const d = repo.catalog.getDepartmentBySlug("rd");
@@ -68,6 +84,11 @@ router.get("/:id", (req, res) => {
 router.patch("/:id", (req, res) => {
   const task = repo.tasks.getTask(req.params.id);
   if (!task) return err(res, "ENOTFOUND", "task not found", 404);
+  const b = req.body || {};
+  if (b.status !== undefined && !TASK_STATUSES.includes(b.status))
+    return err(res, "EBADSTATUS", "invalid status");
+  if (b.priority !== undefined && !TASK_PRIORITIES.includes(b.priority))
+    return err(res, "EBADPRIORITY", "invalid priority");
   const patch = {};
   for (const k of ["status", "priority", "due_date"])
     if (req.body[k] !== undefined) patch[k] = req.body[k];
@@ -190,6 +211,12 @@ router.post("/:id/dependencies", (req, res) => {
   if (!b.depends_on_task_id && !b.depends_on_artifact_type) {
     return err(res, "EBADSOURCE", "depends_on_task_id or depends_on_artifact_type is required");
   }
+  if (b.depends_on_task_id) {
+    if (!repo.tasks.getTask(b.depends_on_task_id))
+      return err(res, "ENODEPTASK", "depends_on_task_id not found", 404);
+    if (repo.dependencies.wouldCreateCycle(task.id, b.depends_on_task_id))
+      return err(res, "ECYCLE", "would create a dependency cycle (task would block forever)");
+  }
   let dep;
   repo.tx(() => {
     dep = repo.dependencies.createDependency({
@@ -300,7 +327,7 @@ router.post("/:id/report/:messageId/decide", (req, res) => {
   let updatedMsg;
   repo.tx(() => {
     if (b.decision === "approved") {
-      for (const a of report.artifacts) {
+      for (const a of report.artifacts || []) {
         const art = repo.artifacts.getArtifact(a.artifactId);
         if (art && art.status !== "approved")
           repo.artifacts.updateArtifact(art.id, { status: "approved" });

@@ -115,6 +115,13 @@ export function AutomationRuleForm({
       setError("Chọn việc/khoá nguồn cho sự kiện.");
       return;
     }
+    if (
+      trigger === "metric_threshold" &&
+      (thresholdValue.trim() === "" || !Number.isFinite(Number(thresholdValue.trim())))
+    ) {
+      setError("Nhập ngưỡng % hợp lệ.");
+      return;
+    }
 
     const triggerConfig =
       trigger === "schedule"

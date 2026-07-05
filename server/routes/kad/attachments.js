@@ -15,13 +15,19 @@ router.delete("/attachments/:id", (req, res) => {
   const attachment = repo.attachments.getAttachment(req.params.id);
   if (!attachment) return err(res, "ENOTFOUND", "attachment not found", 404);
   repo.attachments.deleteAttachment(attachment.id);
-  // Best-effort: a names-only declare (createMany, [GAP] no real file picker
-  // path) has a storage_path with no real file behind it yet — ENOENT there
-  // is expected, not an error worth surfacing.
-  try {
-    fs.unlinkSync(attachment.storage_path);
-  } catch {
-    /* file already gone or never existed — fine */
+  // A names-only declare (createMany, [GAP] no real file picker path) sets
+  // storage_path to a bare "working_dir/name" string with no real file behind
+  // it — never resolved through workspace-root.js, so it must NEVER be passed
+  // to fs.unlinkSync (a relative path resolves against the server's CWD, not
+  // the workspace root; unlinking it could remove an unrelated coincidental
+  // file). Only createFromUpload rows have a real file — they're the only
+  // ones with mime/size populated.
+  if (attachment.mime !== null || attachment.size !== null) {
+    try {
+      fs.unlinkSync(attachment.storage_path);
+    } catch {
+      /* file already gone — fine */
+    }
   }
   res.json({ id: attachment.id, task_id: attachment.task_id });
 });

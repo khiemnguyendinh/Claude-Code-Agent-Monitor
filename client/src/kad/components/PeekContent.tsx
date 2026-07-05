@@ -239,6 +239,7 @@ function ApprovalPeek({
   const approval = approvals.find((a) => a.id === id);
   const [mode, setMode] = useState<"idle" | "needs_changes" | "rejected">("idle");
   const [reason, setReason] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   if (!approval)
     return <KadEmptyState icon={MessageSquare} message="Không tìm thấy yêu cầu duyệt." />;
 
@@ -252,19 +253,28 @@ function ApprovalPeek({
     : null;
   const decided = approval.status !== "pending";
 
-  const submit = (status: "approved" | "needs_changes" | "rejected") => {
+  const submit = async (status: "approved" | "needs_changes" | "rejected") => {
     if (status !== "approved" && reason.trim().length === 0) return;
-    decideApproval(id, status, status === "approved" ? null : reason.trim());
-    toast({
-      message:
-        status === "approved"
-          ? "Đã duyệt."
-          : status === "needs_changes"
-            ? "Đã gửi yêu cầu sửa."
-            : "Đã từ chối.",
-      tone: status === "rejected" ? "warning" : "success",
-    });
-    onClose();
+    setSubmitting(true);
+    try {
+      await decideApproval(id, status, status === "approved" ? null : reason.trim());
+      toast({
+        message:
+          status === "approved"
+            ? "Đã duyệt."
+            : status === "needs_changes"
+              ? "Đã gửi yêu cầu sửa."
+              : "Đã từ chối.",
+        tone: status === "rejected" ? "warning" : "success",
+      });
+      onClose();
+    } catch (e) {
+      toast({
+        message: e instanceof Error ? e.message : "Có lỗi xảy ra, thử lại.",
+        tone: "warning",
+      });
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -340,13 +350,17 @@ function ApprovalPeek({
         </div>
       ) : mode === "idle" ? (
         <div className="flex items-center gap-2 pt-2 border-t border-kad-border">
-          <KadButton variant="primary" onClick={() => submit("approved")}>
+          <KadButton variant="primary" disabled={submitting} onClick={() => submit("approved")}>
             Duyệt
           </KadButton>
-          <KadButton variant="secondary" onClick={() => setMode("needs_changes")}>
+          <KadButton
+            variant="secondary"
+            disabled={submitting}
+            onClick={() => setMode("needs_changes")}
+          >
             Yêu cầu sửa
           </KadButton>
-          <KadButton variant="danger" onClick={() => setMode("rejected")}>
+          <KadButton variant="danger" disabled={submitting} onClick={() => setMode("rejected")}>
             Từ chối
           </KadButton>
         </div>
@@ -363,12 +377,12 @@ function ApprovalPeek({
           <div className="flex items-center gap-2">
             <KadButton
               variant={mode === "rejected" ? "danger" : "primary"}
-              disabled={reason.trim().length === 0}
+              disabled={reason.trim().length === 0 || submitting}
               onClick={() => submit(mode)}
             >
               Gửi
             </KadButton>
-            <KadButton variant="ghost" onClick={() => setMode("idle")}>
+            <KadButton variant="ghost" disabled={submitting} onClick={() => setMode("idle")}>
               Hủy
             </KadButton>
           </div>

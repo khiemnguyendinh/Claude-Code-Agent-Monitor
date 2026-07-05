@@ -10,7 +10,16 @@
  * covers create (from Giao việc)/read/toggle/pause, which is all it needs to.
  */
 import { useCallback, useEffect, useState } from "react";
-import { Calendar, ChevronDown, ChevronRight, FileQuestion, Gauge, Plus, Zap } from "lucide-react";
+import {
+  AlertTriangle,
+  Calendar,
+  ChevronDown,
+  ChevronRight,
+  FileQuestion,
+  Gauge,
+  Plus,
+  Zap,
+} from "lucide-react";
 import { kadApi } from "../api-client";
 import { useKadToast } from "../components/Toast";
 import { AutomationRuleForm } from "../components/AutomationRuleForm";
@@ -47,6 +56,7 @@ export function TuDongHoa() {
   const showToast = useKadToast();
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [blocked, setBlocked] = useState<BlockedRow[]>([]);
   const [rules, setRules] = useState<AutomationRule[]>([]);
   const [allAutomationPaused, setAllAutomationPaused] = useState(false);
@@ -87,12 +97,21 @@ export function TuDongHoa() {
     setAllAutomationPaused(paused);
   }, []);
 
-  useEffect(() => {
+  const loadAll = useCallback(() => {
     setLoading(true);
-    Promise.all([refreshBlocked(), refreshRules(), refreshPaused()]).finally(() =>
-      setLoading(false)
-    );
+    setLoadError(false);
+    return Promise.all([refreshBlocked(), refreshRules(), refreshPaused()])
+      .catch((e) => {
+        console.warn("[kad] failed to load automation screen:", e && e.message);
+        setLoadError(true);
+      })
+      .finally(() => setLoading(false));
   }, [refreshBlocked, refreshRules, refreshPaused]);
+
+  useEffect(() => {
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function runAction(fn: () => Promise<unknown>) {
     try {
@@ -165,6 +184,21 @@ export function TuDongHoa() {
             refreshRules();
           }}
         />
+      )}
+
+      {loadError && (
+        <div
+          className="rounded-lg px-3 py-2 kad-caption flex items-center justify-between gap-2"
+          style={{ background: "#FBE4E4", color: "#B91C1C", border: "1px solid #B91C1C55" }}
+        >
+          <span className="flex items-center gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5" />
+            Không tải được dữ liệu tự động hoá — danh sách dưới đây có thể chưa đầy đủ.
+          </span>
+          <button type="button" onClick={loadAll} className="underline flex-shrink-0">
+            Thử lại
+          </button>
+        </div>
       )}
 
       {allAutomationPaused && (

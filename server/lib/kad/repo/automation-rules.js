@@ -81,8 +81,13 @@ function listRules({ department_id, enabled } = {}) {
     .map(hydrate);
 }
 
+// Keeps `status` in lockstep with `enabled` — the evaluator (Phase 6.5) and
+// the UI both need a single source of truth for "is this rule live?".
+// Never touches 'archived' (not reachable via this route today).
 function setEnabled(id, enabled) {
-  db.prepare("UPDATE automation_rules SET enabled=? WHERE id=?").run(enabled ? 1 : 0, id);
+  db.prepare(
+    "UPDATE automation_rules SET enabled=?, status=CASE WHEN status='archived' THEN status ELSE ? END WHERE id=?"
+  ).run(enabled ? 1 : 0, enabled ? "active" : "paused", id);
   return getRule(id);
 }
 
