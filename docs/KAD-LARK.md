@@ -29,11 +29,11 @@ write `audit_log` with `channel='lark'` plus `details.actor_ref`.
 ## Long Connection
 
 Official Lark long connection support uses `@larksuiteoapi/node-sdk` `WSClient`
-with `EventDispatcher` for `im.message.receive_v1`. That SDK is not added in
-this phase because dependency changes require owner approval. The adapter routes
-above are the stable business boundary for a long-connection worker.
-
-Once the SDK is approved/installed:
+with `EventDispatcher` for `im.message.receive_v1`. The SDK is owner-approved
+and installed (`package.json` dependency). It is only imported by the standalone
+worker below — the main server never requires it, so its absence/removal can't
+break core KAD routes. The adapter routes above remain the stable business
+boundary for this worker.
 
 ```bash
 KAD_API_BASE=http://127.0.0.1:4820 \

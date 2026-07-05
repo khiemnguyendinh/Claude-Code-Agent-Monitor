@@ -92,6 +92,7 @@
     "openapi:yaml": "node scripts/generate-openapi-yaml.js"
   },
   "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.68.0",
     "adm-zip": "^0.5.16",
     "cors": "^2.8.5",
     "express": "^4.21.2",

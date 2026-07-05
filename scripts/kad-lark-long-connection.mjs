@@ -2,8 +2,8 @@
 /**
  * Optional Lark long-connection worker for KAD Phase 6.6.
  *
- * This file intentionally does not add @larksuiteoapi/node-sdk to package.json.
- * Install it only after owner approval. When present, it subscribes to
+ * @larksuiteoapi/node-sdk is owner-approved and installed. Only this standalone
+ * worker imports it — the main server never requires it. It subscribes to
  * im.message.receive_v1 through WSClient and forwards normalized messages to
  * the stable KAD adapter endpoint.
  */
@@ -22,9 +22,7 @@ let Lark;
 try {
   Lark = await import("@larksuiteoapi/node-sdk");
 } catch {
-  console.error(
-    "Missing optional dependency @larksuiteoapi/node-sdk. Install it only after owner approval."
-  );
+  console.error("Missing dependency @larksuiteoapi/node-sdk. Run npm install to restore it.");
   process.exit(2);
 }
 
