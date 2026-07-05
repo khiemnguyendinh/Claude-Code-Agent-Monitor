@@ -12,7 +12,7 @@
  * those pass through unchanged.
  */
 import { dashboardToken } from "../lib/api";
-import { formatDurationSeconds, formatTokens, formatVnd } from "./format";
+import { formatDurationSeconds, formatRelativeTime, formatTokens, formatVnd } from "./format";
 import type {
   Approval,
   ApprovalStatus,
@@ -20,7 +20,13 @@ import type {
   ArtifactStatus,
   ArtifactType,
   AgentProfile,
+  AutomationActionType,
+  AutomationRule,
+  AutomationRuleFire,
+  AutomationTriggerType,
+  DependencyCondition,
   Priority,
+  RuleFireResult,
   StandupBrief,
   StandupLine,
   TaskCard,
@@ -364,6 +370,35 @@ export interface KadWorkflow {
   steps: KadWorkflowStep[];
 }
 
+// ── Workflow list (spec/ui/07 §1 quickstart cards) — real workflow_definitions
+// has no short Vietnamese display label column (`name` is the kebab-case
+// internal id, e.g. 'rd-standard-flow'; `description` is a full sentence, not
+// a caption) — shown as-is rather than inventing a label not backed by data.
+export interface WorkflowSummaryRow {
+  id: string;
+  name: string;
+  description: string | null;
+  example_prompt: string | null;
+  trigger_keywords: string[];
+  status: string;
+}
+export interface KadWorkflowSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  examplePrompt: string;
+  triggerKeywords: string[];
+}
+function toWorkflowSummary(row: WorkflowSummaryRow): KadWorkflowSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    examplePrompt: row.example_prompt ?? "",
+    triggerKeywords: row.trigger_keywords ?? [],
+  };
+}
+
 export type KadTimelineItem =
   | { kind: "message"; at: string; data: TaskMessage }
   | { kind: "run"; at: string; data: KadRun }
@@ -469,6 +504,118 @@ function toStandup(row: StandupRow): StandupBrief {
   };
 }
 
+// ── task_dependencies (spec 02 §6b, spec/ui/09 §1) ──────────────────────────
+
+export interface DependencyRow {
+  id: string;
+  task_id: string;
+  depends_on_task_id: string | null;
+  depends_on_artifact_type: string | null;
+  release_condition: DependencyCondition | "all_deps_done";
+  status: "waiting" | "released" | "cancelled";
+  released_at: string | null;
+  created_at: string;
+}
+
+// ── automation_rules (spec 02 §6b, spec/ui/09 §3) ───────────────────────────
+// trigger_config/action_config are opaque JSON server-side; the shape below
+// (`{freq,time,weekday,day,label}`) is what the Giao việc composer writes for
+// trigger_type='schedule' — the only kind this track's UI creates. Rows of
+// other trigger/action types (created elsewhere, e.g. Phase 6.5) still parse,
+// just fall back to plainer labels below.
+interface ScheduleTriggerConfig {
+  freq?: string;
+  time?: string;
+  weekday?: string;
+  day?: string;
+  label?: string;
+}
+interface CreateTaskActionConfig {
+  brief?: string;
+  working_dir?: string | null;
+  workflow_id?: string | null;
+}
+export interface AutomationRuleRow {
+  id: string;
+  department_id: string;
+  name: string;
+  trigger_type: AutomationTriggerType;
+  trigger_config: ScheduleTriggerConfig & Record<string, unknown>;
+  action_type: AutomationActionType;
+  action_config: CreateTaskActionConfig & Record<string, unknown>;
+  approval_required: 0 | 1;
+  enabled: 0 | 1;
+  fire_count: number;
+  last_fired_at: string | null;
+  created_at: string;
+  fires: {
+    id: string;
+    rule_id: string;
+    fired_at: string;
+    trigger_ref: string | null;
+    action_task_id: string | null;
+    result: RuleFireResult;
+    note: string | null;
+  }[];
+}
+
+function truncateLabel(text: string, max = 42): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+function ruleActionLabel(row: AutomationRuleRow): string {
+  switch (row.action_type) {
+    case "create_task":
+      return `Tạo việc: ${truncateLabel(row.action_config.brief ?? row.name)}`;
+    case "run_briefing":
+      return "Tạo Báo cáo đầu ngày";
+    case "notify":
+      return "Cảnh báo trưởng phòng";
+    case "pause_department":
+      return "Tạm dừng phòng ban";
+  }
+}
+
+function ruleDryRun30d(row: AutomationRuleRow): string {
+  if (row.trigger_type === "schedule") return `Theo lịch: ${row.trigger_config.label ?? "—"}`;
+  return "Sẽ kích khi điều kiện đạt — xem lịch sử kích bên dưới.";
+}
+
+export function toAutomationRule(row: AutomationRuleRow): AutomationRule {
+  return {
+    id: row.id,
+    name: row.name,
+    trigger: { type: row.trigger_type, label: row.trigger_config.label ?? row.trigger_type },
+    actionType: row.action_type,
+    actionLabel: ruleActionLabel(row),
+    approvalRequired: Boolean(row.approval_required),
+    enabled: Boolean(row.enabled),
+    lastFiredAtLabel: row.last_fired_at ? formatRelativeTime(row.last_fired_at) : null,
+    fireCount: row.fire_count,
+    dryRun30d: ruleDryRun30d(row),
+    fires: row.fires.map(
+      (f): AutomationRuleFire => ({
+        id: f.id,
+        firedAt: f.fired_at,
+        triggerRef: f.trigger_ref ?? "",
+        result: f.result,
+        note: f.note ?? undefined,
+      })
+    ),
+  };
+}
+
+export interface AttachmentRow {
+  id: string;
+  task_id: string;
+  message_id: string | null;
+  file_name: string;
+  mime: string | null;
+  size: number | null;
+  storage_path: string;
+  created_at: string;
+}
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 export const kadApi = {
@@ -479,6 +626,7 @@ export const kadApi = {
       priority?: Priority;
       working_dir?: string | null;
       workflow_id?: string | null;
+      attachment_names?: string[];
     }) => request<TaskRow>("/tasks", { method: "POST", body: JSON.stringify(input) }).then(toTask),
     get: (id: string) => request<TaskRow>(`/tasks/${encodeURIComponent(id)}`).then(toTask),
     list: (params?: { status?: string; department?: string; limit?: number }) => {
@@ -588,6 +736,15 @@ export const kadApi = {
 
   workflows: {
     get: (id: string) => request<KadWorkflow>(`/workflows/${encodeURIComponent(id)}`),
+    list: (params?: { department?: string; status?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.department) qs.set("department", params.department);
+      if (params?.status) qs.set("status", params.status);
+      const q = qs.toString();
+      return request<WorkflowSummaryRow[]>(`/workflows${q ? `?${q}` : ""}`).then((rows) =>
+        rows.map(toWorkflowSummary)
+      );
+    },
   },
 
   runs: {
@@ -595,6 +752,83 @@ export const kadApi = {
     // the Delegation Card's trace link.
     get: (id: string) =>
       request<{ monitor_session_id: string | null }>(`/runs/${encodeURIComponent(id)}`),
+  },
+
+  dependencies: {
+    // spec/ui/09 §1 "Khi điều kiện" — creates the row AND flips the task to
+    // 'blocked' server-side in one call (server/routes/kad/tasks.js).
+    create: (
+      taskId: string,
+      input: {
+        depends_on_task_id?: string;
+        depends_on_artifact_type?: string;
+        release_condition: DependencyCondition;
+      }
+    ) =>
+      request<DependencyRow>(`/tasks/${encodeURIComponent(taskId)}/dependencies`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    listByTask: (taskId: string) =>
+      request<DependencyRow[]>(`/tasks/${encodeURIComponent(taskId)}/dependencies`),
+    // "Gỡ điều kiện" (spec/ui/09 §3).
+    release: (depId: string) =>
+      request<{ dependency_id: string; task_id: string; task_status: TaskStatus }>(
+        `/dependencies/${encodeURIComponent(depId)}`,
+        { method: "DELETE" }
+      ),
+  },
+
+  automationRules: {
+    list: (params?: { department?: string; enabled?: boolean }) => {
+      const qs = new URLSearchParams();
+      if (params?.department) qs.set("department", params.department);
+      if (params?.enabled !== undefined) qs.set("enabled", params.enabled ? "1" : "0");
+      const q = qs.toString();
+      return request<AutomationRuleRow[]>(`/automation-rules${q ? `?${q}` : ""}`).then((rows) =>
+        rows.map(toAutomationRule)
+      );
+    },
+    // spec/ui/09 §1 "Theo lịch" — creates an automation_rules row
+    // (trigger_type='schedule', action_type='create_task'); no task is
+    // created now, only when the rule fires (Phase 6.5).
+    create: (input: {
+      department_id?: string;
+      name: string;
+      trigger_type: AutomationTriggerType;
+      trigger_config: ScheduleTriggerConfig;
+      action_type: AutomationActionType;
+      action_config: CreateTaskActionConfig;
+      approval_required?: boolean;
+    }) =>
+      request<AutomationRuleRow>("/automation-rules", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }).then(toAutomationRule),
+    toggle: (id: string, enabled: boolean) =>
+      request<AutomationRuleRow>(`/automation-rules/${encodeURIComponent(id)}/toggle`, {
+        method: "POST",
+        body: JSON.stringify({ enabled }),
+      }).then(toAutomationRule),
+  },
+
+  // Department-wide "Tạm dừng tất cả" kill switch (spec/ui/09 §3) — separate
+  // from each rule's own `enabled` bit, see server/lib/kad/repo/catalog.js.
+  automation: {
+    getPaused: (department?: string) => {
+      const qs = department ? `?department=${encodeURIComponent(department)}` : "";
+      return request<{ paused: boolean }>(`/automation/paused${qs}`);
+    },
+    setPaused: (paused: boolean, department?: string) =>
+      request<{ department_id: string; paused: boolean }>("/automation/pause-all", {
+        method: "POST",
+        body: JSON.stringify({ department_id: department, paused }),
+      }),
+  },
+
+  attachments: {
+    listByTask: (taskId: string) =>
+      request<AttachmentRow[]>(`/tasks/${encodeURIComponent(taskId)}/attachments`),
   },
 };
 

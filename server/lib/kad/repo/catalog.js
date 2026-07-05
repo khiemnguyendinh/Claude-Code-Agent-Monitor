@@ -15,6 +15,26 @@ function getDepartmentBySlug(slug) {
   return row ? { ...row, settings: parseJson(row.settings, {}) } : null;
 }
 
+// automation_paused lives in departments.settings JSON, NOT on each rule's own
+// `enabled` bit (spec/ui/09 §3 "Tạm dừng tất cả" is a separate kill switch —
+// re-enabling must restore each rule's own prior enabled/disabled state, not
+// force every rule back on).
+function isAutomationPaused(department_id) {
+  const dept = getDepartment(department_id);
+  return Boolean(dept?.settings?.automation_paused);
+}
+function setAutomationPaused(department_id, paused) {
+  const dept = getDepartment(department_id);
+  if (!dept) return false;
+  const settings = { ...dept.settings, automation_paused: Boolean(paused) };
+  db.prepare("UPDATE departments SET settings=@settings, updated_at=@now WHERE id=@id").run({
+    id: department_id,
+    settings: JSON.stringify(settings),
+    now: nowIso(),
+  });
+  return Boolean(paused);
+}
+
 // ---- agents ----
 function hydrateAgent(row) {
   if (!row) return null;
@@ -87,15 +107,29 @@ function getApprovedBlueprint(departmentId) {
 }
 
 // ---- workflow definitions ----
+function hydrateWorkflow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    trigger_keywords: parseJson(row.trigger_keywords, []),
+    steps: parseJson(row.steps, []),
+  };
+}
 function getWorkflow(id) {
-  const row = db.prepare("SELECT * FROM workflow_definitions WHERE id=?").get(id);
-  return row
-    ? {
-        ...row,
-        trigger_keywords: parseJson(row.trigger_keywords, []),
-        steps: parseJson(row.steps, []),
-      }
-    : null;
+  return hydrateWorkflow(db.prepare("SELECT * FROM workflow_definitions WHERE id=?").get(id));
+}
+/** Quickstart cards (spec/ui/07 §1) read the active list for a department. */
+function listWorkflows(departmentId, { status = "active" } = {}) {
+  const rows = status
+    ? db
+        .prepare(
+          "SELECT * FROM workflow_definitions WHERE department_id=? AND status=? ORDER BY created_at ASC"
+        )
+        .all(departmentId, status)
+    : db
+        .prepare("SELECT * FROM workflow_definitions WHERE department_id=? ORDER BY created_at ASC")
+        .all(departmentId);
+  return rows.map(hydrateWorkflow);
 }
 
 // ---- templates ----
@@ -143,12 +177,15 @@ function logTemplateUsage({ template_id, template_version_id, task_id, artifact_
 module.exports = {
   getDepartment,
   getDepartmentBySlug,
+  isAutomationPaused,
+  setAutomationPaused,
   getAgent,
   getAgentByName,
   getMainAgent,
   listAgents,
   getCurrentOrgContext,
   getWorkflow,
+  listWorkflows,
   getApprovedBlueprint,
   listTemplates,
   getApprovedTemplateByType,

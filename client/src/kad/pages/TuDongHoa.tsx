@@ -3,13 +3,18 @@
  * Quản lý luật/lịch + việc đang chờ điều kiện, tích hợp với luồng Giao việc.
  * Nguyên tắc: trigger tạo ra việc; việc tự tạo vẫn vào Hàng đợi chờ xác nhận
  * trước khi tiêu token (spec 02 §6b / 01 §8). Không tiêu token trong dry-run.
+ *
+ * Wired to the real Phase 2c backend via the shared api-client.ts (no mock
+ * store). Evaluating/firing a rule (turning a satisfied condition or a due
+ * schedule into a real task) is the Phase 6.5 worker — this screen only
+ * covers create (from Giao việc)/read/toggle/pause, which is all it needs to.
  */
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Calendar, ChevronDown, ChevronRight, Gauge, Plus, Zap } from "lucide-react";
-import { useKadStore } from "../store";
+import { Calendar, ChevronDown, ChevronRight, FileQuestion, Gauge, Plus, Zap } from "lucide-react";
+import { kadApi } from "../api-client";
 import { useKadToast } from "../components/Toast";
-import { KadButton, KadCard, KadCardHeader } from "../components/primitives";
+import { KadButton, KadCard, KadCardHeader, KadEmptyState } from "../components/primitives";
 import type { AutomationRule, AutomationTriggerType, RuleFireResult } from "../types";
 
 const TRIGGER_META: Record<AutomationTriggerType, { label: string; icon: typeof Calendar }> = {
@@ -31,36 +36,114 @@ function fireDate(iso: string): string {
   return new Date(iso).toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
 }
 
+interface BlockedRow {
+  id: string;
+  title: string;
+  startCondition: string | null;
+  dependencyId: string | null;
+}
+
 export function TuDongHoa() {
-  const { tasks, releaseDependency, automationRules, allAutomationPaused, toggleRule, togglePauseAll } = useKadStore();
   const showToast = useKadToast();
   const navigate = useNavigate();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [blocked, setBlocked] = useState<BlockedRow[]>([]);
+  const [rules, setRules] = useState<AutomationRule[]>([]);
+  const [allAutomationPaused, setAllAutomationPaused] = useState(false);
 
-  const blocked = tasks.filter((t) => t.status === "blocked");
+  const refreshBlocked = useCallback(async () => {
+    const [blockedTasks, allTasks] = await Promise.all([
+      kadApi.tasks.list({ status: "blocked", limit: 200 }),
+      kadApi.tasks.list({ limit: 500 }),
+    ]);
+    const titleById = new Map(allTasks.map((t) => [t.id, t.title]));
+    const rows = await Promise.all(
+      blockedTasks.map(async (t): Promise<BlockedRow> => {
+        const deps = await kadApi.dependencies.listByTask(t.id);
+        const waiting = deps.find((d) => d.status === "waiting");
+        if (!waiting) return { id: t.id, title: t.title, startCondition: null, dependencyId: null };
+        const sourceTitle =
+          (waiting.depends_on_task_id && titleById.get(waiting.depends_on_task_id)) || "—";
+        const condLabel =
+          waiting.release_condition === "dep_artifact_approved" ? "được duyệt" : "hoàn thành";
+        return {
+          id: t.id,
+          title: t.title,
+          startCondition: `Khi "${sourceTitle}" ${condLabel}`,
+          dependencyId: waiting.id,
+        };
+      })
+    );
+    setBlocked(rows);
+  }, []);
 
-  const handleRelease = (id: string) => {
-    releaseDependency(id);
-    showToast({ message: "Đã gỡ điều kiện — việc chuyển vào Hàng đợi.", tone: "success" });
-  };
+  const refreshRules = useCallback(async () => {
+    setRules(await kadApi.automationRules.list());
+  }, []);
 
-  const handlePauseAll = () => {
-    togglePauseAll();
-    showToast({
-      message: allAutomationPaused ? "Đã bật lại tự động hoá." : "Đã tạm dừng mọi luật tự động.",
-      tone: allAutomationPaused ? "success" : "warning",
+  const refreshPaused = useCallback(async () => {
+    const { paused } = await kadApi.automation.getPaused();
+    setAllAutomationPaused(paused);
+  }, []);
+
+  useEffect(() => {
+    setLoading(true);
+    Promise.all([refreshBlocked(), refreshRules(), refreshPaused()]).finally(() =>
+      setLoading(false)
+    );
+  }, [refreshBlocked, refreshRules, refreshPaused]);
+
+  async function runAction(fn: () => Promise<unknown>) {
+    try {
+      await fn();
+    } catch (e) {
+      showToast({
+        message: e instanceof Error ? e.message : "Có lỗi xảy ra, thử lại.",
+        tone: "warning",
+      });
+    }
+  }
+
+  const handleRelease = (row: BlockedRow) =>
+    runAction(async () => {
+      if (!row.dependencyId) return;
+      await kadApi.dependencies.release(row.dependencyId);
+      showToast({ message: "Đã gỡ điều kiện — việc chuyển vào Hàng đợi.", tone: "success" });
+      await refreshBlocked();
     });
-  };
+
+  const handlePauseAll = () =>
+    runAction(async () => {
+      const next = !allAutomationPaused;
+      await kadApi.automation.setPaused(next);
+      setAllAutomationPaused(next);
+      showToast({
+        message: next ? "Đã tạm dừng mọi luật tự động." : "Đã bật lại tự động hoá.",
+        tone: next ? "warning" : "success",
+      });
+    });
+
+  const handleToggleRule = (rule: AutomationRule) =>
+    runAction(async () => {
+      await kadApi.automationRules.toggle(rule.id, !rule.enabled);
+      await refreshRules();
+    });
+
+  if (loading) {
+    return (
+      <div className="pt-16">
+        <KadEmptyState icon={FileQuestion} message="Đang tải tự động hoá…" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[880px] mx-auto pb-10 space-y-4">
       <div className="flex items-center gap-2 flex-wrap">
         <h1 className="kad-title text-kad-text-strong mr-1">Tự động hoá</h1>
         <div className="flex-1" />
-        <KadButton
-          variant={allAutomationPaused ? "secondary" : "danger"}
-          onClick={handlePauseAll}
-        >
+        <KadButton variant={allAutomationPaused ? "secondary" : "danger"} onClick={handlePauseAll}>
           {allAutomationPaused ? "Bật lại tất cả" : "Tạm dừng tất cả"}
         </KadButton>
         <KadButton variant="primary" icon={Plus} onClick={() => navigate("/cong-viec/moi")}>
@@ -69,8 +152,8 @@ export function TuDongHoa() {
       </div>
 
       <p className="kad-caption text-kad-text-muted">
-        Trigger tạo ra việc; việc tự tạo vẫn vào Hàng đợi chờ anh xác nhận trước khi tiêu token. Chạy thử không tiêu
-        token.
+        Trigger tạo ra việc; việc tự tạo vẫn vào Hàng đợi chờ anh xác nhận trước khi tiêu token.
+        Chạy thử không tiêu token.
       </p>
 
       {allAutomationPaused && (
@@ -86,7 +169,9 @@ export function TuDongHoa() {
       <KadCard>
         <KadCardHeader title={`Việc đang chờ điều kiện (${blocked.length})`} />
         {blocked.length === 0 ? (
-          <p className="kad-caption text-kad-text-faint py-2">Không có việc nào đang chờ điều kiện.</p>
+          <p className="kad-caption text-kad-text-faint py-2">
+            Không có việc nào đang chờ điều kiện.
+          </p>
         ) : (
           <div className="divide-y divide-kad-border">
             {blocked.map((t) => (
@@ -97,7 +182,7 @@ export function TuDongHoa() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => handleRelease(t.id)}
+                  onClick={() => handleRelease(t)}
                   className="kad-caption text-kad-accent hover:underline flex-shrink-0"
                 >
                   Gỡ điều kiện
@@ -110,19 +195,23 @@ export function TuDongHoa() {
 
       {/* Luật & lịch */}
       <KadCard>
-        <KadCardHeader title={`Luật & lịch (${automationRules.length})`} />
-        <div className="divide-y divide-kad-border">
-          {automationRules.map((rule) => (
-            <RuleRow
-              key={rule.id}
-              rule={rule}
-              paused={allAutomationPaused}
-              expanded={expanded === rule.id}
-              onToggleExpand={() => setExpanded((cur) => (cur === rule.id ? null : rule.id))}
-              onToggle={() => toggleRule(rule.id)}
-            />
-          ))}
-        </div>
+        <KadCardHeader title={`Luật & lịch (${rules.length})`} />
+        {rules.length === 0 ? (
+          <p className="kad-caption text-kad-text-faint py-2">Chưa có luật tự động nào.</p>
+        ) : (
+          <div className="divide-y divide-kad-border">
+            {rules.map((rule) => (
+              <RuleRow
+                key={rule.id}
+                rule={rule}
+                paused={allAutomationPaused}
+                expanded={expanded === rule.id}
+                onToggleExpand={() => setExpanded((cur) => (cur === rule.id ? null : rule.id))}
+                onToggle={() => handleToggleRule(rule)}
+              />
+            ))}
+          </div>
+        )}
       </KadCard>
     </div>
   );
@@ -161,7 +250,9 @@ function RuleRow({
           )}
           <span className="flex-1 min-w-0">
             <span className="kad-body text-kad-text-strong truncate block">{rule.name}</span>
-            <span className="kad-caption text-kad-text-muted truncate block">{rule.trigger.label}</span>
+            <span className="kad-caption text-kad-text-muted truncate block">
+              {rule.trigger.label}
+            </span>
           </span>
         </button>
 
@@ -220,8 +311,13 @@ function RuleRow({
                   const fm = FIRE_META[f.result];
                   return (
                     <div key={f.id} className="flex items-center gap-2 kad-caption">
-                      <span className="text-kad-text-faint w-10 flex-shrink-0">{fireDate(f.firedAt)}</span>
-                      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: fm.color }} />
+                      <span className="text-kad-text-faint w-10 flex-shrink-0">
+                        {fireDate(f.firedAt)}
+                      </span>
+                      <span
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                        style={{ background: fm.color }}
+                      />
                       <span className="flex-shrink-0" style={{ color: fm.color }}>
                         {fm.label}
                       </span>

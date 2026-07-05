@@ -33,6 +33,16 @@ router.post("/", (req, res) => {
     working_dir: b.working_dir,
     workflow_id: b.workflow_id,
   });
+  // [spec/ui/07 §1] Names declared attached at Giao việc time (composer has no
+  // real file picker yet — see repo/task-attachments.js). No message exists
+  // yet at task-creation time, so message_id is null on these rows.
+  if (Array.isArray(b.attachment_names) && b.attachment_names.length) {
+    repo.attachments.createMany({
+      task_id: task.id,
+      working_dir: b.working_dir,
+      names: b.attachment_names.slice(0, 20).map(String),
+    });
+  }
   emitDept(department_id, "kad.task.status", { task_id: task.id, status: task.status });
   res.status(201).json(task);
 });
@@ -105,6 +115,51 @@ router.get("/:id/timeline", (req, res) => {
   const task = repo.tasks.getTask(req.params.id);
   if (!task) return err(res, "ENOTFOUND", "task not found", 404);
   res.json(repo.tasks.getTimeline(req.params.id));
+});
+
+router.get("/:id/attachments", (req, res) => {
+  res.json(repo.attachments.listByTask(req.params.id));
+});
+
+// spec/ui/09 §1 "Khi điều kiện" — task tạo ở 'blocked' + task_dependencies,
+// KHÔNG vào chat intake. Chỉ create/read ở đây; đánh giá điều kiện thật (khi
+// nguồn hoàn thành/được duyệt) là Phase 3's evaluate_rules worker.
+router.post("/:id/dependencies", (req, res) => {
+  const task = repo.tasks.getTask(req.params.id);
+  if (!task) return err(res, "ENOTFOUND", "task not found", 404);
+  const b = req.body || {};
+  if (!["dep_task_done", "dep_artifact_approved", "all_deps_done"].includes(b.release_condition)) {
+    return err(res, "EBADCONDITION", "invalid release_condition");
+  }
+  if (!b.depends_on_task_id && !b.depends_on_artifact_type) {
+    return err(res, "EBADSOURCE", "depends_on_task_id or depends_on_artifact_type is required");
+  }
+  let dep;
+  repo.tx(() => {
+    dep = repo.dependencies.createDependency({
+      task_id: task.id,
+      depends_on_task_id: b.depends_on_task_id,
+      depends_on_artifact_type: b.depends_on_artifact_type,
+      release_condition: b.release_condition,
+    });
+    repo.tasks.updateTask(task.id, { status: "blocked", activation: "dependency" });
+    repo.audit({
+      department_id: task.department_id,
+      task_id: task.id,
+      action: "dependency_created",
+      actor_type: "human",
+      actor_id: "human",
+      target_type: "task_dependency",
+      target_id: dep.id,
+      details: { depends_on_task_id: b.depends_on_task_id, release_condition: b.release_condition },
+    });
+  });
+  emitDept(task.department_id, "kad.task.status", { task_id: task.id, status: "blocked" });
+  res.status(201).json(dep);
+});
+
+router.get("/:id/dependencies", (req, res) => {
+  res.json(repo.dependencies.listByTask(req.params.id));
 });
 
 router.get("/:id/delegations", (req, res) => {

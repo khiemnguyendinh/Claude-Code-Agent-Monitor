@@ -10,6 +10,8 @@ const approvalsRouter = require("./approvals");
 const artifactsRouter = require("./artifacts");
 const miscRouter = require("./misc");
 const internalRouter = require("./internal");
+const dependenciesRouter = require("./dependencies");
+const automationRulesRouter = require("./automation-rules");
 
 const router = express.Router();
 router.use("/tasks", tasksRouter);
@@ -17,6 +19,8 @@ router.use("/approvals", approvalsRouter);
 router.use("/internal", internalRouter);
 router.use("/", artifactsRouter); // /artifacts, /runs
 router.use("/", miscRouter); // /agents, /reports, /notifications, /audit
+router.use("/", dependenciesRouter); // /dependencies/:depId
+router.use("/", automationRulesRouter); // /automation-rules, /automation/*
 
 let started = false;
 

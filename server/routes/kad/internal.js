@@ -148,7 +148,7 @@ router.post("/propose-brief", (req, res) => {
     deliverable: b.deliverable,
     workflowName: b.workflow_name,
     workingDir: c.task.working_dir || null,
-    attachmentCount: 0, // [GAP spec 07 §1] task_attachments not yet implemented
+    attachmentCount: repo.attachments.countByTask(c.task.id),
     dueLabel: b.due_label,
     frameworkLabel: b.framework_label || undefined,
     assumption: b.assumption || undefined,

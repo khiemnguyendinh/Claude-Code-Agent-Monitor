@@ -6,19 +6,44 @@
  * spec/ui/09 (chốt 2026-07-04): tích hợp control "Khi nào bắt đầu?" ngay trong
  * composer — Ngay / Khi điều kiện (task_dependencies) / Theo lịch
  * (automation_rules schedule). auto-task vẫn cần người duyệt trước khi tiêu
- * token; ở mockup, điều kiện/lịch điều hướng sang trang Tự động hoá.
+ * token.
+ *
+ * Wired to the real Phase 1/2c backend via the shared api-client.ts (no mock
+ * store). "Ngay" hands off task creation to TraoDoiCongViec's fresh-flow
+ * effect (unchanged there except it now also receives workingDir/attachments/
+ * workflowId — see that file); "Khi điều kiện" and "Theo lịch" create the
+ * task_dependencies row / automation_rules row directly from here since they
+ * never enter the chat screen.
  */
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { DEMO_ATTACHMENT_NAMES, DEPENDENCY_SOURCES, WORKFLOW_QUICKSTARTS } from "../mockData";
-import { useKadStore } from "../store";
+import { kadApi } from "../api-client";
+import type { KadWorkflowSummary } from "../api-client";
 import { useKadToast } from "../components/Toast";
 import { TaskComposer, type TaskComposerHandle } from "../components/TaskComposer";
-import type { AutomationRule, ScheduleFrequency, WorkflowDefinition } from "../types";
+import type { ScheduleFrequency } from "../types";
 
 const HERO_STEPS = ["Mô tả việc", "Trợ lý làm rõ", "Chốt brief", "Thực thi & báo cáo"];
 const DIR_OPTIONS = ["kstudy-rd/K3", "kstudy-rd/content", "Chọn thư mục khác…"];
 const FREEFORM_ID = "wf-freeform";
+
+// [spec 07 §5] Demo file đính kèm — composer chưa có picker file thật (xem
+// components/TaskComposer.tsx), bấm 📎 lần lượt gắn tên demo vào pending row.
+const DEMO_ATTACHMENT_NAMES = [
+  "Khung-chuong-trinh-K3.xlsx",
+  "Tai-lieu-tham-khao-AI-Agent.pdf",
+  "Feedback-hoc-vien-K2.docx",
+];
+
+// "Việc tự do" không phải một workflow_definitions thật — là lựa chọn
+// "không chọn quy trình nào" (spec 07 §1). Không lấy từ API để tránh bịa row.
+const FREEFORM_CARD: KadWorkflowSummary = {
+  id: FREEFORM_ID,
+  name: "Việc tự do",
+  description: "Trợ lý tự lập kế hoạch sau khi làm rõ",
+  examplePrompt: "",
+  triggerKeywords: [],
+};
 
 type Activation = "now" | "dependency" | "schedule";
 const ACTIVATIONS: { id: Activation; label: string }[] = [
@@ -38,7 +63,12 @@ const FREQS: { id: ScheduleFrequency; label: string }[] = [
 ];
 const WEEKDAYS = ["Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"];
 
-function scheduleLabel(freq: ScheduleFrequency, time: string, weekday: string, day: string): string {
+function scheduleLabel(
+  freq: ScheduleFrequency,
+  time: string,
+  weekday: string,
+  day: string
+): string {
   switch (freq) {
     case "once":
       return `Một lần vào ngày ${day || "1"} lúc ${time}`;
@@ -51,8 +81,13 @@ function scheduleLabel(freq: ScheduleFrequency, time: string, weekday: string, d
   }
 }
 
+function newClientId(): string {
+  return typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `fresh-${Math.trunc(performance.now() * 1000)}`;
+}
+
 export function CongViecMoi() {
-  const { addTask, addRule, automationRules } = useKadStore();
   const showToast = useKadToast();
   const navigate = useNavigate();
   const [value, setValue] = useState("");
@@ -60,7 +95,29 @@ export function CongViecMoi() {
   const [attachments, setAttachments] = useState<string[]>([]);
   const [workingDir, setWorkingDir] = useState(DIR_OPTIONS[0]!);
   const [attachCycle, setAttachCycle] = useState(0);
+  const [submitting, setSubmitting] = useState(false);
   const composerRef = useRef<TaskComposerHandle>(null);
+
+  const [workflows, setWorkflows] = useState<KadWorkflowSummary[]>([]);
+  const [depSources, setDepSources] = useState<{ id: string; title: string }[]>([]);
+  const [activeRuleCount, setActiveRuleCount] = useState(0);
+
+  useEffect(() => {
+    kadApi.workflows
+      .list()
+      .then(setWorkflows)
+      .catch(() => setWorkflows([]));
+    kadApi.tasks
+      .list({ limit: 100 })
+      .then((rows) => setDepSources(rows.map((t) => ({ id: t.id, title: t.title }))))
+      .catch(() => setDepSources([]));
+    kadApi.automationRules
+      .list()
+      .then((rules) => setActiveRuleCount(rules.filter((r) => r.enabled).length))
+      .catch(() => setActiveRuleCount(0));
+  }, []);
+
+  const quickstarts = useMemo(() => [...workflows, FREEFORM_CARD], [workflows]);
 
   // [spec 07 §1] gợi ý tối đa 3 chip khi gõ ≥15 ký tự và chưa chọn workflow.
   const suggestions = useMemo(() => {
@@ -68,23 +125,21 @@ export function CongViecMoi() {
     const q = value.trim();
     if (q.length < 15) return [];
     const lower = q.toLowerCase();
-    return WORKFLOW_QUICKSTARTS.filter((wf) => wf.triggerKeywords?.some((k) => lower.includes(k))).slice(0, 3);
-  }, [value, selectedWfId]);
+    return workflows.filter((wf) => wf.triggerKeywords.some((k) => lower.includes(k))).slice(0, 3);
+  }, [value, selectedWfId, workflows]);
 
   // spec/ui/09 — Khi nào bắt đầu?
   const [activation, setActivation] = useState<Activation>("now");
-  const [depSource, setDepSource] = useState(DEPENDENCY_SOURCES[0]!);
+  const [depSourceId, setDepSourceId] = useState("");
   const [depCondition, setDepCondition] = useState("approved");
   const [schedFreq, setSchedFreq] = useState<ScheduleFrequency>("weekly");
   const [schedTime, setSchedTime] = useState("07:00");
   const [schedWeekday, setSchedWeekday] = useState(WEEKDAYS[0]!);
   const [schedDay, setSchedDay] = useState("1");
 
-  const activeRuleCount = automationRules.filter((r) => r.enabled).length;
-
-  const handlePickCard = (wf: WorkflowDefinition) => {
+  const handlePickCard = (wf: KadWorkflowSummary) => {
     setSelectedWfId(wf.id);
-    setValue(wf.examplePrompt ?? "");
+    setValue(wf.examplePrompt);
     composerRef.current?.focus();
   };
 
@@ -98,21 +153,51 @@ export function CongViecMoi() {
     setAttachments((prev) => prev.filter((n) => n !== name));
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const text = value.trim();
-    if (!text) return;
+    if (!text || submitting) return;
     const resolvedDir = workingDir.startsWith("Chọn") ? DIR_OPTIONS[0]! : workingDir;
+    const workflowIdForApi =
+      selectedWfId && selectedWfId !== FREEFORM_ID ? selectedWfId : undefined;
 
     // spec/ui/09 §1 — Khi điều kiện: task tạo ở 'blocked' + điều kiện, không vào chat intake.
     if (activation === "dependency") {
-      const condLabel = depCondition === "approved" ? "được duyệt" : "hoàn thành";
-      const startCondition = `Khi "${depSource}" ${condLabel}`;
-      addTask({ title: text, workingDir: resolvedDir, attachmentNames: attachments, startCondition });
-      showToast({
-        message: `Đã đặt điều kiện. Việc sẽ vào Hàng đợi khi "${depSource}" ${condLabel}, rồi chờ anh xác nhận.`,
-        tone: "success",
-      });
-      navigate("/cong-viec/tu-dong-hoa");
+      // depSourceId only changes once the user touches the <select>; the
+      // first option is shown (and implicitly selected) before that (line
+      // ~314), so fall back to it here too or a same-title-as-shown submit
+      // would silently no-op.
+      const source = depSources.find((s) => s.id === (depSourceId || depSources[0]?.id));
+      if (!source) {
+        showToast({ message: "Chọn việc/khoá làm điều kiện.", tone: "warning" });
+        return;
+      }
+      setSubmitting(true);
+      try {
+        const task = await kadApi.tasks.create({
+          title: text,
+          working_dir: resolvedDir,
+          workflow_id: workflowIdForApi,
+          attachment_names: attachments,
+        });
+        await kadApi.dependencies.create(task.id, {
+          depends_on_task_id: source.id,
+          release_condition:
+            depCondition === "approved" ? "dep_artifact_approved" : "dep_task_done",
+        });
+        const condLabel = depCondition === "approved" ? "được duyệt" : "hoàn thành";
+        showToast({
+          message: `Đã đặt điều kiện. Việc sẽ vào Hàng đợi khi "${source.title}" ${condLabel}, rồi chờ anh xác nhận.`,
+          tone: "success",
+        });
+        navigate("/cong-viec/tu-dong-hoa");
+      } catch (e) {
+        showToast({
+          message: e instanceof Error ? e.message : "Có lỗi xảy ra, thử lại.",
+          tone: "warning",
+        });
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
@@ -120,32 +205,52 @@ export function CongViecMoi() {
     if (activation === "schedule") {
       const label = scheduleLabel(schedFreq, schedTime, schedWeekday, schedDay);
       const shortTitle = text.length > 42 ? `${text.slice(0, 42)}…` : text;
-      const rule: AutomationRule = {
-        id: `rule-new-${Date.now()}`,
-        name: shortTitle,
-        trigger: { type: "schedule", label },
-        actionType: "create_task",
-        actionLabel: `Tạo việc: ${shortTitle}`,
-        approvalRequired: true,
-        enabled: true,
-        lastFiredAtLabel: null,
-        fireCount: 0,
-        dryRun30d: `Theo lịch: ${label}`,
-        fires: [],
-      };
-      addRule(rule);
-      showToast({
-        message: `Đã đặt lịch — ${label}. Việc tạo ra sẽ chờ anh xác nhận trước khi chạy.`,
-        tone: "success",
-      });
-      navigate("/cong-viec/tu-dong-hoa");
+      setSubmitting(true);
+      try {
+        await kadApi.automationRules.create({
+          name: shortTitle,
+          trigger_type: "schedule",
+          trigger_config: {
+            freq: schedFreq,
+            time: schedTime,
+            weekday: schedWeekday,
+            day: schedDay,
+            label,
+          },
+          action_type: "create_task",
+          action_config: {
+            brief: text,
+            working_dir: resolvedDir,
+            workflow_id: workflowIdForApi ?? null,
+          },
+          approval_required: true,
+        });
+        showToast({
+          message: `Đã đặt lịch — ${label}. Việc tạo ra sẽ chờ anh xác nhận trước khi chạy.`,
+          tone: "success",
+        });
+        navigate("/cong-viec/tu-dong-hoa");
+      } catch (e) {
+        showToast({
+          message: e instanceof Error ? e.message : "Có lỗi xảy ra, thử lại.",
+          tone: "warning",
+        });
+      } finally {
+        setSubmitting(false);
+      }
       return;
     }
 
-    // Ngay — hành vi hiện tại (spec 07): tạo task, vào chat intake → brief.
-    const id = addTask({ title: text, workingDir: resolvedDir, attachmentNames: attachments });
-    navigate(`/cong-viec/${id}`, {
-      state: { fresh: true, description: text, attachments, workflowId: selectedWfId },
+    // Ngay — tạo task thật ở TraoDoiCongViec's fresh-flow effect (routeId ở
+    // đây chỉ là placeholder cho URL, bị thay bằng id thật ngay sau khi tạo).
+    navigate(`/cong-viec/${newClientId()}`, {
+      state: {
+        fresh: true,
+        description: text,
+        attachments,
+        workflowId: workflowIdForApi,
+        workingDir: resolvedDir,
+      },
     });
   };
 
@@ -153,7 +258,8 @@ export function CongViecMoi() {
     <div className="max-w-[720px] mx-auto pt-8 pb-10">
       <h1 className="kad-display text-kad-text-strong text-center">Giao việc cho đội AI</h1>
       <p className="kad-body text-kad-text-muted text-center max-w-[520px] mx-auto mt-2 mb-8">
-        Mô tả việc như nói với nhân viên. Trợ lý vận hành sẽ hỏi làm rõ, chốt brief với anh rồi mới bắt tay thực thi.
+        Mô tả việc như nói với nhân viên. Trợ lý vận hành sẽ hỏi làm rõ, chốt brief với anh rồi mới
+        bắt tay thực thi.
       </p>
 
       <HowRow />
@@ -171,6 +277,7 @@ export function CongViecMoi() {
         attachments={attachments}
         onAttach={handleAttach}
         onRemoveAttachment={handleRemoveAttachment}
+        disabled={submitting}
         autoFocus
       />
 
@@ -180,7 +287,7 @@ export function CongViecMoi() {
           {suggestions.map((wf) => (
             <SuggestChip
               key={wf.id}
-              label={wf.displayName}
+              label={wf.name}
               active={selectedWfId === wf.id}
               onClick={() => setSelectedWfId(wf.id)}
             />
@@ -244,8 +351,22 @@ export function CongViecMoi() {
         {activation === "dependency" && (
           <div className="flex items-center gap-2 flex-wrap mt-2.5 pl-1">
             <span className="kad-caption text-kad-text-muted">Bắt đầu khi</span>
-            <SelectInline value={depSource} onChange={setDepSource} options={DEPENDENCY_SOURCES} />
-            <SelectInline value={depCondition} onChange={setDepCondition} options={DEP_CONDITIONS} />
+            {depSources.length > 0 ? (
+              <SelectInline
+                value={depSourceId || depSources[0]!.id}
+                onChange={setDepSourceId}
+                options={depSources.map((s) => [s.id, s.title] as [string, string])}
+              />
+            ) : (
+              <span className="kad-caption text-kad-text-faint">
+                Chưa có việc nào để chọn làm điều kiện
+              </span>
+            )}
+            <SelectInline
+              value={depCondition}
+              onChange={setDepCondition}
+              options={DEP_CONDITIONS}
+            />
           </div>
         )}
 
@@ -256,7 +377,9 @@ export function CongViecMoi() {
               onChange={(v) => setSchedFreq(v as ScheduleFrequency)}
               options={FREQS.map((f) => [f.id, f.label] as [string, string])}
             />
-            {schedFreq === "weekly" && <SelectInline value={schedWeekday} onChange={setSchedWeekday} options={WEEKDAYS} />}
+            {schedFreq === "weekly" && (
+              <SelectInline value={schedWeekday} onChange={setSchedWeekday} options={WEEKDAYS} />
+            )}
             {(schedFreq === "monthly" || schedFreq === "once") && (
               <label className="kad-caption text-kad-text-muted flex items-center gap-1.5">
                 ngày
@@ -289,14 +412,14 @@ export function CongViecMoi() {
 
       <p className="kad-overline text-kad-text-muted mt-7 mb-2.5">Bắt đầu nhanh theo loại việc</p>
       <div className="grid grid-cols-3 gap-3">
-        {WORKFLOW_QUICKSTARTS.map((wf) => (
+        {quickstarts.map((wf) => (
           <button
             key={wf.id}
             type="button"
             onClick={() => handlePickCard(wf)}
             className="text-left rounded-xl bg-kad-surface hover:bg-kad-surface-2 transition-colors p-3.5"
           >
-            <p className="kad-label text-kad-text-strong mb-1.5">{wf.displayName}</p>
+            <p className="kad-label text-kad-text-strong mb-1.5">{wf.name}</p>
             <p className="kad-caption text-kad-text-faint">{wf.description}</p>
           </button>
         ))}
@@ -333,7 +456,15 @@ function SelectInline({
   );
 }
 
-function SuggestChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+function SuggestChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
@@ -362,7 +493,9 @@ function HowRow() {
             </span>
             <span className="kad-label text-kad-text-strong truncate">{label}</span>
           </div>
-          {i < HERO_STEPS.length - 1 && <span className="flex-shrink-0 text-kad-text-faint kad-body">→</span>}
+          {i < HERO_STEPS.length - 1 && (
+            <span className="flex-shrink-0 text-kad-text-faint kad-body">→</span>
+          )}
         </div>
       ))}
     </div>

@@ -77,6 +77,10 @@ interface RouterFreshState {
   fresh?: boolean;
   description?: string;
   attachments?: string[];
+  // [Phase 2c "Giao việc"] carried from CongViecMoi.tsx's composer — see the
+  // fresh-flow create call below.
+  workingDir?: string;
+  workflowId?: string;
 }
 
 export function TraoDoiCongViec() {
@@ -91,6 +95,8 @@ export function TraoDoiCongViec() {
       fresh={Boolean(state?.fresh)}
       freshDescription={state?.description}
       freshAttachments={state?.attachments ?? []}
+      freshWorkingDir={state?.workingDir}
+      freshWorkflowId={state?.workflowId}
     />
   );
 }
@@ -158,11 +164,15 @@ function TraoDoiCongViecInner({
   fresh,
   freshDescription,
   freshAttachments,
+  freshWorkingDir,
+  freshWorkflowId,
 }: {
   routeId: string;
   fresh: boolean;
   freshDescription?: string;
   freshAttachments?: string[];
+  freshWorkingDir?: string;
+  freshWorkflowId?: string;
 }) {
   const navigate = useNavigate();
   const { openPeek } = usePeek();
@@ -209,7 +219,12 @@ function TraoDoiCongViecInner({
       try {
         if (fresh) {
           const description = freshDescription ?? "";
-          const created = await kadApi.tasks.create({ title: description });
+          const created = await kadApi.tasks.create({
+            title: description,
+            working_dir: freshWorkingDir,
+            workflow_id: freshWorkflowId,
+            attachment_names: freshAttachments,
+          });
           realId = created.id;
           unsubscribe = subscribeKadScope(taskScope(realId), (ev) => handleWsEvent(ev));
           let content = description;
