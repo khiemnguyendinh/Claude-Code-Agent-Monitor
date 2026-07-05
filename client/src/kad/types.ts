@@ -233,6 +233,9 @@ export interface ReportPayload {
   needsDecision?: string[];
   blocker?: string;
   cost: { duration: string; tokens: string; vnd: string; agentName: string };
+  // Real wiring only (api-client.ts) — raw numbers behind the formatted `cost`
+  // strings above, for cost-to-date aggregation without re-parsing display text.
+  costRaw?: { durationSeconds: number; tokens: number; vnd: number };
   decision?: { status: "approved" | "needs_changes"; at: string; reason?: string } | null;
 }
 

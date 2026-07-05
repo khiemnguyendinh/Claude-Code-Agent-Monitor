@@ -8,14 +8,16 @@
 const express = require("express");
 const repo = require("../../lib/kad/repo");
 const webSearch = require("../../lib/kad/web-search");
+const cost = require("../../lib/kad/cost");
 const { requireInternalToken } = require("../../lib/kad/internal-auth");
-const { emitTask } = require("../../lib/kad/events");
+const { emitTask, emitDept } = require("../../lib/kad/events");
 
 const router = express.Router();
 router.use(requireInternalToken);
 router.use(express.json({ limit: "2mb" }));
 
-const bad = (res, code, message, status = 400) => res.status(status).json({ error: { code, message } });
+const bad = (res, code, message, status = 400) =>
+  res.status(status).json({ error: { code, message } });
 
 // Resolve run context (task + agent) from headers; verify against DB.
 function ctx(req, res) {
@@ -50,12 +52,136 @@ router.post("/plan-task", (req, res) => {
   if (!plan) return bad(res, "EBADPLAN", "plan is required");
   let approval;
   repo.tx(() => {
-    repo.tasks.addMessage({ task_id: c.task.id, sender_type: "agent", sender_id: c.agent.id, content: plan, message_type: "status" });
-    approval = repo.approvals.createApproval({ task_id: c.task.id, requested_by: c.agent.id, approval_type: "plan", title: `Kế hoạch: ${c.task.title}`, description: plan.slice(0, 500), sla_reminder_hours: 24 });
-    repo.audit({ department_id: c.task.department_id, task_id: c.task.id, agent_id: c.agent.id, action: "approval_requested", actor_type: "agent", actor_id: c.agent.id, target_type: "approval", target_id: approval.id, details: { approval_type: "plan" } });
+    repo.tasks.addMessage({
+      task_id: c.task.id,
+      sender_type: "agent",
+      sender_id: c.agent.id,
+      content: plan,
+      message_type: "status",
+    });
+    approval = repo.approvals.createApproval({
+      task_id: c.task.id,
+      requested_by: c.agent.id,
+      approval_type: "plan",
+      title: `Kế hoạch: ${c.task.title}`,
+      description: plan.slice(0, 500),
+      sla_reminder_hours: 24,
+    });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "approval_requested",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "approval",
+      target_id: approval.id,
+      details: { approval_type: "plan" },
+    });
   });
   emitTask(c.task.id, "kad.approval.created", approval);
-  res.json({ approval_id: approval.id, status: "pending", instruction: "Kế hoạch đã gửi trưởng phòng duyệt. Hãy KẾT THÚC lượt và chờ quyết định." });
+  emitDept(c.task.department_id, "kad.approval.created", approval); // Tổng quan inbox (spec/ui/02 §6) is department-scoped
+  res.json({
+    approval_id: approval.id,
+    status: "pending",
+    instruction: "Kế hoạch đã gửi trưởng phòng duyệt. Hãy KẾT THÚC lượt và chờ quyết định.",
+  });
+});
+
+// kad_ask_intake — main only (spec 07 §2). One question per call, ≤4 quick-reply
+// options; the human's reply is an ordinary chat message that resumes this same
+// turn (tasks.js POST /:id/messages routes replies to resumeTaskTurn once a run
+// already exists). Does not create an approval row — just posts the message and
+// ends the turn (system prompt instructs the agent to stop after calling it).
+router.post("/ask-intake", (req, res) => {
+  const c = ctx(req, res);
+  if (!c) return;
+  if (c.agent.agent_type !== "main")
+    return bad(res, "EPERM", "only main agent may ask intake questions", 403);
+  const b = req.body || {};
+  const question = (b.question || "").trim();
+  if (!question) return bad(res, "EBADQUESTION", "question is required");
+  const options = Array.isArray(b.options) ? b.options.slice(0, 4).map(String) : undefined;
+  let msg;
+  repo.tx(() => {
+    msg = repo.tasks.addMessage({
+      task_id: c.task.id,
+      sender_type: "agent",
+      sender_id: c.agent.id,
+      content: question,
+      message_type: "intake_question",
+      metadata: options ? { options } : undefined,
+    });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "intake_asked",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "message",
+      target_id: msg.id,
+      details: { question },
+    });
+  });
+  emitTask(c.task.id, "kad.message.created", msg);
+  res.json({
+    message_id: msg.id,
+    instruction: "Đã hỏi trưởng phòng. Hãy KẾT THÚC lượt ngay và chờ câu trả lời.",
+  });
+});
+
+// kad_propose_brief — main only (spec 07 §3). Summarizes intake into a Brief
+// Card the human must [Chốt & giao] before execution starts. Also persists to
+// tasks.brief (draft) so the brief survives even if the message list is trimmed.
+router.post("/propose-brief", (req, res) => {
+  const c = ctx(req, res);
+  if (!c) return;
+  if (c.agent.agent_type !== "main")
+    return bad(res, "EPERM", "only main agent may propose a brief", 403);
+  const b = req.body || {};
+  const required = ["goal", "deliverable", "workflow_name", "due_label"];
+  const missing = required.filter((k) => !b[k]);
+  if (missing.length) return bad(res, "EBADBRIEF", `missing fields: ${missing.join(", ")}`);
+  const brief = {
+    goal: b.goal,
+    deliverable: b.deliverable,
+    workflowName: b.workflow_name,
+    workingDir: c.task.working_dir || null,
+    attachmentCount: 0, // [GAP spec 07 §1] task_attachments not yet implemented
+    dueLabel: b.due_label,
+    frameworkLabel: b.framework_label || undefined,
+    assumption: b.assumption || undefined,
+    decidedAt: null,
+  };
+  let msg;
+  repo.tx(() => {
+    msg = repo.tasks.addMessage({
+      task_id: c.task.id,
+      sender_type: "agent",
+      sender_id: c.agent.id,
+      content: "Brief — chờ anh chốt",
+      message_type: "brief",
+      metadata: { brief },
+    });
+    repo.tasks.updateTask(c.task.id, { brief });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "brief_proposed",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "message",
+      target_id: msg.id,
+      details: { workflow_name: b.workflow_name },
+    });
+  });
+  emitTask(c.task.id, "kad.message.created", msg);
+  res.json({
+    message_id: msg.id,
+    instruction: "Đã gửi brief chờ trưởng phòng chốt. Hãy KẾT THÚC lượt ngay.",
+  });
 });
 
 // kad_request_approval — main + sub(sensitive). Generic approval, turn ends.
@@ -66,11 +192,35 @@ router.post("/request-approval", (req, res) => {
   const type = b.approval_type || "artifact";
   let approval;
   repo.tx(() => {
-    approval = repo.approvals.createApproval({ task_id: c.task.id, requested_by: c.agent.id, approval_type: type, sensitivity_subtype: b.sensitivity_subtype, title: b.title || `Duyệt: ${c.task.title}`, description: b.description, artifact_id: b.artifact_id, sla_reminder_hours: 24 });
-    repo.audit({ department_id: c.task.department_id, task_id: c.task.id, agent_id: c.agent.id, action: "approval_requested", actor_type: "agent", actor_id: c.agent.id, target_type: "approval", target_id: approval.id, details: { approval_type: type } });
+    approval = repo.approvals.createApproval({
+      task_id: c.task.id,
+      requested_by: c.agent.id,
+      approval_type: type,
+      sensitivity_subtype: b.sensitivity_subtype,
+      title: b.title || `Duyệt: ${c.task.title}`,
+      description: b.description,
+      artifact_id: b.artifact_id,
+      sla_reminder_hours: 24,
+    });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "approval_requested",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "approval",
+      target_id: approval.id,
+      details: { approval_type: type },
+    });
   });
   emitTask(c.task.id, "kad.approval.created", approval);
-  res.json({ approval_id: approval.id, status: "pending", instruction: "Đã gửi duyệt. Hãy KẾT THÚC lượt và chờ quyết định." });
+  emitDept(c.task.department_id, "kad.approval.created", approval);
+  res.json({
+    approval_id: approval.id,
+    status: "pending",
+    instruction: "Đã gửi duyệt. Hãy KẾT THÚC lượt và chờ quyết định.",
+  });
 });
 
 // kad_create_delegation — main only, AND requires an approved plan (block enforced here).
@@ -82,17 +232,45 @@ router.post("/create-delegation", (req, res) => {
     return bad(res, "EPLANUNAPPROVED", "kế hoạch chưa được duyệt — không thể giao việc", 403);
   }
   const b = req.body || {};
-  const to = b.to_agent && (repo.catalog.getAgentByName(c.task.department_id, b.to_agent) || repo.catalog.getAgent(b.to_agent));
+  const to =
+    b.to_agent &&
+    (repo.catalog.getAgentByName(c.task.department_id, b.to_agent) ||
+      repo.catalog.getAgent(b.to_agent));
   if (!to) return bad(res, "EBADAGENT", "to_agent not found");
-  if (to.status !== "active") return bad(res, "EAGENTINACTIVE", `agent ${to.name} chưa active`, 409);
+  if (to.status !== "active")
+    return bad(res, "EAGENTINACTIVE", `agent ${to.name} chưa active`, 409);
   let deleg;
   repo.tx(() => {
-    deleg = repo.delegations.createDelegation({ task_id: c.task.id, from_agent_id: c.agent.id, to_agent_id: to.id, instruction: b.instruction || c.task.title, input_artifact_ids: b.input_artifact_ids || [] });
-    repo.audit({ department_id: c.task.department_id, task_id: c.task.id, agent_id: c.agent.id, action: "delegation_created", actor_type: "agent", actor_id: c.agent.id, target_type: "delegation", target_id: deleg.id, details: { to: to.name } });
+    deleg = repo.delegations.createDelegation({
+      task_id: c.task.id,
+      from_agent_id: c.agent.id,
+      to_agent_id: to.id,
+      instruction: b.instruction || c.task.title,
+      input_artifact_ids: b.input_artifact_ids || [],
+    });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "delegation_created",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "delegation",
+      target_id: deleg.id,
+      details: { to: to.name },
+    });
   });
-  repo.jobs.enqueue({ kind: "start_delegation", payload: { delegation_id: deleg.id }, dedupKey: `deleg:${deleg.id}` });
+  repo.jobs.enqueue({
+    kind: "start_delegation",
+    payload: { delegation_id: deleg.id },
+    dedupKey: `deleg:${deleg.id}`,
+  });
   emitTask(c.task.id, "kad.delegation.status", deleg);
-  res.json({ delegation_id: deleg.id, status: "pending", instruction: "Đã giao việc. Kết thúc lượt; kết quả sẽ báo lại ở lượt sau." });
+  res.json({
+    delegation_id: deleg.id,
+    status: "pending",
+    instruction: "Đã giao việc. Kết thúc lượt; kết quả sẽ báo lại ở lượt sau.",
+  });
 });
 
 router.get("/delegation-result", (req, res) => {
@@ -110,13 +288,38 @@ router.post("/save-artifact", (req, res) => {
   const c = ctx(req, res);
   if (!c) return;
   const b = req.body || {};
-  if (!b.artifact_type || !b.title) return bad(res, "EBADARTIFACT", "artifact_type and title required");
+  if (!b.artifact_type || !b.title)
+    return bad(res, "EBADARTIFACT", "artifact_type and title required");
   let art;
   repo.tx(() => {
-    art = repo.artifacts.createArtifact({ task_id: c.task.id, agent_id: c.agent.id, artifact_type: b.artifact_type, title: b.title, content: b.content, parent_artifact_id: b.parent_artifact_id, template_version_id: b.template_version_id, status: "draft" });
-    repo.audit({ department_id: c.task.department_id, task_id: c.task.id, agent_id: c.agent.id, action: "artifact_created", actor_type: "agent", actor_id: c.agent.id, target_type: "artifact", target_id: art.id, details: { type: b.artifact_type } });
+    art = repo.artifacts.createArtifact({
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      artifact_type: b.artifact_type,
+      title: b.title,
+      content: b.content,
+      parent_artifact_id: b.parent_artifact_id,
+      template_version_id: b.template_version_id,
+      status: "draft",
+    });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "artifact_created",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "artifact",
+      target_id: art.id,
+      details: { type: b.artifact_type },
+    });
   });
-  emitTask(c.task.id, "kad.artifact.created", { artifact_id: art.id, task_id: c.task.id, type: art.artifact_type, version: art.version });
+  emitTask(c.task.id, "kad.artifact.created", {
+    artifact_id: art.id,
+    task_id: c.task.id,
+    type: art.artifact_type,
+    version: art.version,
+  });
   res.json({ artifact_id: art.id });
 });
 
@@ -124,23 +327,38 @@ router.post("/save-artifact", (req, res) => {
 router.get("/org-context", (req, res) => {
   const c = ctx(req, res);
   if (!c) return;
-  if (!c.agent.permissions.read_org_context) return bad(res, "EPERM", "no read_org_context permission", 403);
+  if (!c.agent.permissions.read_org_context)
+    return bad(res, "EPERM", "no read_org_context permission", 403);
   const dept = repo.catalog.getDepartment(c.task.department_id);
   const org = repo.catalog.getCurrentOrgContext(dept && dept.org_id);
   if (!org) return bad(res, "ENOCONTEXT", "no approved org context", 404);
   const section = req.query.section;
-  res.json({ version: org.version, data: section && org.data[section] !== undefined ? { [section]: org.data[section] } : org.data });
+  res.json({
+    version: org.version,
+    data: section && org.data[section] !== undefined ? { [section]: org.data[section] } : org.data,
+  });
 });
 
 // kad_read_template — permission gated + usage logged.
 router.get("/template", (req, res) => {
   const c = ctx(req, res);
   if (!c) return;
-  if (!c.agent.permissions.read_templates) return bad(res, "EPERM", "no read_templates permission", 403);
+  if (!c.agent.permissions.read_templates)
+    return bad(res, "EPERM", "no read_templates permission", 403);
   const found = repo.catalog.getApprovedTemplateByType(c.task.department_id, req.query.type);
   if (!found) return bad(res, "ENOTEMPLATE", "no approved template of that type", 404);
-  repo.catalog.logTemplateUsage({ template_id: found.template.id, template_version_id: found.version.id, task_id: c.task.id, agent_id: c.agent.id });
-  res.json({ template_type: found.template.template_type, name: found.template.name, content: found.version.content, version: found.version.version });
+  repo.catalog.logTemplateUsage({
+    template_id: found.template.id,
+    template_version_id: found.version.id,
+    task_id: c.task.id,
+    agent_id: c.agent.id,
+  });
+  res.json({
+    template_type: found.template.template_type,
+    name: found.template.name,
+    content: found.version.content,
+    version: found.version.version,
+  });
 });
 
 // kad_report_progress — any agent → status message.
@@ -149,9 +367,91 @@ router.post("/report-progress", (req, res) => {
   if (!c) return;
   const content = (req.body && req.body.content) || "";
   if (!content) return bad(res, "EBADCONTENT", "content required");
-  const msg = repo.tasks.addMessage({ task_id: c.task.id, sender_type: "agent", sender_id: c.agent.id, content, message_type: "status" });
+  const msg = repo.tasks.addMessage({
+    task_id: c.task.id,
+    sender_type: "agent",
+    sender_id: c.agent.id,
+    content,
+    message_type: "status",
+  });
   emitTask(c.task.id, "kad.message.created", msg);
   res.json({ ok: true, message_id: msg.id });
+});
+
+// kad_present_report — main only (spec 07 §4). Structured Report Card instead of
+// wall-of-text: bumps the referenced artifacts to 'review', computes a real
+// round-cost from task_runs since the last checkpoint (brief lock, or the prior
+// report), and parks the task at waiting_human for the human's decision
+// (POST /tasks/:id/report/:messageId/decide).
+router.post("/present-report", (req, res) => {
+  const c = ctx(req, res);
+  if (!c) return;
+  if (c.agent.agent_type !== "main")
+    return bad(res, "EPERM", "only main agent may present a report", 403);
+  const b = req.body || {};
+  const summary = (b.summary || "").trim();
+  const artifactIds = Array.isArray(b.artifact_ids) ? b.artifact_ids : [];
+  if (!summary) return bad(res, "EBADREPORT", "summary is required");
+  if (!artifactIds.length)
+    return bad(res, "EBADREPORT", "artifact_ids is required (from kad_save_artifact)");
+  const artifacts = artifactIds.map((id) => repo.artifacts.getArtifact(id)).filter(Boolean);
+  if (!artifacts.length) return bad(res, "EBADARTIFACT", "no valid artifact_ids");
+
+  const priorReports = repo.tasks
+    .listMessages(c.task.id)
+    .filter((m) => m.message_type === "report");
+  const version = priorReports.length + 1;
+  const since = priorReports.length
+    ? priorReports[priorReports.length - 1].created_at
+    : (c.task.brief && c.task.brief.decidedAt) || c.task.created_at;
+  const round = cost.estimateRoundCost(c.task.id, since);
+
+  const report = {
+    version,
+    summary,
+    artifacts: artifacts.map((a) => ({ artifactId: a.id, title: a.title })),
+    needsDecision:
+      Array.isArray(b.needs_decision) && b.needs_decision.length ? b.needs_decision : undefined,
+    blocker: b.blocker || undefined,
+    cost: {
+      durationSeconds: round.durationSeconds,
+      tokens: round.tokens,
+      vnd: round.vnd,
+      agentName: c.agent.display_name,
+    },
+    decision: null,
+  };
+  let msg;
+  repo.tx(() => {
+    for (const a of artifacts)
+      if (a.status === "draft") repo.artifacts.updateArtifact(a.id, { status: "review" });
+    msg = repo.tasks.addMessage({
+      task_id: c.task.id,
+      sender_type: "agent",
+      sender_id: c.agent.id,
+      content: `Báo cáo kết quả${version > 1 ? ` v${version}` : ""}`,
+      message_type: "report",
+      metadata: { report },
+    });
+    repo.tasks.updateTask(c.task.id, { status: "waiting_human" });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "report_presented",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "message",
+      target_id: msg.id,
+      details: { version, artifact_ids: artifactIds },
+    });
+  });
+  emitTask(c.task.id, "kad.message.created", msg);
+  emitTask(c.task.id, "kad.task.status", { task_id: c.task.id, status: "waiting_human" });
+  res.json({
+    message_id: msg.id,
+    instruction: "Đã gửi báo cáo chờ trưởng phòng duyệt. Hãy KẾT THÚC lượt ngay.",
+  });
 });
 
 // kad_web_search — researcher only. Real provider; logs audit.
@@ -161,11 +461,25 @@ router.post("/web-search", async (req, res) => {
   if (!c.agent.permissions.web_search) return bad(res, "EPERM", "no web_search permission", 403);
   const q = (req.body && req.body.query) || "";
   try {
-    const result = await webSearch.search(q, { maxResults: (req.body && req.body.max_results) || 5 });
-    repo.audit({ department_id: c.task.department_id, task_id: c.task.id, agent_id: c.agent.id, action: "web_search", actor_type: "agent", actor_id: c.agent.id, target_type: "task", target_id: c.task.id, details: { query: q, provider: result.provider, hits: result.results.length } });
+    const result = await webSearch.search(q, {
+      maxResults: (req.body && req.body.max_results) || 5,
+    });
+    repo.audit({
+      department_id: c.task.department_id,
+      task_id: c.task.id,
+      agent_id: c.agent.id,
+      action: "web_search",
+      actor_type: "agent",
+      actor_id: c.agent.id,
+      target_type: "task",
+      target_id: c.task.id,
+      details: { query: q, provider: result.provider, hits: result.results.length },
+    });
     res.json(result);
   } catch (e) {
-    res.status(e.code === "ENOWEBSEARCH" ? 503 : 400).json({ error: { code: e.code || "EWEBSEARCH", message: e.message } });
+    res
+      .status(e.code === "ENOWEBSEARCH" ? 503 : 400)
+      .json({ error: { code: e.code || "EWEBSEARCH", message: e.message } });
   }
 });
 

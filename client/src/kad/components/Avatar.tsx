@@ -40,18 +40,28 @@ export function AgentAvatar({
   size = 24,
   status,
   helper = false,
+  // Real-data override (screens wired to /api/kad/* pass the already-fetched
+  // agent's name/displayName instead of relying on the mockData registry).
+  displayNameOverride,
+  agentNameOverride,
 }: {
   agentId: string;
   size?: AvatarSize;
   status?: DotStatus;
   helper?: boolean;
+  displayNameOverride?: string;
+  agentNameOverride?: string;
 }) {
-  const agent = findAgent(agentId);
-  const name = agent?.displayName ?? "?";
-  const hue = agentHue(agent?.name ?? agentId);
+  const agent = displayNameOverride ? null : findAgent(agentId);
+  const name = displayNameOverride ?? agent?.displayName ?? "?";
+  const hue = agentHue(agentNameOverride ?? agent?.name ?? agentId);
   const px = SIZE_PX[size];
   return (
-    <span className="relative inline-flex flex-shrink-0" style={{ width: px, height: px }} title={name}>
+    <span
+      className="relative inline-flex flex-shrink-0"
+      style={{ width: px, height: px }}
+      title={name}
+    >
       <span
         className={`flex items-center justify-center rounded-full font-semibold ${helper ? "border border-dashed" : ""}`}
         style={{
@@ -59,7 +69,7 @@ export function AgentAvatar({
           height: px,
           fontSize: px <= 20 ? 9 : px <= 28 ? 11 : 14,
           borderColor: helper ? hue : undefined,
-          ...agentTintStyle(agent?.name ?? agentId),
+          ...agentTintStyle(agentNameOverride ?? agent?.name ?? agentId),
         }}
       >
         {initialsFromName(name)}

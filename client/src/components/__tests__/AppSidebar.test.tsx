@@ -86,11 +86,12 @@ describe("AppSidebar", () => {
     const user = userEvent.setup();
     renderSidebar(true, true);
 
-    expect(screen.getByText("VI")).toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Switch to English" }));
+    // test-setup.ts forces "en" before every test, so the cycle (en -> zh -> vi) starts here.
+    expect(screen.getByText("EN")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Switch to Chinese" }));
 
     await waitFor(() => {
-      expect(screen.getByText("EN")).toBeInTheDocument();
+      expect(screen.getByText("中文")).toBeInTheDocument();
     });
   });
 });

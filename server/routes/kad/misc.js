@@ -6,7 +6,8 @@ const express = require("express");
 const repo = require("../../lib/kad/repo");
 
 const router = express.Router();
-const err = (res, code, message, status = 400) => res.status(status).json({ error: { code, message } });
+const err = (res, code, message, status = 400) =>
+  res.status(status).json({ error: { code, message } });
 
 function deptId(req) {
   if (req.query.department) return req.query.department;
@@ -23,6 +24,14 @@ router.get("/agents/:id", (req, res) => {
   const a = repo.catalog.getAgent(req.params.id);
   if (!a) return err(res, "ENOTFOUND", "agent not found", 404);
   res.json(a);
+});
+
+// Read-only — Pane A's stepper (spec/ui/05 §1) needs the step list a task's
+// workflow was created with.
+router.get("/workflows/:id", (req, res) => {
+  const wf = repo.catalog.getWorkflow(req.params.id);
+  if (!wf) return err(res, "ENOTFOUND", "workflow not found", 404);
+  res.json(wf);
 });
 
 // Trimmed overview shipped from Phase 2 (spec 03): tasks_by_status, pending
@@ -42,7 +51,12 @@ router.get("/reports/overview", (req, res) => {
 });
 
 router.get("/notifications", (req, res) => {
-  res.json(repo.notifications.listNotifications({ department_id: deptId(req), unread: req.query.unread === "1" }));
+  res.json(
+    repo.notifications.listNotifications({
+      department_id: deptId(req),
+      unread: req.query.unread === "1",
+    })
+  );
 });
 
 router.post("/notifications/:id/read", (req, res) => {
@@ -52,7 +66,15 @@ router.post("/notifications/:id/read", (req, res) => {
 });
 
 router.get("/audit", (req, res) => {
-  res.json(repo.listAudit({ task_id: req.query.task, agent_id: req.query.agent, action: req.query.action, from: req.query.from, to: req.query.to }));
+  res.json(
+    repo.listAudit({
+      task_id: req.query.task,
+      agent_id: req.query.agent,
+      action: req.query.action,
+      from: req.query.from,
+      to: req.query.to,
+    })
+  );
 });
 
 module.exports = router;

@@ -3,14 +3,35 @@
  */
 const { db, parseJson, audit, newId, nowIso } = require("./db");
 
-const TASK_COLS = ["blocked", "inbox", "triaged", "doing", "waiting_human", "review", "needs_changes", "done", "failed", "archived"];
+const TASK_COLS = [
+  "blocked",
+  "inbox",
+  "triaged",
+  "doing",
+  "waiting_human",
+  "review",
+  "needs_changes",
+  "done",
+  "failed",
+  "archived",
+];
 
 function hydrateTask(row) {
   if (!row) return null;
   return { ...row, brief: parseJson(row.brief, null) };
 }
 
-function createTask({ department_id, title, description, priority, channel, channel_actor_ref, working_dir, workflow_id, activation }) {
+function createTask({
+  department_id,
+  title,
+  description,
+  priority,
+  channel,
+  channel_actor_ref,
+  working_dir,
+  workflow_id,
+  activation,
+}) {
   const id = newId("task");
   const now = nowIso();
   db.prepare(
@@ -62,13 +83,30 @@ function listTasks({ status, department_id, limit = 100 } = {}) {
   if (status) (where.push("status=?"), args.push(status));
   if (department_id) (where.push("department_id=?"), args.push(department_id));
   args.push(Math.min(Number(limit) || 100, 500));
-  const sql = "SELECT * FROM tasks" + (where.length ? " WHERE " + where.join(" AND ") : "") + " ORDER BY created_at DESC LIMIT ?";
-  return db.prepare(sql).all(...args).map(hydrateTask);
+  const sql =
+    "SELECT * FROM tasks" +
+    (where.length ? " WHERE " + where.join(" AND ") : "") +
+    " ORDER BY created_at DESC LIMIT ?";
+  return db
+    .prepare(sql)
+    .all(...args)
+    .map(hydrateTask);
 }
 
 /** Update task status + optional fields; audits nothing by itself (callers audit the business action). */
 function updateTask(id, patch = {}) {
-  const allowed = ["status", "priority", "due_date", "assigned_agent_id", "workflow_id", "workflow_step", "brief", "org_context_version_id", "blueprint_version_id", "activation"];
+  const allowed = [
+    "status",
+    "priority",
+    "due_date",
+    "assigned_agent_id",
+    "workflow_id",
+    "workflow_step",
+    "brief",
+    "org_context_version_id",
+    "blueprint_version_id",
+    "activation",
+  ];
   const sets = [];
   const params = { id, now: nowIso() };
   for (const k of allowed) {
@@ -88,7 +126,16 @@ function hydrateMsg(row) {
   return row ? { ...row, metadata: parseJson(row.metadata, null) } : null;
 }
 
-function addMessage({ task_id, sender_type, sender_id, content, message_type, channel, channel_actor_ref, metadata }) {
+function addMessage({
+  task_id,
+  sender_type,
+  sender_id,
+  content,
+  message_type,
+  channel,
+  channel_actor_ref,
+  metadata,
+}) {
   const id = newId("msg");
   db.prepare(
     `INSERT INTO task_messages (id, task_id, sender_type, sender_id, channel, channel_actor_ref, content, message_type, metadata, created_at)
@@ -114,22 +161,58 @@ function getMessage(id) {
 
 function listMessages(task_id, { after } = {}) {
   const rows = after
-    ? db.prepare("SELECT * FROM task_messages WHERE task_id=? AND created_at>? ORDER BY created_at ASC").all(task_id, after)
-    : db.prepare("SELECT * FROM task_messages WHERE task_id=? ORDER BY created_at ASC").all(task_id);
+    ? db
+        .prepare(
+          "SELECT * FROM task_messages WHERE task_id=? AND created_at>? ORDER BY created_at ASC"
+        )
+        .all(task_id, after)
+    : db
+        .prepare("SELECT * FROM task_messages WHERE task_id=? ORDER BY created_at ASC")
+        .all(task_id);
   return rows.map(hydrateMsg);
+}
+
+/** Merge-patch a message's metadata JSON (e.g. brief.decidedAt, report.decision). */
+function updateMessageMetadata(id, metadataPatch) {
+  const existing = getMessage(id);
+  if (!existing) return null;
+  const merged = { ...(existing.metadata || {}), ...metadataPatch };
+  db.prepare("UPDATE task_messages SET metadata=@metadata WHERE id=@id").run({
+    id,
+    metadata: JSON.stringify(merged),
+  });
+  return getMessage(id);
+}
+
+/** Latest message of a given type for a task (e.g. undecided brief/report). */
+function latestMessageByType(task_id, message_type) {
+  const row = db
+    .prepare(
+      "SELECT * FROM task_messages WHERE task_id=? AND message_type=? ORDER BY created_at DESC LIMIT 1"
+    )
+    .get(task_id, message_type);
+  return hydrateMsg(row);
 }
 
 /** Unified, time-sorted timeline: messages + delegations + runs + approvals + artifacts. */
 function getTimeline(task_id) {
   const items = [];
   for (const m of listMessages(task_id)) items.push({ kind: "message", at: m.created_at, data: m });
-  for (const r of db.prepare("SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at ASC").all(task_id))
+  for (const r of db
+    .prepare("SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at ASC")
+    .all(task_id))
     items.push({ kind: "run", at: r.started_at || r.completed_at, data: r });
-  for (const d of db.prepare("SELECT * FROM task_delegations WHERE task_id=? ORDER BY created_at ASC").all(task_id))
+  for (const d of db
+    .prepare("SELECT * FROM task_delegations WHERE task_id=? ORDER BY created_at ASC")
+    .all(task_id))
     items.push({ kind: "delegation", at: d.created_at, data: d });
-  for (const a of db.prepare("SELECT * FROM approvals WHERE task_id=? ORDER BY created_at ASC").all(task_id))
+  for (const a of db
+    .prepare("SELECT * FROM approvals WHERE task_id=? ORDER BY created_at ASC")
+    .all(task_id))
     items.push({ kind: "approval", at: a.created_at, data: a });
-  for (const af of db.prepare("SELECT * FROM artifacts WHERE task_id=? ORDER BY created_at ASC").all(task_id))
+  for (const af of db
+    .prepare("SELECT * FROM artifacts WHERE task_id=? ORDER BY created_at ASC")
+    .all(task_id))
     items.push({ kind: "artifact", at: af.created_at, data: af });
   items.sort((x, y) => String(x.at || "").localeCompare(String(y.at || "")));
   return items;
@@ -145,5 +228,7 @@ module.exports = {
   addMessage,
   getMessage,
   listMessages,
+  updateMessageMetadata,
+  latestMessageByType,
   getTimeline,
 };
