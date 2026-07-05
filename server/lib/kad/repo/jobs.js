@@ -24,12 +24,51 @@ function enqueue({ kind, payload, runAfter, dedupKey, maxAttempts }) {
       )
       .get(dedupKey);
     if (existing) {
+      // A dedup_key groups DIFFERENT sequential business events on the same
+      // task (brief locked, then plan approved, then report decided), not
+      // just retries of the same one — each caller's own route already
+      // guards against re-firing the SAME event twice (409 on
+      // already-decided). So an existing row here is never a true duplicate
+      // of THIS payload; it is either not started yet (safe to just replace
+      // its payload with the newest intent) or already leased and actively
+      // running the OLD payload's turn right now.
+      if (existing.status === "pending") {
+        db.prepare(
+          `UPDATE kad_job_queue SET kind=@kind, payload_json=@payload, run_after=@run_after WHERE id=@id`
+        ).run({
+          id: existing.id,
+          kind,
+          payload: JSON.stringify(payload || {}),
+          run_after: runAfter || nowIso(),
+        });
+        if (process.env.KAD_JOBS_TRACE)
+          console.log(
+            `[jobs.enqueue TRACE] dedup=${dedupKey} PENDING hit job=${existing.id} — replaced with newest payload:`,
+            JSON.stringify(payload)
+          );
+        return getJob(existing.id);
+      }
+      // status === 'leased': a worker picked this row up and is actively
+      // running its OLD payload's turn RIGHT NOW — overwriting payload_json
+      // is safe (the worker already read its own snapshot before
+      // dispatching), but the row must not flip back to 'pending' out from
+      // under that live worker. Flag requeue_after_done instead: once the
+      // in-flight turn finishes, completeOrRequeue() reopens this job with
+      // the newest payload rather than marking it done and losing it. This
+      // was the confirmed root cause of KAD tasks getting permanently stuck
+      // after a plan/report approval decided the instant it rendered —
+      // faster than the prior turn's own process had exited and its
+      // resume_task job been marked done (scripts/kad-verify.mjs --s2 run11
+      // KAD_JOBS_TRACE evidence).
+      db.prepare(
+        `UPDATE kad_job_queue SET payload_json=@payload, requeue_after_done=1 WHERE id=@id`
+      ).run({ id: existing.id, payload: JSON.stringify(payload || {}) });
       if (process.env.KAD_JOBS_TRACE)
         console.log(
-          `[jobs.enqueue TRACE] dedup=${dedupKey} PRE-CHECK HIT existing=${existing.id} status=${existing.status} — returning as-is, NEW payload DISCARDED:`,
+          `[jobs.enqueue TRACE] dedup=${dedupKey} LEASED hit job=${existing.id} — payload superseded, flagged requeue_after_done:`,
           JSON.stringify(payload)
         );
-      return hydrate(existing);
+      return getJob(existing.id);
     }
   }
   const id = newId("job");
@@ -141,11 +180,49 @@ function complete(id) {
   db.prepare("UPDATE kad_job_queue SET status='done', lease_until=NULL WHERE id=?").run(id);
 }
 
+/**
+ * Complete a job UNLESS it was superseded by a newer dedup-key trigger while
+ * it was leased (enqueue()'s LEASED-hit branch) — in that case reopen it as
+ * 'pending' with the newest payload (already written in place) instead of
+ * marking it done and losing that payload forever. Callers that drive the
+ * durable job queue (job-queue.js sweep) should use this instead of
+ * complete() directly.
+ */
+function completeOrRequeue(id) {
+  const job = getJob(id);
+  if (!job) return;
+  if (job.requeue_after_done) {
+    db.prepare(
+      `UPDATE kad_job_queue
+       SET status='pending', requeue_after_done=0, attempts=0, lease_until=NULL, run_after=@now
+       WHERE id=@id`
+    ).run({ id, now: nowIso() });
+    if (process.env.KAD_JOBS_TRACE)
+      console.log(
+        `[jobs.completeOrRequeue TRACE] job=${id} was superseded mid-flight — requeued with newest payload instead of marking done`
+      );
+  } else {
+    complete(id);
+  }
+}
+
 /** Fail a job: requeue with backoff if attempts remain, else mark failed.
- * opts.permanent forces immediate 'failed' (malformed payload — retry is futile). */
+ * opts.permanent forces immediate 'failed' (malformed payload — retry is futile).
+ * If the job was superseded mid-flight (requeue_after_done), always requeue
+ * immediately with the newest payload regardless of this attempt's outcome —
+ * the stale payload's own retry budget is irrelevant once new instructions
+ * have already arrived for the same task. */
 function fail(id, errMsg, opts = {}) {
   const job = getJob(id);
   if (!job) return;
+  if (job.requeue_after_done) {
+    db.prepare(
+      `UPDATE kad_job_queue
+       SET status='pending', requeue_after_done=0, attempts=0, lease_until=NULL, run_after=@now, last_error=@e
+       WHERE id=@id`
+    ).run({ id, now: nowIso(), e: String(errMsg).slice(0, 500) });
+    return;
+  }
   if (opts.permanent || job.attempts >= job.max_attempts) {
     db.prepare(
       "UPDATE kad_job_queue SET status='failed', last_error=@e, lease_until=NULL WHERE id=@id"
@@ -165,4 +242,4 @@ function pendingCount() {
     .get().n;
 }
 
-module.exports = { enqueue, getJob, leaseDue, complete, fail, pendingCount };
+module.exports = { enqueue, getJob, leaseDue, complete, completeOrRequeue, fail, pendingCount };

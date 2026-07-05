@@ -64,7 +64,7 @@ async function sweep() {
     for (const job of jobs) {
       try {
         await runOne(job);
-        repo.jobs.complete(job.id);
+        repo.jobs.completeOrRequeue(job.id);
       } catch (err) {
         console.warn(`[kad-worker] job ${job.id} (${job.kind}) failed:`, err && err.message);
         // Permanent (malformed) errors won't fix on retry — fail immediately.

@@ -8,7 +8,18 @@ const repo = require("./repo");
 
 const DEFAULT_BUDGET = {
   daily_token_limit: 2000000,
-  per_task_token_limit: 500000,
+  // 500k was calibrated before Phase 2's turn-based (no-held-process) architecture
+  // shipped: every resume reconnects the MCP server fresh, and that reconnection
+  // consistently cache-misses the tool-schema portion of the prompt (~36-45k
+  // tokens/turn, confirmed live — identical system prompt + identical MCP config
+  // still misses on resume, whereas the same resume WITHOUT an MCP connection
+  // hits cache for free). A normal intake→brief→plan→delegate→report cycle is
+  // 6-10 turns, so real per-task usage lands around 1.3-1.7M tokens even for a
+  // well-behaved task — 500k tripped the breaker before ANY task could finish.
+  // This is inherent overhead of the spec-mandated per-turn fresh process, not a
+  // fixable bug; 2M keeps the breaker as a genuine runaway/loop guard instead of
+  // blocking normal completion.
+  per_task_token_limit: 2000000,
   monthly_cost_limit_usd: 200,
   max_concurrent_runs: 3,
   max_delegations_per_task: 8,
@@ -21,7 +32,10 @@ function budgetFor(department) {
 }
 
 function maxTurnsFor(department) {
-  return (department && department.settings && department.settings.max_turns_per_run) || DEFAULT_MAX_TURNS;
+  return (
+    (department && department.settings && department.settings.max_turns_per_run) ||
+    DEFAULT_MAX_TURNS
+  );
 }
 
 /** Extract a token total from a task_runs.tokens_used JSON blob. */
@@ -60,22 +74,38 @@ function check(taskId, { isDelegation = false } = {}) {
 
   const perTask = taskTokenUsage(taskId);
   if (perTask >= budget.per_task_token_limit) {
-    return { ok: false, reason: `per_task_token_limit reached (${perTask}/${budget.per_task_token_limit})`, maxTurns };
+    return {
+      ok: false,
+      reason: `per_task_token_limit reached (${perTask}/${budget.per_task_token_limit})`,
+      maxTurns,
+    };
   }
   if (dept) {
     const daily = deptTokenUsageToday(dept.id);
     if (daily >= budget.daily_token_limit) {
-      return { ok: false, reason: `daily_token_limit reached (${daily}/${budget.daily_token_limit})`, maxTurns };
+      return {
+        ok: false,
+        reason: `daily_token_limit reached (${daily}/${budget.daily_token_limit})`,
+        maxTurns,
+      };
     }
   }
   const active = repo.runs.countActive();
   if (active >= budget.max_concurrent_runs) {
-    return { ok: false, reason: `max_concurrent_runs reached (${active}/${budget.max_concurrent_runs})`, maxTurns };
+    return {
+      ok: false,
+      reason: `max_concurrent_runs reached (${active}/${budget.max_concurrent_runs})`,
+      maxTurns,
+    };
   }
   if (isDelegation) {
     const delegs = repo.delegations.countByTask(taskId);
     if (delegs >= budget.max_delegations_per_task) {
-      return { ok: false, reason: `max_delegations_per_task reached (${delegs}/${budget.max_delegations_per_task})`, maxTurns };
+      return {
+        ok: false,
+        reason: `max_delegations_per_task reached (${delegs}/${budget.max_delegations_per_task})`,
+        maxTurns,
+      };
     }
   }
   return { ok: true, maxTurns };
@@ -118,4 +148,12 @@ function trip(taskId, reason) {
   }
 }
 
-module.exports = { check, trip, budgetFor, maxTurnsFor, tokenTotal, taskTokenUsage, DEFAULT_BUDGET };
+module.exports = {
+  check,
+  trip,
+  budgetFor,
+  maxTurnsFor,
+  tokenTotal,
+  taskTokenUsage,
+  DEFAULT_BUDGET,
+};

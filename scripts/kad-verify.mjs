@@ -239,14 +239,22 @@ async function main() {
   // ---------- INFRA leg E: cost guardrail (circuit breaker) ----------
   const gTask = await api("POST", "/api/kad/tasks", { title: "Guardrail test — giao việc dài" });
   const gId = gTask.body.id;
-  // Record a completed run that exceeds the PER-TASK limit (500k) but stays under
-  // the department DAILY limit (2M), so this test doesn't poison the shared daily
-  // budget for the later engine task in the same department.
+  // Record a completed run that exceeds the PER-TASK limit (2M — raised from the
+  // original 500k, which a real intake→brief→plan cycle blows through in 2-3
+  // turns purely from per-resume MCP-reconnect cache misses, see guardrails.js).
+  // per_task_token_limit now equals daily_token_limit (both 2M), so a run big
+  // enough to trip the per-task check also counts fully toward the department's
+  // daily total — zeroed out right after the assertions below so it doesn't
+  // starve the later engine leg's own daily budget in the same department.
   const guardrails = require(path.join(ROOT, "server/lib/kad/guardrails"));
   const gr = repo.runs.createRun({ task_id: gId, agent_id: mainAgent.id, engine: "claude" });
-  repo.runs.updateRun(gr.id, { status: "completed", tokens_used: { total: 600_000 } });
+  repo.runs.updateRun(gr.id, { status: "completed", tokens_used: { total: 2_500_000 } });
   const gate = guardrails.check(gId);
-  check("guardrail check() blocks over-budget task", gate.ok === false, gate.reason || "");
+  check(
+    "guardrail check() blocks over-budget task",
+    gate.ok === false && /per_task_token_limit/.test(gate.reason || ""),
+    gate.reason || ""
+  );
   guardrails.trip(gId, gate.reason || "over budget");
   check(
     "SQL: task → waiting_human after trip",
@@ -261,6 +269,8 @@ async function main() {
     "SQL: budget_exceeded audit",
     one("SELECT COUNT(*) n FROM audit_log WHERE action='budget_exceeded' AND task_id=?", gId).n >= 1
   );
+  // Zero out the simulated run's tokens now that the block is proven — see comment above.
+  repo.runs.updateRun(gr.id, { tokens_used: { total: 0 } });
 
   // ---------- INFRA leg F: crash recovery (reconcile_runs) ----------
   const orch = require(path.join(ROOT, "server/lib/kad/orchestrator"));
@@ -438,6 +448,60 @@ async function main() {
   );
   const relock = await api("POST", `/api/kad/tasks/${briefTaskId}/brief/lock`, {});
   check("POST /brief/lock twice → 409", relock.status === 409, `got ${relock.status}`);
+
+  // ---------- Regression: resume_task dedup must not drop a superseding
+  // trigger while the prior one is still 'leased' (confirmed root cause of
+  // live S2 runs 7-11 getting permanently stuck after plan/report approval —
+  // an approval decided the instant it rendered, faster than the brief-lock
+  // resume's own turn had finished and been marked 'done'). ----------
+  {
+    const dedupKey = `resume:${briefTaskId}`;
+    const before = one(
+      "SELECT id, status, payload_json FROM kad_job_queue WHERE dedup_key=?",
+      dedupKey
+    );
+    check("race-repro: brief-lock resume job is pending pre-lease", before.status === "pending");
+    // Earlier infra legs (A-G) leave their own pending resume_task/start_delegation
+    // rows un-swept by design (comment above, line ~592) — leaseDue(1) would grab
+    // whichever is oldest, not necessarily THIS job. Flip this exact row the same
+    // way leaseDue() would, so the race below is deterministic.
+    repo.db
+      .prepare("UPDATE kad_job_queue SET status='leased', lease_until=@lease WHERE id=@id")
+      .run({ id: before.id, lease: new Date(Date.now() + 60000).toISOString() });
+    check(
+      "race-repro: leased pre-condition set",
+      one("SELECT status FROM kad_job_queue WHERE id=?", before.id).status === "leased"
+    );
+    const superseded = repo.jobs.enqueue({
+      kind: "resume_task",
+      payload: { task_id: briefTaskId, message: "SUPERSEDING — plan approved, proceed" },
+      dedupKey,
+    });
+    check(
+      "race-repro: same dedup key while leased → same row (no duplicate insert)",
+      one("SELECT COUNT(*) n FROM kad_job_queue WHERE dedup_key=?", dedupKey).n === 1
+    );
+    check(
+      "race-repro: new payload NOT discarded (was silently dropped before fix)",
+      superseded.payload.message === "SUPERSEDING — plan approved, proceed"
+    );
+    check(
+      "race-repro: requeue_after_done flagged while leased",
+      one("SELECT requeue_after_done FROM kad_job_queue WHERE id=?", before.id)
+        .requeue_after_done === 1
+    );
+    repo.jobs.completeOrRequeue(before.id); // simulate the in-flight (stale) turn finishing
+    const after = one(
+      "SELECT status, requeue_after_done, payload_json FROM kad_job_queue WHERE id=?",
+      before.id
+    );
+    check(
+      "race-repro: completeOrRequeue reopens as pending (not done) — payload preserved",
+      after.status === "pending" &&
+        after.requeue_after_done === 0 &&
+        JSON.parse(after.payload_json).message === "SUPERSEDING — plan approved, proceed"
+    );
+  }
 
   const briefArtifact = await internal("POST", "/save-artifact", {
     runCtx: ctxBrief,
