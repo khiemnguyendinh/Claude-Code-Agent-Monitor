@@ -11,7 +11,7 @@ Bối cảnh:
 Nhiệm vụ:
 Phân tích phản hồi trên và trả về kết quả dưới định dạng JSON hợp lệ, KHÔNG bao gồm bất kỳ text nào khác ngoài JSON. JSON phải có cấu trúc sau:
 {
-  "correction_category": "Tên danh mục phân loại lỗi (vd: brand_mismatch, formatting_error, logic_flaw, pedagogy_issue)",
+  "correction_category": "PHẢI là một trong các giá trị sau (không được dùng giá trị khác): missing_context, weak_instruction, wrong_flow, bad_role_split, brand_mismatch, pedagogical_error, factual_error, format_error",
   "severity": "minor | major | critical",
   "root_cause": "Phân tích nguyên nhân gốc rễ (1-2 câu)",
   "prevention": "Biện pháp phòng ngừa cho lần sau (1-2 câu)",

@@ -87,6 +87,9 @@ function sanitizeConfig(connectorType, input = {}) {
   };
 }
 
+const BLOCKED_HOSTNAME_RE =
+  /(^localhost$)|(^127\.)|(^0\.)|(^169\.254\.)|(^10\.)|(^192\.168\.)|(^172\.(1[6-9]|2\d|3[01])\.)|(\.local$)|(^\[?::1\]?$)/i;
+
 function assertHttps(value) {
   let url;
   try {
@@ -97,15 +100,16 @@ function assertHttps(value) {
   if (url.protocol !== "https:") {
     fail("EHTTPS_REQUIRED", "WordPress connector requires HTTPS", 400);
   }
+  if (BLOCKED_HOSTNAME_RE.test(url.hostname)) {
+    fail("EBADURL", "WordPress site URL may not target a local/private host", 400);
+  }
   return url;
 }
 
 function resolveWordPressAuth(connector) {
   const cfg = connector.config || {};
   const siteUrlEnv = cfg.site_url_env || WP_DEFAULTS.siteUrlEnv;
-  const siteUrl = (cfg.site_url || process.env[siteUrlEnv] || "")
-    .trim()
-    .replace(/\/+$/, "");
+  const siteUrl = (cfg.site_url || process.env[siteUrlEnv] || "").trim().replace(/\/+$/, "");
   const usernameEnv = cfg.username_env || WP_DEFAULTS.usernameEnv;
   const passwordEnv = cfg.app_password_env || WP_DEFAULTS.appPasswordEnv;
   const username = process.env[usernameEnv];
@@ -157,7 +161,9 @@ function normalizeContent(input = {}) {
     category_ids: Array.isArray(input.category_ids)
       ? input.category_ids.map(Number).filter(Number.isFinite)
       : undefined,
-    tag_ids: Array.isArray(input.tag_ids) ? input.tag_ids.map(Number).filter(Number.isFinite) : undefined,
+    tag_ids: Array.isArray(input.tag_ids)
+      ? input.tag_ids.map(Number).filter(Number.isFinite)
+      : undefined,
   };
 }
 
@@ -233,7 +239,8 @@ function notifyApprovalPending(task, approval) {
 
 function serializeAction(action) {
   const connector = action && repo.connectors.getConnector(action.connector_id);
-  const approval = action && action.approval_id ? repo.approvals.getApproval(action.approval_id) : null;
+  const approval =
+    action && action.approval_id ? repo.approvals.getApproval(action.approval_id) : null;
   const task = action && action.task_id ? repo.tasks.getTask(action.task_id) : null;
   return {
     ...action,
@@ -254,8 +261,7 @@ function createConnector({ department_id, connector_type, name, config }) {
       name: name || (type === "wordpress" ? "WordPress" : "Facebook Page"),
       config: clean,
       auth_status: type === "facebook_page" ? "configured" : "not_configured",
-      capabilities:
-        type === "wordpress" ? ["posts", "preview", "schedule"] : ["manual_handoff"],
+      capabilities: type === "wordpress" ? ["posts", "preview", "schedule"] : ["manual_handoff"],
       risk_level: type === "wordpress" ? "medium" : "high",
       status: "active",
     });
@@ -446,7 +452,11 @@ function assertPublishGate(action) {
       actor_id: "connector-gate",
       target_type: "connector_action",
       target_id: action.id,
-      details: { code: "EAPPROVAL_NOT_APPROVED", approval_id: approval.id, status: approval.status },
+      details: {
+        code: "EAPPROVAL_NOT_APPROVED",
+        approval_id: approval.id,
+        status: approval.status,
+      },
     });
     fail("EAPPROVAL_NOT_APPROVED", "publish blocked: approval is not approved", 409, {
       approval_id: approval.id,
@@ -479,7 +489,8 @@ async function publishWordPress(connector, content) {
     excerpt: content.excerpt || undefined,
     status: content.scheduled_at ? "future" : "publish",
     date: content.scheduled_at || undefined,
-    categories: content.category_ids && content.category_ids.length ? content.category_ids : undefined,
+    categories:
+      content.category_ids && content.category_ids.length ? content.category_ids : undefined,
     tags: content.tag_ids && content.tag_ids.length ? content.tag_ids : undefined,
   };
   const resp = await fetch(`${auth.siteUrl}/wp-json/wp/v2/posts`, {
@@ -532,12 +543,17 @@ async function executeAction(actionId, opts = {}) {
     fail("EACTION_NOT_EXECUTABLE", "only publish/schedule connector actions can execute", 409);
   }
   if (action.status === "completed") return serializeAction(action);
-  if (action.status === "executing") fail("EACTION_EXECUTING", "connector action is executing", 409);
+  if (action.status === "executing")
+    fail("EACTION_EXECUTING", "connector action is executing", 409);
+  if (opts.task_id && action.task_id !== opts.task_id) {
+    fail("EPERM", "connector action does not belong to this task", 403);
+  }
   assertPublishGate(action);
   const connector = repo.connectors.getConnector(action.connector_id);
   if (!connector || connector.status !== "active") {
     fail("ECONNECTOR_NOT_FOUND", "active connector not found", 404);
   }
+  if (opts.agent) ensureAgentCanPublish(opts.agent, connector.connector_type);
 
   repo.connectors.updateAction(action.id, { status: "executing" });
   action = repo.connectors.getAction(action.id);

@@ -354,10 +354,12 @@ async function main() {
     mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
     const listed = await rpc("tools/list", {});
     const toolNames = (listed.result.tools || []).map((t) => t.name);
-    // 13 = 12 Phase-1/2 tools + kad_flag_sensitivity (Phase 3B, spec 04 §2).
+    // 16 = 13 (Phase 1/2/3B, incl. kad_flag_sensitivity) + kad_read_org_context
+    // + kad_read_template (Phase 4) + kad_list_learning_notes (Phase 5) +
+    // kad_connector_draft + kad_connector_publish (Phase 6).
     check(
-      "MCP tools/list = 13 KAD tools (incl. kad_flag_sensitivity)",
-      toolNames.length === 13 && toolNames.includes("kad_flag_sensitivity"),
+      "MCP tools/list = 16 KAD tools (incl. kad_flag_sensitivity, connector tools)",
+      toolNames.length === 16 && toolNames.includes("kad_flag_sensitivity"),
       toolNames.join(",")
     );
     const planCall = await rpc("tools/call", {
@@ -1065,7 +1067,9 @@ async function runS2() {
 }
 
 async function runS4() {
-  console.log("\n=== KAD verify — Scenario S4 (Phase 4, wizard + knowledge/template versioning) ===\n");
+  console.log(
+    "\n=== KAD verify — Scenario S4 (Phase 4, wizard + knowledge/template versioning) ===\n"
+  );
   const TMP_DB4 = path.join(os.tmpdir(), `kad-verify-s4-${process.pid}.db`);
   for (const f of [TMP_DB4, TMP_DB4 + "-wal", TMP_DB4 + "-shm"])
     try {
@@ -1177,7 +1181,13 @@ async function runS4() {
     pedagogy_standards: "CDIO, KASH, Bloom taxonomy, hybrid learning.",
     responsible_human: "anh Khiêm",
     _org_chart_nodes: [
-      { id: "company", parent_id: null, name: "Học viện Kstudy", node_type: "company", sort_order: 0 },
+      {
+        id: "company",
+        parent_id: null,
+        name: "Học viện Kstudy",
+        node_type: "company",
+        sort_order: 0,
+      },
       { id: "rd", parent_id: "company", name: "Phòng R&D", node_type: "department", sort_order: 1 },
     ],
     _department: {
@@ -1203,8 +1213,11 @@ async function runS4() {
     "S4 SQL: dept rd + approved blueprint + active main/researcher",
     one("SELECT COUNT(*) n FROM departments WHERE slug='rd' AND status='active'").n === 1 &&
       one("SELECT COUNT(*) n FROM department_blueprints WHERE status='approved'").n === 1 &&
-      one("SELECT COUNT(*) n FROM agent_profiles WHERE name='main-agent-rd' AND status='active'").n === 1 &&
-      one("SELECT COUNT(*) n FROM agent_profiles WHERE name='sub-curriculum-researcher' AND status='active'").n === 1
+      one("SELECT COUNT(*) n FROM agent_profiles WHERE name='main-agent-rd' AND status='active'")
+        .n === 1 &&
+      one(
+        "SELECT COUNT(*) n FROM agent_profiles WHERE name='sub-curriculum-researcher' AND status='active'"
+      ).n === 1
   );
   check(
     "S4 SQL: 6 approved seed templates",
@@ -1213,9 +1226,14 @@ async function runS4() {
 
   const dept = repo.catalog.getDepartmentBySlug("rd");
   const mainAgent = repo.catalog.getMainAgent(dept.id);
-  const oldTask = await api("POST", "/api/kad/tasks", { title: "S4 task trước khi sửa brand voice" });
+  const oldTask = await api("POST", "/api/kad/tasks", {
+    title: "S4 task trước khi sửa brand voice",
+  });
   const v1 = one("SELECT id FROM organization_context_versions WHERE status='approved'").id;
-  check("S4: task before edit snapshots org context v1", oldTask.body.org_context_version_id === v1);
+  check(
+    "S4: task before edit snapshots org context v1",
+    oldTask.body.org_context_version_id === v1
+  );
 
   const current = await api("GET", "/api/kad/org-context/current");
   const changedData = {
@@ -1234,7 +1252,11 @@ async function runS4() {
     draftV2.status === 201 && draftV2.body.version === 2 && draftV2.body.status === "draft",
     `got ${draftV2.status}`
   );
-  const approvedV2 = await api("POST", `/api/kad/org-context/versions/${draftV2.body.id}/approve`, {});
+  const approvedV2 = await api(
+    "POST",
+    `/api/kad/org-context/versions/${draftV2.body.id}/approve`,
+    {}
+  );
   check(
     "S4: approve org context v2 archives v1",
     approvedV2.status === 200 &&
@@ -1250,7 +1272,8 @@ async function runS4() {
   );
   check(
     "S4: old task still points to v1",
-    one("SELECT org_context_version_id FROM tasks WHERE id=?", oldTask.body.id).org_context_version_id === v1
+    one("SELECT org_context_version_id FROM tasks WHERE id=?", oldTask.body.id)
+      .org_context_version_id === v1
   );
 
   const ctxMain = { run: "run-s4-main", task: newTask.body.id, agent: mainAgent.id };
@@ -1262,8 +1285,14 @@ async function runS4() {
       content: "# Artifact\nUses latest approved org context.",
     },
   });
-  const artifactOrg = one("SELECT org_context_version_id FROM artifacts WHERE id=?", artifact.body.artifact_id);
-  check("S4: artifact metadata writes org_context_version_id v2", artifactOrg.org_context_version_id === approvedV2.body.id);
+  const artifactOrg = one(
+    "SELECT org_context_version_id FROM artifacts WHERE id=?",
+    artifact.body.artifact_id
+  );
+  check(
+    "S4: artifact metadata writes org_context_version_id v2",
+    artifactOrg.org_context_version_id === approvedV2.body.id
+  );
 
   const tplDraft = await api("POST", "/api/kad/templates", {
     name: "S4 Custom Markdown",
@@ -1277,7 +1306,11 @@ async function runS4() {
     tplDraft.status === 201 && tplDraft.body.version.status === "draft",
     `got ${tplDraft.status}`
   );
-  const tplApproved = await api("POST", `/api/kad/templates/${tplDraft.body.version.id}/approve`, {});
+  const tplApproved = await api(
+    "POST",
+    `/api/kad/templates/${tplDraft.body.version.id}/approve`,
+    {}
+  );
   check(
     "S4: approve uploaded template",
     tplApproved.status === 200 && tplApproved.body.version.status === "approved"
@@ -1297,7 +1330,9 @@ async function runS4() {
     ).n === 1
   );
 
-  const currentBp = repo.orgContext.listBlueprints({ department_id: dept.id }).find((b) => b.status === "approved");
+  const currentBp = repo.orgContext
+    .listBlueprints({ department_id: dept.id })
+    .find((b) => b.status === "approved");
   const proposedBp = await api("POST", `/api/kad/blueprints/${currentBp.id}/propose`, {
     data: { ...currentBp.data, s4_note: "new blueprint proposal" },
     change_summary: "S4 blueprint proposal",
@@ -1327,7 +1362,10 @@ async function runS4() {
     content:
       "Từ dữ liệu wizard vừa thiết lập, lập kế hoạch nghiên cứu nhu cầu học AI Automation của chủ SME Việt Nam và gọi kad_plan_task.",
   });
-  check("S4.E0 POST /messages accepted + real run kicked", msg.status === 201 && msg.body.run_kicked === true);
+  check(
+    "S4.E0 POST /messages accepted + real run kicked",
+    msg.status === 201 && msg.body.run_kicked === true
+  );
   const t0 = Date.now();
   let planRow = null,
     run = null,
@@ -1359,7 +1397,10 @@ async function runS4() {
     if (intake) {
       answeredIntakeIds.add(intake.id);
       const options = intake.metadata && intake.metadata.options;
-      const answer = options && options.length ? options[0] : "Dùng chuẩn Kstudy, ưu tiên thực chiến và có nguồn.";
+      const answer =
+        options && options.length
+          ? options[0]
+          : "Dùng chuẩn Kstudy, ưu tiên thực chiến và có nguồn.";
       await api("POST", `/api/kad/tasks/${engineTask.body.id}/messages`, { content: answer });
       continue;
     }
@@ -1370,7 +1411,10 @@ async function runS4() {
   }
   if (briefLocked) check("S4.E0b live brief flow locked", true);
   if (engineBlocked) {
-    blocked("S4.E1 real Main Agent calls kad_plan_task", "spawned claude 401 — no standalone credential");
+    blocked(
+      "S4.E1 real Main Agent calls kad_plan_task",
+      "spawned claude 401 — no standalone credential"
+    );
   } else {
     check(
       "S4.E1 real Main Agent calls kad_plan_task after wizard",
@@ -1993,19 +2037,28 @@ async function runS5() {
   const ROOT = process.cwd();
   const TMP_DB5 = path.join(os.tmpdir(), `kad-verify-s5-${process.pid}.db`);
   for (const f of [TMP_DB5, TMP_DB5 + "-wal", TMP_DB5 + "-shm"])
-    try { fs.unlinkSync(f); } catch {}
+    try {
+      fs.unlinkSync(f);
+    } catch {}
   process.env.DASHBOARD_DB_PATH = TMP_DB5;
   process.env.KAD_WORKER_TICK_MS = "3600000"; // disable auto-sweep
 
-  let pass = 0, fail = 0;
+  let pass = 0,
+    fail = 0;
   const results = [];
   function check(name, cond, detail = "") {
-    if (cond) { pass++; results.push(`  ✅ ${name}`); }
-    else { fail++; results.push(`  ❌ ${name}${detail ? " — " + detail : ""}`); }
+    if (cond) {
+      pass++;
+      results.push(`  ✅ ${name}`);
+    } else {
+      fail++;
+      results.push(`  ❌ ${name}${detail ? " — " + detail : ""}`);
+    }
   }
 
   const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
-    env: process.env, encoding: "utf8"
+    env: process.env,
+    encoding: "utf8",
   });
   if (seed.status !== 0) throw new Error("seed failed");
 
@@ -2021,7 +2074,8 @@ async function runS5() {
 
   const api = async (method, p, body) => {
     const resp = await fetch(BASE + p, {
-      method, headers: { "content-type": "application/json" },
+      method,
+      headers: { "content-type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: resp.status, body: await resp.json().catch(() => ({})) };
@@ -2044,17 +2098,26 @@ async function runS5() {
 
   // Create mock artifact and approval
   const artId = repo.artifacts.createArtifact({
-    task_id: taskId, agent_id: mainAgent.id, artifact_type: "syllabus",
-    title: "Test artifact", content: "Sai brand Kstudy", status: "review"
+    task_id: taskId,
+    agent_id: mainAgent.id,
+    artifact_type: "syllabus",
+    title: "Test artifact",
+    content: "Sai brand Kstudy",
+    status: "review",
   }).id;
   const appr = repo.approvals.createApproval({
-    task_id: taskId, requested_by: mainAgent.id, approval_type: "artifact",
-    artifact_id: artId, title: "Duyệt artifact", description: "Sai brand Kstudy"
+    task_id: taskId,
+    requested_by: mainAgent.id,
+    approval_type: "artifact",
+    artifact_id: artId,
+    title: "Duyệt artifact",
+    description: "Sai brand Kstudy",
   });
 
   // 1. Human reject triggers analyze_learning_note async
-  const rej = await api("POST", `/api/kad/approvals/${appr.id}/decide`, { 
-    decision: "rejected", reason: "Sai brand voice trầm trọng" 
+  const rej = await api("POST", `/api/kad/approvals/${appr.id}/decide`, {
+    decision: "rejected",
+    reason: "Sai brand voice trầm trọng",
   });
   check("POST /approvals/:id/decide rejected", rej.status === 200);
 
@@ -2063,11 +2126,19 @@ async function runS5() {
   for (let i = 0; i < 40; i++) {
     note = one("SELECT * FROM learning_notes WHERE task_id=?", taskId);
     if (note) break;
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 1000));
   }
-  
-  check("Learning note created via Claude", !!note && note.change_status === "noted", note ? note.correction_category : "none");
-  check("Learning note parsed properly", note && note.root_cause !== "Sai brand voice trầm trọng", "Expected detailed analysis from LLM");
+
+  check(
+    "Learning note created via Claude",
+    !!note && note.change_status === "noted",
+    note ? note.correction_category : "none"
+  );
+  check(
+    "Learning note parsed properly",
+    note && note.root_cause !== "Sai brand voice trầm trọng",
+    "Expected detailed analysis from LLM"
+  );
 
   // 2. Pattern detection
   // Create 2 more mock notes in the same category manually to trigger pattern_detect
@@ -2077,7 +2148,7 @@ async function runS5() {
     trigger_type: "human_rejection",
     severity: "major",
     feedback_content: "Sai brand",
-    change_status: "noted"
+    change_status: "noted",
   });
   repo.learning.createNote({
     department_id: mainAgent.department_id,
@@ -2085,20 +2156,26 @@ async function runS5() {
     trigger_type: "human_rejection",
     severity: "major",
     feedback_content: "Lại sai brand",
-    change_status: "noted"
+    change_status: "noted",
   });
 
   repo.jobs.enqueue({
     kind: "pattern_detect",
     payload: { department_id: mainAgent.department_id, category: "brand_mismatch" },
-    dedupKey: "pattern_detect:test"
+    dedupKey: "pattern_detect:test",
   });
-  
+
   await worker.sweep(); // Process pattern_detect job
-  
+
   const patternNote = one("SELECT * FROM learning_notes WHERE trigger_type='pattern_detection'");
-  check("Pattern detection triggers and creates a note", !!patternNote && patternNote.change_status === "noted");
-  check("Pattern detection doesn't auto-propose", !!patternNote && patternNote.change_status === "noted");
+  check(
+    "Pattern detection triggers and creates a note",
+    !!patternNote && patternNote.change_status === "noted"
+  );
+  check(
+    "Pattern detection doesn't auto-propose",
+    !!patternNote && patternNote.change_status === "noted"
+  );
 
   // 3. MCP tool `kad_list_learning_notes`
   // The internal API `ctx(req, res)` expects `x-kad-task-id` etc. and internal auth
@@ -2106,19 +2183,26 @@ async function runS5() {
     "x-kad-internal-token": getInternalToken(),
     "x-kad-task-id": taskId,
     "x-kad-run-id": "mock-run",
-    "x-kad-agent-id": mainAgent.id
+    "x-kad-agent-id": mainAgent.id,
   };
   const mcpNotes2 = await fetch(BASE + "/api/kad/internal/learning-notes", {
-    headers: internalHeaders
+    headers: internalHeaders,
   });
   const mcpNotesBody = await mcpNotes2.json().catch(() => ({}));
-  check("MCP internal API returns notes", mcpNotes2.status === 200 && mcpNotesBody.notes && mcpNotesBody.notes.length > 0);
+  check(
+    "MCP internal API returns notes",
+    mcpNotes2.status === 200 && mcpNotesBody.notes && mcpNotesBody.notes.length > 0
+  );
 
   sdb5.close();
-  try { worker.stopWorker(); } catch {}
+  try {
+    worker.stopWorker();
+  } catch {}
   server.close();
   for (const f of [TMP_DB5, TMP_DB5 + "-wal", TMP_DB5 + "-shm"])
-    try { fs.unlinkSync(f); } catch {}
+    try {
+      fs.unlinkSync(f);
+    } catch {}
 
   console.log(results.join("\n"));
   console.log(`\n=== S5: ${pass} passed, ${fail} failed ===`);
@@ -2218,7 +2302,9 @@ async function runS6() {
     check(
       "S6.C1b connector stores env pointers, not raw app password",
       JSON.stringify(wpConn.body.config || {}).includes("KAD_WORDPRESS_APP_PASSWORD") &&
-        !JSON.stringify(wpConn.body.config || {}).includes(process.env.KAD_WORDPRESS_APP_PASSWORD || "__missing__")
+        !JSON.stringify(wpConn.body.config || {}).includes(
+          process.env.KAD_WORDPRESS_APP_PASSWORD || "__missing__"
+        )
     );
 
     const badSecret = await api("POST", "/api/kad/connectors", {
@@ -2259,13 +2345,18 @@ async function runS6() {
         excerpt: "KAD Phase 6 verify",
       },
     });
-    check("S6.D1 kad_connector_draft → pending approval", draft.status === 200 && draft.body.status === "pending");
+    check(
+      "S6.D1 kad_connector_draft → pending approval",
+      draft.status === 200 && draft.body.status === "pending"
+    );
     const approvalId = draft.body.approval_id;
     const actionId = draft.body.publish_action_id;
     check(
       "S6.D2 SQL: connector_draft artifact + draft/preview/publish actions",
-      one("SELECT COUNT(*) n FROM artifacts WHERE task_id=? AND artifact_type='connector_draft'", task.body.id).n ===
-        1 &&
+      one(
+        "SELECT COUNT(*) n FROM artifacts WHERE task_id=? AND artifact_type='connector_draft'",
+        task.body.id
+      ).n === 1 &&
         one("SELECT COUNT(*) n FROM connector_actions WHERE task_id=?", task.body.id).n >= 3
     );
     const approvalRow = one("SELECT * FROM approvals WHERE id=?", approvalId);
@@ -2296,7 +2387,10 @@ async function runS6() {
     const decision = await api("POST", `/api/kad/approvals/${approvalId}/decide`, {
       decision: "approved",
     });
-    check("S6.G2 approve publish approval", decision.status === 200 && decision.body.approval.status === "approved");
+    check(
+      "S6.G2 approve publish approval",
+      decision.status === 200 && decision.body.approval.status === "approved"
+    );
     const preCooldown = await api("POST", `/api/kad/connector-actions/${actionId}/execute`, {});
     check(
       "S6.G3 publish before cooldown BLOCKED with ECOOLDOWN_ACTIVE",
@@ -2433,7 +2527,9 @@ async function runS6() {
       );
     }
 
-    const auditActions = sql("SELECT action FROM audit_log ORDER BY created_at ASC").map((r) => r.action);
+    const auditActions = sql("SELECT action FROM audit_log ORDER BY created_at ASC").map(
+      (r) => r.action
+    );
     check(
       "S6.A1 audit includes connector lifecycle",
       ["connector_created", "connector_publish_requested", "connector_publish_blocked"].every((a) =>
@@ -2460,7 +2556,10 @@ async function runS6() {
  */
 async function runS65() {
   const TMP = path.join(os.tmpdir(), `kad-verify-s65-${process.pid}.db`);
-  for (const f of [TMP, TMP + "-wal", TMP + "-shm"]) try { fs.unlinkSync(f); } catch {}
+  for (const f of [TMP, TMP + "-wal", TMP + "-shm"])
+    try {
+      fs.unlinkSync(f);
+    } catch {}
   process.env.DASHBOARD_DB_PATH = TMP;
   process.env.DASHBOARD_TOKEN = "";
   process.env.KAD_WORKER_TICK_MS = "3600000"; // deterministic — only manual sweep() runs the worker
@@ -2496,8 +2595,11 @@ async function runS65() {
     return { status: resp.status, body: await resp.json().catch(() => ({})) };
   };
   const autoTasks = (ruleId) =>
-    repo.db.prepare("SELECT * FROM tasks WHERE origin_rule_id=? ORDER BY created_at ASC").all(ruleId);
-  const fires = async (ruleId) => (await api("GET", `/api/kad/automation-rules/${ruleId}/fires`)).body;
+    repo.db
+      .prepare("SELECT * FROM tasks WHERE origin_rule_id=? ORDER BY created_at ASC")
+      .all(ruleId);
+  const fires = async (ruleId) =>
+    (await api("GET", `/api/kad/automation-rules/${ruleId}/fires`)).body;
 
   const { default: WebSocketClient } = await import("ws");
   let ws;
@@ -2515,7 +2617,11 @@ async function runS65() {
       });
       ws.on("error", reject);
     });
-    ws.on("message", (raw) => { try { received.push(JSON.parse(raw.toString())); } catch {} });
+    ws.on("message", (raw) => {
+      try {
+        received.push(JSON.parse(raw.toString()));
+      } catch {}
+    });
 
     // 1) Event rule: task done + tag course-01 → tạo việc môn kế (approval_required).
     const ruleResp = await api("POST", "/api/kad/automation-rules", {
@@ -2539,15 +2645,24 @@ async function runS65() {
     check("S65.3 auto-task created by event rule", created.length === 1, `got ${created.length}`);
     const auto = created[0];
     check("S65.4 auto-task in 'inbox' (chờ xác nhận)", auto && auto.status === "inbox");
-    check("S65.5 auto-task carries origin_rule_id + depth=1",
-      auto && auto.origin_rule_id === ruleId && auto.automation_depth === 1);
-    check("S65.6 auto-task has NO run yet (chưa spawn agent)",
-      repo.runs.listByTask(auto.id).length === 0);
+    check(
+      "S65.5 auto-task carries origin_rule_id + depth=1",
+      auto && auto.origin_rule_id === ruleId && auto.automation_depth === 1
+    );
+    check(
+      "S65.6 auto-task has NO run yet (chưa spawn agent)",
+      repo.runs.listByTask(auto.id).length === 0
+    );
     const f1 = await fires(ruleId);
-    check("S65.7 fire recorded result=created", f1.some((f) => f.result === "created"));
-    check("S65.8 kad.rule.fired broadcast (WS)",
+    check(
+      "S65.7 fire recorded result=created",
+      f1.some((f) => f.result === "created")
+    );
+    check(
+      "S65.8 kad.rule.fired broadcast (WS)",
       received.some((m) => m.type === "kad.rule.fired" && m.data && m.data.rule_id === ruleId),
-      `types: ${JSON.stringify(received.map((m) => m.type))}`);
+      `types: ${JSON.stringify(received.map((m) => m.type))}`
+    );
 
     // 2) Confirm GUARD: a NON-auto task is not confirmable (409). The positive
     // confirm→spawn path reuses startTaskTurn, already proven by S1/S2 with the
@@ -2561,13 +2676,19 @@ async function runS65() {
     await sleep(120);
     check("S65.10 no 2nd auto-task (loop blocked)", autoTasks(ruleId).length === 1);
     const f2 = await fires(ruleId);
-    check("S65.11 fire recorded result=blocked_loop", f2.some((f) => f.result === "blocked_loop"));
+    check(
+      "S65.11 fire recorded result=blocked_loop",
+      f2.some((f) => f.result === "blocked_loop")
+    );
 
     // 4) Budget guard: dept over daily budget → skipped_budget, KHÔNG tạo việc.
     const dept = repo.catalog.getDepartment(deptId);
     const origSettings = dept.settings;
     repo.db.prepare("UPDATE departments SET settings=? WHERE id=?").run(
-      JSON.stringify({ ...origSettings, budget: { ...(origSettings.budget || {}), daily_token_limit: 0 } }),
+      JSON.stringify({
+        ...origSettings,
+        budget: { ...(origSettings.budget || {}), daily_token_limit: 0 },
+      }),
       deptId
     );
     const src2 = await api("POST", "/api/kad/tasks", { title: "Syllabus course-01 môn 02" });
@@ -2576,13 +2697,18 @@ async function runS65() {
     await sleep(120);
     check("S65.12 budget over → no new auto-task", autoTasks(ruleId).length === 1);
     const f3 = await fires(ruleId);
-    check("S65.13 fire recorded result=skipped_budget", f3.some((f) => f.result === "skipped_budget"));
+    check(
+      "S65.13 fire recorded result=skipped_budget",
+      f3.some((f) => f.result === "skipped_budget")
+    );
     const notifs = await api("GET", "/api/kad/notifications");
-    check("S65.14 budget_warning notification emitted",
-      notifs.body.some((n) => n.kind === "budget_warning"));
-    repo.db.prepare("UPDATE departments SET settings=? WHERE id=?").run(
-      JSON.stringify(origSettings), deptId
-    ); // restore
+    check(
+      "S65.14 budget_warning notification emitted",
+      notifs.body.some((n) => n.kind === "budget_warning")
+    );
+    repo.db
+      .prepare("UPDATE departments SET settings=? WHERE id=?")
+      .run(JSON.stringify(origSettings), deptId); // restore
 
     // 5) Dry-run: renders past matching events, creates NOTHING.
     const tasksBefore = repo.db.prepare("SELECT COUNT(*) n FROM tasks").get().n;
@@ -2603,23 +2729,34 @@ async function runS65() {
       action_config: {},
     });
     const schedId = schedResp.body.id;
-    repo.db.prepare("UPDATE automation_rules SET created_at=? WHERE id=?").run(
-      new Date(Date.now() - 2 * 864e5).toISOString(), schedId
-    );
+    repo.db
+      .prepare("UPDATE automation_rules SET created_at=? WHERE id=?")
+      .run(new Date(Date.now() - 2 * 864e5).toISOString(), schedId);
     await jobQueue.sweep(); // sweepSchedules() fires the due briefing
     await sleep(120);
     const schedFires = await fires(schedId);
     const briefFire = schedFires.find((f) => f.result === "created");
-    check("S65.17 schedule fired → briefing task created", !!briefFire && !!briefFire.action_task_id);
+    check(
+      "S65.17 schedule fired → briefing task created",
+      !!briefFire && !!briefFire.action_task_id
+    );
     if (briefFire) {
       const brief = repo.tasks.getTask(briefFire.action_task_id);
-      check("S65.18 briefing task done + activation=schedule",
-        brief && brief.status === "done" && brief.activation === "schedule");
+      check(
+        "S65.18 briefing task done + activation=schedule",
+        brief && brief.status === "done" && brief.activation === "schedule"
+      );
       const arts = repo.artifacts.listArtifacts({ task_id: briefFire.action_task_id });
-      check("S65.19 briefing artifact produced", arts.length >= 1 && /Giao ban/.test(arts[0].title));
+      check(
+        "S65.19 briefing artifact produced",
+        arts.length >= 1 && /Giao ban/.test(arts[0].title)
+      );
     }
     const briefNotif = (await api("GET", "/api/kad/notifications")).body;
-    check("S65.20 daily_briefing notification", briefNotif.some((n) => n.kind === "daily_briefing"));
+    check(
+      "S65.20 daily_briefing notification",
+      briefNotif.some((n) => n.kind === "daily_briefing")
+    );
 
     // 7) Kill switch: pause-all → no rule fires until re-enabled.
     await api("POST", "/api/kad/automation/pause-all", { department_id: deptId, paused: true });
@@ -2629,7 +2766,10 @@ async function runS65() {
     await jobQueue.sweep();
     await sleep(120);
     check("S65.21 paused → no new auto-task", autoTasks(ruleId).length === 1);
-    check("S65.22 paused → no new fire recorded", (await fires(ruleId)).length === firesBeforePause);
+    check(
+      "S65.22 paused → no new fire recorded",
+      (await fires(ruleId)).length === firesBeforePause
+    );
     const pausedState = await api("GET", `/api/kad/automation/paused?department=${deptId}`);
     check("S65.23 pause-all state readable", pausedState.body.paused === true);
     await api("POST", "/api/kad/automation/pause-all", { department_id: deptId, paused: false });
@@ -2647,9 +2787,15 @@ async function runS65() {
     await jobQueue.sweep(); // evaluateMetricRules() runs in the tick
     await sleep(120);
     const mFires = await fires(mrule.body.id);
-    check("S65.25 metric rule fired result=notified", mFires.some((f) => f.result === "notified"));
+    check(
+      "S65.25 metric rule fired result=notified",
+      mFires.some((f) => f.result === "notified")
+    );
     const mNotif = (await api("GET", "/api/kad/notifications")).body;
-    check("S65.26 automation notification emitted", mNotif.some((n) => n.kind === "automation"));
+    check(
+      "S65.26 automation notification emitted",
+      mNotif.some((n) => n.kind === "automation")
+    );
     const mDry = await api("POST", `/api/kad/automation-rules/${mrule.body.id}/dry-run`, {});
     check(
       "S65.27 metric dry-run reports live value (no fabricated history)",
@@ -2657,10 +2803,17 @@ async function runS65() {
       mDry.body.summary
     );
   } finally {
-    try { ws?.close(); } catch {}
-    try { jobQueue.stopWorker(); } catch {}
+    try {
+      ws?.close();
+    } catch {}
+    try {
+      jobQueue.stopWorker();
+    } catch {}
     server.close();
-    for (const f of [TMP, TMP + "-wal", TMP + "-shm"]) try { fs.unlinkSync(f); } catch {}
+    for (const f of [TMP, TMP + "-wal", TMP + "-shm"])
+      try {
+        fs.unlinkSync(f);
+      } catch {}
   }
 
   console.log(results.join("\n"));
@@ -2669,19 +2822,43 @@ async function runS65() {
 }
 
 if (process.argv.includes("--s2")) {
-  runS2().catch((e) => { console.error("verify S2 crashed:", e); process.exit(1); });
+  runS2().catch((e) => {
+    console.error("verify S2 crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s3")) {
-  runS3().catch((e) => { console.error("verify S3 crashed:", e); process.exit(1); });
+  runS3().catch((e) => {
+    console.error("verify S3 crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s3-deps")) {
-  runS3Deps().catch((e) => { console.error("verify S3-deps crashed:", e); process.exit(1); });
+  runS3Deps().catch((e) => {
+    console.error("verify S3-deps crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s4")) {
-  runS4().catch((e) => { console.error("verify S4 crashed:", e); process.exit(1); });
+  runS4().catch((e) => {
+    console.error("verify S4 crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s5")) {
-  runS5().catch((e) => { console.error("verify S5 crashed:", e); process.exit(1); });
+  runS5().catch((e) => {
+    console.error("verify S5 crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s6")) {
-  runS6().catch((e) => { console.error("verify S6 crashed:", e); process.exit(1); });
+  runS6().catch((e) => {
+    console.error("verify S6 crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s6_5") || process.argv.includes("--s65")) {
-  runS65().catch((e) => { console.error("verify S6.5 crashed:", e); process.exit(1); });
+  runS65().catch((e) => {
+    console.error("verify S6.5 crashed:", e);
+    process.exit(1);
+  });
 } else {
-  main().catch((e) => { console.error("verify crashed:", e); process.exit(1); });
+  main().catch((e) => {
+    console.error("verify crashed:", e);
+    process.exit(1);
+  });
 }

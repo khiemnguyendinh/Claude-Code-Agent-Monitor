@@ -458,8 +458,8 @@ router.get("/learning-notes", (req, res) => {
       severity: n.severity,
       root_cause: n.root_cause,
       prevention: n.prevention,
-      target: n.proposed_change_target
-    }))
+      target: n.proposed_change_target,
+    })),
   });
 });
 
@@ -632,6 +632,8 @@ router.post("/connector-publish", async (req, res) => {
     const action = await connectorService.executeByApproval(approvalId, {
       actor_type: "agent",
       actor_id: c.agent.id,
+      task_id: c.task.id,
+      agent: c.agent,
     });
     res.json({
       status: action.status,
