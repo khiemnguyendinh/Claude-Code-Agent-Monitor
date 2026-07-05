@@ -642,6 +642,8 @@ router.post("/connector-publish", async (req, res) => {
     const action = await connectorService.executeByApproval(approvalId, {
       actor_type: "agent",
       actor_id: c.agent.id,
+      task_id: c.task.id,
+      agent: c.agent,
     });
     res.json({
       status: action.status,

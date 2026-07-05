@@ -49,6 +49,7 @@ function enqueueEvaluateOnDone(task) {
     repo.jobs.enqueue({
       kind: "evaluate_rules",
       payload: { department_id: task.department_id, event: "task.done", task_id: task.id },
+      dedupKey: `evaluate_rules:${task.id}`,
     });
   } catch (e) {
     console.warn(`[kad] evaluate_rules enqueue failed for task ${task.id}:`, e && e.message);

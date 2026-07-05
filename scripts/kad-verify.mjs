@@ -354,10 +354,12 @@ async function main() {
     mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
     const listed = await rpc("tools/list", {});
     const toolNames = (listed.result.tools || []).map((t) => t.name);
-    // 13 = 12 Phase-1/2 tools + kad_flag_sensitivity (Phase 3B, spec 04 §2).
+    // 16 = 13 (Phase 1/2/3B, incl. kad_flag_sensitivity) + kad_read_org_context
+    // + kad_read_template (Phase 4) + kad_list_learning_notes (Phase 5) +
+    // kad_connector_draft + kad_connector_publish (Phase 6).
     check(
-      "MCP tools/list = 13 KAD tools (incl. kad_flag_sensitivity)",
-      toolNames.length === 13 && toolNames.includes("kad_flag_sensitivity"),
+      "MCP tools/list = 16 KAD tools (incl. kad_flag_sensitivity, connector tools)",
+      toolNames.length === 16 && toolNames.includes("kad_flag_sensitivity"),
       toolNames.join(",")
     );
     const planCall = await rpc("tools/call", {
