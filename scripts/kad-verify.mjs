@@ -1065,7 +1065,9 @@ async function runS2() {
 }
 
 async function runS4() {
-  console.log("\n=== KAD verify — Scenario S4 (Phase 4, wizard + knowledge/template versioning) ===\n");
+  console.log(
+    "\n=== KAD verify — Scenario S4 (Phase 4, wizard + knowledge/template versioning) ===\n"
+  );
   const TMP_DB4 = path.join(os.tmpdir(), `kad-verify-s4-${process.pid}.db`);
   for (const f of [TMP_DB4, TMP_DB4 + "-wal", TMP_DB4 + "-shm"])
     try {
@@ -1177,7 +1179,13 @@ async function runS4() {
     pedagogy_standards: "CDIO, KASH, Bloom taxonomy, hybrid learning.",
     responsible_human: "anh Khiêm",
     _org_chart_nodes: [
-      { id: "company", parent_id: null, name: "Học viện Kstudy", node_type: "company", sort_order: 0 },
+      {
+        id: "company",
+        parent_id: null,
+        name: "Học viện Kstudy",
+        node_type: "company",
+        sort_order: 0,
+      },
       { id: "rd", parent_id: "company", name: "Phòng R&D", node_type: "department", sort_order: 1 },
     ],
     _department: {
@@ -1203,8 +1211,11 @@ async function runS4() {
     "S4 SQL: dept rd + approved blueprint + active main/researcher",
     one("SELECT COUNT(*) n FROM departments WHERE slug='rd' AND status='active'").n === 1 &&
       one("SELECT COUNT(*) n FROM department_blueprints WHERE status='approved'").n === 1 &&
-      one("SELECT COUNT(*) n FROM agent_profiles WHERE name='main-agent-rd' AND status='active'").n === 1 &&
-      one("SELECT COUNT(*) n FROM agent_profiles WHERE name='sub-curriculum-researcher' AND status='active'").n === 1
+      one("SELECT COUNT(*) n FROM agent_profiles WHERE name='main-agent-rd' AND status='active'")
+        .n === 1 &&
+      one(
+        "SELECT COUNT(*) n FROM agent_profiles WHERE name='sub-curriculum-researcher' AND status='active'"
+      ).n === 1
   );
   check(
     "S4 SQL: 6 approved seed templates",
@@ -1213,9 +1224,14 @@ async function runS4() {
 
   const dept = repo.catalog.getDepartmentBySlug("rd");
   const mainAgent = repo.catalog.getMainAgent(dept.id);
-  const oldTask = await api("POST", "/api/kad/tasks", { title: "S4 task trước khi sửa brand voice" });
+  const oldTask = await api("POST", "/api/kad/tasks", {
+    title: "S4 task trước khi sửa brand voice",
+  });
   const v1 = one("SELECT id FROM organization_context_versions WHERE status='approved'").id;
-  check("S4: task before edit snapshots org context v1", oldTask.body.org_context_version_id === v1);
+  check(
+    "S4: task before edit snapshots org context v1",
+    oldTask.body.org_context_version_id === v1
+  );
 
   const current = await api("GET", "/api/kad/org-context/current");
   const changedData = {
@@ -1234,7 +1250,11 @@ async function runS4() {
     draftV2.status === 201 && draftV2.body.version === 2 && draftV2.body.status === "draft",
     `got ${draftV2.status}`
   );
-  const approvedV2 = await api("POST", `/api/kad/org-context/versions/${draftV2.body.id}/approve`, {});
+  const approvedV2 = await api(
+    "POST",
+    `/api/kad/org-context/versions/${draftV2.body.id}/approve`,
+    {}
+  );
   check(
     "S4: approve org context v2 archives v1",
     approvedV2.status === 200 &&
@@ -1250,7 +1270,8 @@ async function runS4() {
   );
   check(
     "S4: old task still points to v1",
-    one("SELECT org_context_version_id FROM tasks WHERE id=?", oldTask.body.id).org_context_version_id === v1
+    one("SELECT org_context_version_id FROM tasks WHERE id=?", oldTask.body.id)
+      .org_context_version_id === v1
   );
 
   const ctxMain = { run: "run-s4-main", task: newTask.body.id, agent: mainAgent.id };
@@ -1262,8 +1283,14 @@ async function runS4() {
       content: "# Artifact\nUses latest approved org context.",
     },
   });
-  const artifactOrg = one("SELECT org_context_version_id FROM artifacts WHERE id=?", artifact.body.artifact_id);
-  check("S4: artifact metadata writes org_context_version_id v2", artifactOrg.org_context_version_id === approvedV2.body.id);
+  const artifactOrg = one(
+    "SELECT org_context_version_id FROM artifacts WHERE id=?",
+    artifact.body.artifact_id
+  );
+  check(
+    "S4: artifact metadata writes org_context_version_id v2",
+    artifactOrg.org_context_version_id === approvedV2.body.id
+  );
 
   const tplDraft = await api("POST", "/api/kad/templates", {
     name: "S4 Custom Markdown",
@@ -1277,7 +1304,11 @@ async function runS4() {
     tplDraft.status === 201 && tplDraft.body.version.status === "draft",
     `got ${tplDraft.status}`
   );
-  const tplApproved = await api("POST", `/api/kad/templates/${tplDraft.body.version.id}/approve`, {});
+  const tplApproved = await api(
+    "POST",
+    `/api/kad/templates/${tplDraft.body.version.id}/approve`,
+    {}
+  );
   check(
     "S4: approve uploaded template",
     tplApproved.status === 200 && tplApproved.body.version.status === "approved"
@@ -1297,7 +1328,9 @@ async function runS4() {
     ).n === 1
   );
 
-  const currentBp = repo.orgContext.listBlueprints({ department_id: dept.id }).find((b) => b.status === "approved");
+  const currentBp = repo.orgContext
+    .listBlueprints({ department_id: dept.id })
+    .find((b) => b.status === "approved");
   const proposedBp = await api("POST", `/api/kad/blueprints/${currentBp.id}/propose`, {
     data: { ...currentBp.data, s4_note: "new blueprint proposal" },
     change_summary: "S4 blueprint proposal",
@@ -1327,7 +1360,10 @@ async function runS4() {
     content:
       "Từ dữ liệu wizard vừa thiết lập, lập kế hoạch nghiên cứu nhu cầu học AI Automation của chủ SME Việt Nam và gọi kad_plan_task.",
   });
-  check("S4.E0 POST /messages accepted + real run kicked", msg.status === 201 && msg.body.run_kicked === true);
+  check(
+    "S4.E0 POST /messages accepted + real run kicked",
+    msg.status === 201 && msg.body.run_kicked === true
+  );
   const t0 = Date.now();
   let planRow = null,
     run = null,
@@ -1359,7 +1395,10 @@ async function runS4() {
     if (intake) {
       answeredIntakeIds.add(intake.id);
       const options = intake.metadata && intake.metadata.options;
-      const answer = options && options.length ? options[0] : "Dùng chuẩn Kstudy, ưu tiên thực chiến và có nguồn.";
+      const answer =
+        options && options.length
+          ? options[0]
+          : "Dùng chuẩn Kstudy, ưu tiên thực chiến và có nguồn.";
       await api("POST", `/api/kad/tasks/${engineTask.body.id}/messages`, { content: answer });
       continue;
     }
@@ -1370,7 +1409,10 @@ async function runS4() {
   }
   if (briefLocked) check("S4.E0b live brief flow locked", true);
   if (engineBlocked) {
-    blocked("S4.E1 real Main Agent calls kad_plan_task", "spawned claude 401 — no standalone credential");
+    blocked(
+      "S4.E1 real Main Agent calls kad_plan_task",
+      "spawned claude 401 — no standalone credential"
+    );
   } else {
     check(
       "S4.E1 real Main Agent calls kad_plan_task after wizard",
@@ -1993,19 +2035,28 @@ async function runS5() {
   const ROOT = process.cwd();
   const TMP_DB5 = path.join(os.tmpdir(), `kad-verify-s5-${process.pid}.db`);
   for (const f of [TMP_DB5, TMP_DB5 + "-wal", TMP_DB5 + "-shm"])
-    try { fs.unlinkSync(f); } catch {}
+    try {
+      fs.unlinkSync(f);
+    } catch {}
   process.env.DASHBOARD_DB_PATH = TMP_DB5;
   process.env.KAD_WORKER_TICK_MS = "3600000"; // disable auto-sweep
 
-  let pass = 0, fail = 0;
+  let pass = 0,
+    fail = 0;
   const results = [];
   function check(name, cond, detail = "") {
-    if (cond) { pass++; results.push(`  ✅ ${name}`); }
-    else { fail++; results.push(`  ❌ ${name}${detail ? " — " + detail : ""}`); }
+    if (cond) {
+      pass++;
+      results.push(`  ✅ ${name}`);
+    } else {
+      fail++;
+      results.push(`  ❌ ${name}${detail ? " — " + detail : ""}`);
+    }
   }
 
   const seed = spawnSync(process.execPath, [path.join(ROOT, "scripts/kad-seed.mjs")], {
-    env: process.env, encoding: "utf8"
+    env: process.env,
+    encoding: "utf8",
   });
   if (seed.status !== 0) throw new Error("seed failed");
 
@@ -2021,7 +2072,8 @@ async function runS5() {
 
   const api = async (method, p, body) => {
     const resp = await fetch(BASE + p, {
-      method, headers: { "content-type": "application/json" },
+      method,
+      headers: { "content-type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
     return { status: resp.status, body: await resp.json().catch(() => ({})) };
@@ -2035,21 +2087,6 @@ async function runS5() {
   const worker = require(path.join(ROOT, "server/lib/kad/job-queue"));
   const mainAgent = repo.catalog.getMainAgent(repo.catalog.getDepartmentBySlug("rd").id);
 
-  const { getAdapter } = require(path.join(ROOT, "server/lib/kad/runner/adapter"));
-  const claudeAdapter = getAdapter("claude");
-  claudeAdapter.run = async (opts) => {
-    return {
-      output: JSON.stringify({
-        root_cause: "Mocked analysis root cause",
-        correction_category: "brand_mismatch",
-        proposed_rules: ["Rule 1"],
-        patterns: [
-          { pattern: "Mocked pattern detect", confidence: 0.9, context: "S5 verify" }
-        ]
-      })
-    };
-  };
-
   console.log("\n=== KAD verify — Scenario S5 (Learning Loop) ===\n");
 
   const briefTask = await api("POST", "/api/kad/tasks", {
@@ -2059,17 +2096,26 @@ async function runS5() {
 
   // Create mock artifact and approval
   const artId = repo.artifacts.createArtifact({
-    task_id: taskId, agent_id: mainAgent.id, artifact_type: "syllabus",
-    title: "Test artifact", content: "Sai brand Kstudy", status: "review"
+    task_id: taskId,
+    agent_id: mainAgent.id,
+    artifact_type: "syllabus",
+    title: "Test artifact",
+    content: "Sai brand Kstudy",
+    status: "review",
   }).id;
   const appr = repo.approvals.createApproval({
-    task_id: taskId, requested_by: mainAgent.id, approval_type: "artifact",
-    artifact_id: artId, title: "Duyệt artifact", description: "Sai brand Kstudy"
+    task_id: taskId,
+    requested_by: mainAgent.id,
+    approval_type: "artifact",
+    artifact_id: artId,
+    title: "Duyệt artifact",
+    description: "Sai brand Kstudy",
   });
 
   // 1. Human reject triggers analyze_learning_note async
-  const rej = await api("POST", `/api/kad/approvals/${appr.id}/decide`, { 
-    decision: "rejected", reason: "Sai brand voice trầm trọng" 
+  const rej = await api("POST", `/api/kad/approvals/${appr.id}/decide`, {
+    decision: "rejected",
+    reason: "Sai brand voice trầm trọng",
   });
   check("POST /approvals/:id/decide rejected", rej.status === 200);
 
@@ -2078,11 +2124,19 @@ async function runS5() {
   for (let i = 0; i < 40; i++) {
     note = one("SELECT * FROM learning_notes WHERE task_id=?", taskId);
     if (note) break;
-    await new Promise(r => setTimeout(r, 1000));
+    await new Promise((r) => setTimeout(r, 1000));
   }
-  
-  check("Learning note created via Claude", !!note && note.change_status === "noted", note ? note.correction_category : "none");
-  check("Learning note parsed properly", note && note.root_cause !== "Sai brand voice trầm trọng", "Expected detailed analysis from LLM");
+
+  check(
+    "Learning note created via Claude",
+    !!note && note.change_status === "noted",
+    note ? note.correction_category : "none"
+  );
+  check(
+    "Learning note parsed properly",
+    note && note.root_cause !== "Sai brand voice trầm trọng",
+    "Expected detailed analysis from LLM"
+  );
 
   // 2. Pattern detection
   // Create 2 more mock notes in the same category manually to trigger pattern_detect
@@ -2092,7 +2146,7 @@ async function runS5() {
     trigger_type: "human_rejection",
     severity: "major",
     feedback_content: "Sai brand",
-    change_status: "noted"
+    change_status: "noted",
   });
   repo.learning.createNote({
     department_id: mainAgent.department_id,
@@ -2100,20 +2154,26 @@ async function runS5() {
     trigger_type: "human_rejection",
     severity: "major",
     feedback_content: "Lại sai brand",
-    change_status: "noted"
+    change_status: "noted",
   });
 
   repo.jobs.enqueue({
     kind: "pattern_detect",
     payload: { department_id: mainAgent.department_id, category: "brand_mismatch" },
-    dedupKey: "pattern_detect:test"
+    dedupKey: "pattern_detect:test",
   });
-  
+
   await worker.sweep(); // Process pattern_detect job
-  
+
   const patternNote = one("SELECT * FROM learning_notes WHERE trigger_type='pattern_detection'");
-  check("Pattern detection triggers and creates a note", !!patternNote && patternNote.change_status === "noted");
-  check("Pattern detection doesn't auto-propose", !!patternNote && patternNote.change_status === "noted");
+  check(
+    "Pattern detection triggers and creates a note",
+    !!patternNote && patternNote.change_status === "noted"
+  );
+  check(
+    "Pattern detection doesn't auto-propose",
+    !!patternNote && patternNote.change_status === "noted"
+  );
 
   // 3. MCP tool `kad_list_learning_notes`
   // The internal API `ctx(req, res)` expects `x-kad-task-id` etc. and internal auth
@@ -2121,19 +2181,26 @@ async function runS5() {
     "x-kad-internal-token": getInternalToken(),
     "x-kad-task-id": taskId,
     "x-kad-run-id": "mock-run",
-    "x-kad-agent-id": mainAgent.id
+    "x-kad-agent-id": mainAgent.id,
   };
   const mcpNotes2 = await fetch(BASE + "/api/kad/internal/learning-notes", {
-    headers: internalHeaders
+    headers: internalHeaders,
   });
   const mcpNotesBody = await mcpNotes2.json().catch(() => ({}));
-  check("MCP internal API returns notes", mcpNotes2.status === 200 && mcpNotesBody.notes && mcpNotesBody.notes.length > 0);
+  check(
+    "MCP internal API returns notes",
+    mcpNotes2.status === 200 && mcpNotesBody.notes && mcpNotesBody.notes.length > 0
+  );
 
   sdb5.close();
-  try { worker.stopWorker(); } catch {}
+  try {
+    worker.stopWorker();
+  } catch {}
   server.close();
   for (const f of [TMP_DB5, TMP_DB5 + "-wal", TMP_DB5 + "-shm"])
-    try { fs.unlinkSync(f); } catch {}
+    try {
+      fs.unlinkSync(f);
+    } catch {}
 
   console.log(results.join("\n"));
   console.log(`\n=== S5: ${pass} passed, ${fail} failed ===`);
@@ -2141,15 +2208,33 @@ async function runS5() {
 }
 
 if (process.argv.includes("--s2")) {
-  runS2().catch((e) => { console.error("verify S2 crashed:", e); process.exit(1); });
+  runS2().catch((e) => {
+    console.error("verify S2 crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s3")) {
-  runS3().catch((e) => { console.error("verify S3 crashed:", e); process.exit(1); });
+  runS3().catch((e) => {
+    console.error("verify S3 crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s3-deps")) {
-  runS3Deps().catch((e) => { console.error("verify S3-deps crashed:", e); process.exit(1); });
+  runS3Deps().catch((e) => {
+    console.error("verify S3-deps crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s4")) {
-  runS4().catch((e) => { console.error("verify S4 crashed:", e); process.exit(1); });
+  runS4().catch((e) => {
+    console.error("verify S4 crashed:", e);
+    process.exit(1);
+  });
 } else if (process.argv.includes("--s5")) {
-  runS5().catch((e) => { console.error("verify S5 crashed:", e); process.exit(1); });
+  runS5().catch((e) => {
+    console.error("verify S5 crashed:", e);
+    process.exit(1);
+  });
 } else {
-  main().catch((e) => { console.error("verify crashed:", e); process.exit(1); });
+  main().catch((e) => {
+    console.error("verify crashed:", e);
+    process.exit(1);
+  });
 }

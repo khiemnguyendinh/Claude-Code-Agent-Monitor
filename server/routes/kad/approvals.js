@@ -6,6 +6,7 @@
  */
 const express = require("express");
 const repo = require("../../lib/kad/repo");
+const workflowEngine = require("../../lib/kad/workflow-engine");
 const { emitTask, emitDept } = require("../../lib/kad/events");
 const { analyzeLearningNote } = require("../../lib/kad/learning-loop");
 
@@ -52,6 +53,14 @@ router.post("/:id/decide", (req, res) => {
       channel: b.channel,
       channel_actor_ref: b.channel_actor_ref,
     });
+    // Approving an artifact-bound approval (framework/syllabus/sensitive) flips the
+    // artifact to 'approved' — the durable fact the workflow engine reads to advance
+    // the step machine and to satisfy the next step's auto-approval parent check.
+    if (a.artifact_id && b.decision === "approved") {
+      const art = repo.artifacts.getArtifact(a.artifact_id);
+      if (art && art.status !== "approved" && art.status !== "published")
+        repo.artifacts.updateArtifact(art.id, { status: "approved" });
+    }
     repo.audit({
       department_id: task && task.department_id,
       task_id: a.task_id,
@@ -80,6 +89,13 @@ router.post("/:id/decide", (req, res) => {
   // Also department-scoped: the Tổng quan inbox (spec/ui/02 §6) subscribes at
   // department level, not per-task, so it can see decisions across all tasks.
   emitDept(task && task.department_id, "kad.approval.decided", decided);
+
+  // Advance tasks.workflow_step off the new state (plan approved → research, etc.).
+  try {
+    workflowEngine.syncStep(a.task_id);
+  } catch (e) {
+    console.warn(`[kad] approvals/decide: syncStep failed for task ${a.task_id}:`, e && e.message);
+  }
 
   // Enqueue a resume turn (durable — survives restart). Explicit next-tool
   // instruction (not just "tiến hành bước tiếp theo") — a vague resume prompt
