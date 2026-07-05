@@ -190,6 +190,18 @@ function formatTelegram(alert, config) {
   };
 }
 
+// Lark one-way bot sendMessage. access_token is carried in Authorization;
+// chat_id selects the target chat. This deliberately reuses the webhook
+// delivery engine only; Lark two-way command handling is a separate KAD phase.
+function formatLark(alert, config) {
+  const lines = [`${alert.rule_name}`, alert.message, "", alert.rule_type];
+  return {
+    receive_id: config.chat_id,
+    msg_type: "text",
+    content: JSON.stringify({ text: truncate(lines.join("\n"), 4000) }),
+  };
+}
+
 // PagerDuty Events API v2 (trigger). routing_key + severity from config.
 // dedup_key groups repeat firings of the same rule+session into one incident.
 function formatPagerDuty(alert, config) {
@@ -328,6 +340,19 @@ const PROVIDERS = {
     ],
     urlFrom: (c) => (c.bot_token ? `https://api.telegram.org/bot${c.bot_token}/sendMessage` : null),
     format: formatTelegram,
+  },
+
+  lark: {
+    label: "Lark",
+    family: "api",
+    https: true,
+    defaultUrl: "https://open.larksuite.com/open-apis/im/v1/messages?receive_id_type=chat_id",
+    fields: [
+      { key: "access_token", label: "Bot access token", secret: true, required: true },
+      { key: "chat_id", label: "Chat ID", required: true },
+    ],
+    authFrom: (c) => (c.access_token ? { Authorization: `Bearer ${c.access_token}` } : {}),
+    format: formatLark,
   },
 
   pagerduty: {

@@ -9,10 +9,65 @@ function hydrate(row) {
   return row ? { ...row, delivered_channels: parseJson(row.delivered_channels, []) } : null;
 }
 
-/** Create a notification and push it over the department-scoped WS channel. */
+function publicUrl(linkPath) {
+  const base =
+    process.env.KAD_PUBLIC_BASE_URL ||
+    process.env.DASHBOARD_PUBLIC_URL ||
+    process.env.APP_BASE_URL ||
+    "";
+  if (!base) return linkPath || "";
+  try {
+    return new URL(linkPath || "/", base).toString();
+  } catch {
+    return linkPath || "";
+  }
+}
+
+function webhookTypes() {
+  try {
+    const { loadEnabledTargets } = require("../../webhooks");
+    return loadEnabledTargets()
+      .filter((t) => !Array.isArray(t.rule_ids) || t.rule_ids.length === 0)
+      .map((t) => t.type);
+  } catch {
+    return [];
+  }
+}
+
+function dispatchWebhookNotification(notif) {
+  try {
+    const { dispatchAlert } = require("../../webhooks");
+    const url = publicUrl(notif.link_path);
+    const message = [notif.body, url].filter(Boolean).join("\n");
+    Promise.resolve(
+      dispatchAlert({
+        id: null,
+        rule_id: null,
+        rule_name: notif.title,
+        rule_type: `kad.${notif.kind}`,
+        session_id: null,
+        agent_id: null,
+        message,
+        details: {
+          source: "kad",
+          notification_id: notif.id,
+          kind: notif.kind,
+          target_id: notif.target_id,
+          link_path: notif.link_path,
+        },
+        triggered_at: notif.created_at,
+      })
+    ).catch(() => {});
+  } catch (e) {
+    console.warn("[kad-notifications] webhook dispatch failed:", e && e.message);
+  }
+}
+
+/** Create a notification and push it over WS + enabled outbound webhooks. */
 function createNotification({ department_id, kind, title, body, link_path, target_id, delivered_channels }) {
   const id = newId("notif");
-  const channels = delivered_channels || ["ui"];
+  const external = webhookTypes();
+  const channels = delivered_channels || Array.from(new Set(["ui", ...external]));
   db.prepare(
     `INSERT INTO notifications (id, department_id, kind, title, body, link_path, target_id, delivered_channels, created_at)
      VALUES (@id,@dept,@kind,@title,@body,@link,@target,@channels,@now)`
@@ -29,6 +84,7 @@ function createNotification({ department_id, kind, title, body, link_path, targe
   });
   const notif = getNotification(id);
   emitDept(department_id, "kad.notification", notif);
+  if (external.length) dispatchWebhookNotification(notif);
   return notif;
 }
 
