@@ -28,3 +28,28 @@ npm run build
 npm start
 ```
 Ứng dụng sẽ chạy tại `http://localhost:4820`
+
+## 5. Gotcha: đường dẫn thư mục có khoảng trắng (space)
+
+Nếu đường dẫn tuyệt đối của repo chứa khoảng trắng (ví dụ `.../AI Agent Workspace/...`), `npm rebuild better-sqlite3` (dùng generator `make` mặc định của node-gyp) sẽ vỡ build với lỗi kiểu:
+
+```
+/bin/sh: Agent/AI: No such file or directory
+```
+hoặc (trên node-gyp/make bản khác):
+```
+missing separator. Stop.
+```
+
+Đây là bug của node-gyp/GNU Make khi xử lý path có space, không liên quan tới lỗi ABI mismatch giữa các bản Node cài song song (xem gotcha #3 ở trên). Cách khắc phục — build bằng generator Xcode thay vì make:
+
+```bash
+GYP_GENERATORS=xcode npm rebuild better-sqlite3
+```
+
+Nếu máy không có Xcode command line tools, cách thay thế là dùng `ninja`:
+```bash
+brew install ninja
+cd node_modules/better-sqlite3 && node-gyp configure --release -- -f ninja
+ninja -C build/Release
+```
