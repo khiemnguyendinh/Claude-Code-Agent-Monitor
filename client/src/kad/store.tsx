@@ -11,14 +11,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from "react";
 import { kadApi } from "./api-client";
 import { departmentScope, subscribeKadScope } from "./ws-client";
-import {
-  AUTOMATION_RULES,
-  BLOCKED_TASKS,
-  GOALS,
-  NOTIFICATIONS,
-  ORG_CONTEXT_SECTIONS,
-  TASK_CARDS,
-} from "./mockData";
+import { AUTOMATION_RULES, BLOCKED_TASKS, NOTIFICATIONS, TASK_CARDS } from "./mockData";
 import type {
   AgentProfile,
   Approval,
@@ -41,10 +34,7 @@ const EMPTY_STANDUP: StandupBrief = {
   costYesterdayVnd: 0,
 };
 
-const INITIAL_STRATEGY: StrategyPlan = {
-  bodyMarkdown: ORG_CONTEXT_SECTIONS.find((s) => s.key === "chien-luoc")?.bodyMarkdown ?? "",
-  updatedAt: ORG_CONTEXT_SECTIONS.find((s) => s.key === "chien-luoc")?.approvedAt ?? null,
-};
+const EMPTY_STRATEGY: StrategyPlan = { bodyMarkdown: "", updatedAt: null };
 
 let taskIdSeq = 0;
 
@@ -79,7 +69,9 @@ interface KadStoreValue {
   addRule: (rule: AutomationRule) => void;
   goals: Goal[];
   strategy: StrategyPlan;
-  saveGoalsAndStrategy: (input: { goals: Goal[]; strategyMarkdown: string }) => void;
+  /** Rejects on request failure — same contract as decideApproval (real
+   * DB persistence since Phase 4, was in-memory-only before). */
+  saveGoalsAndStrategy: (input: { goals: Goal[]; strategyMarkdown: string }) => Promise<void>;
 }
 
 const KadStoreContext = createContext<KadStoreValue | null>(null);
@@ -89,8 +81,8 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
   const [tasks, setTasks] = useState<TaskCard[]>([...BLOCKED_TASKS, ...TASK_CARDS]);
   const [automationRules, setAutomationRules] = useState<AutomationRule[]>(AUTOMATION_RULES);
   const [allAutomationPaused, setAllAutomationPaused] = useState(false);
-  const [goals, setGoals] = useState<Goal[]>(GOALS);
-  const [strategy, setStrategy] = useState<StrategyPlan>(INITIAL_STRATEGY);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [strategy, setStrategy] = useState<StrategyPlan>(EMPTY_STRATEGY);
 
   // ── Real data: approvals + standup + agent identities (spec 03 / spec/ui/02) ──
   const [approvals, setApprovals] = useState<Approval[]>([]);
@@ -145,6 +137,23 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
       unsubscribe?.();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Mục tiêu & chiến lược (Phase 4) — was pure in-memory mock state before,
+  // now backed by GET/PUT /api/kad/goals (server/lib/kad/repo/strategic-goals.js).
+  useEffect(() => {
+    let cancelled = false;
+    kadApi.goals
+      .get()
+      .then((r) => {
+        if (cancelled) return;
+        setGoals(r.goals);
+        setStrategy({ bodyMarkdown: r.strategyMarkdown, updatedAt: r.strategyUpdatedAt });
+      })
+      .catch((e) => console.warn("[kad] failed to load goals:", e && e.message));
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const decideApproval = useCallback(
@@ -243,14 +252,13 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   // Trưởng phòng nhập trực tiếp mục tiêu + chiến lược (không phải đề xuất chờ
-  // duyệt): ghi thẳng vào store để Tổng quan (thẻ mục tiêu) và tab Văn hóa
-  // (mục "Chiến lược & Ưu tiên") phản ánh ngay. Trợ lý vận hành đọc lại để
-  // điều chỉnh ưu tiên công việc.
+  // duyệt): ghi thẳng, không qua bước Gửi duyệt — persisted via PUT
+  // /api/kad/goals (Phase 4) so Tổng quan (thẻ mục tiêu) và tab Mục tiêu phản
+  // ánh đúng dữ liệu thật, và không mất khi refresh trang.
   const saveGoalsAndStrategy = useCallback((input: { goals: Goal[]; strategyMarkdown: string }) => {
-    setGoals(input.goals);
-    setStrategy({
-      bodyMarkdown: input.strategyMarkdown,
-      updatedAt: new Date().toLocaleDateString("vi-VN"),
+    return kadApi.goals.save(input).then((r) => {
+      setGoals(r.goals);
+      setStrategy({ bodyMarkdown: r.strategyMarkdown, updatedAt: r.strategyUpdatedAt });
     });
   }, []);
 

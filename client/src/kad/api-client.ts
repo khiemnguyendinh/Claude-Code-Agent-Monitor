@@ -25,6 +25,7 @@ import type {
   AutomationRuleFire,
   AutomationTriggerType,
   DependencyCondition,
+  Goal,
   Priority,
   RuleFireResult,
   StandupBrief,
@@ -51,6 +52,21 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(body?.error?.message || `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+/** Multipart POST — deliberately skips request()'s JSON Content-Type so the browser sets its own boundary. */
+async function uploadForm<T>(path: string, form: FormData): Promise<T> {
+  const token = dashboardToken();
+  const res = await fetch(`${BASE}${path}`, {
+    method: "POST",
+    headers: token ? { "x-dashboard-token": token } : undefined,
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.error?.message || `HTTP ${res.status}`);
+  }
   return res.json();
 }
 
@@ -236,12 +252,18 @@ interface ArtifactRow {
   artifact_type: ArtifactType;
   title: string;
   content: string | null;
+  file_path: string | null;
   parent_artifact_id: string | null;
   status: ArtifactStatus;
   version: number;
   metadata: {
     quality_score?: number;
     sensitivity?: { metrics?: boolean; people?: boolean; brand?: boolean };
+    // Phase 6 — /hoc-lieu uploads (loose files or a folder), set by
+    // server/routes/kad/artifacts-upload.js. Absent on agent-generated rows.
+    source?: "uploaded";
+    original_name?: string;
+    mime_type?: string;
   } | null;
   created_at: string;
   updated_at: string;
@@ -256,6 +278,9 @@ export function toArtifact(row: ArtifactRow): Artifact {
     artifactType: row.artifact_type,
     title: row.title,
     content: row.content ?? "",
+    hasFile: row.file_path != null,
+    source: row.metadata?.source === "uploaded" ? "uploaded" : "generated",
+    fileName: row.metadata?.original_name ?? null,
     parentArtifactId: row.parent_artifact_id,
     status: row.status,
     version: row.version,
@@ -306,6 +331,7 @@ interface AgentRow {
   model: string | null;
   role_description: string | null;
   permissions: Record<string, boolean>;
+  skills: string[];
   status: AgentProfile["status"];
   parent_agent_id: string | null;
 }
@@ -333,12 +359,40 @@ export function toAgent(row: AgentRow): AgentProfile {
       modifyBlueprint: !!row.permissions?.modify_blueprint,
       modifyOrgContext: !!row.permissions?.modify_org_context,
     },
-    skills: [],
+    skills: Array.isArray(row.skills) ? row.skills : [],
     status: row.status,
     parentAgentId: row.parent_agent_id,
     jdVersion: 1,
     jdApprovedAt: "",
   };
+}
+
+export interface GoalRow {
+  id: string;
+  title: string;
+  metric: string | null;
+  current_value: number;
+  target_value: number;
+  due_date: string | null;
+  status: Goal["status"];
+}
+
+export function toGoal(row: GoalRow): Goal {
+  return {
+    id: row.id,
+    title: row.title,
+    metric: row.metric ?? "",
+    current: row.current_value ?? 0,
+    target: row.target_value ?? 0,
+    due: row.due_date ?? "—",
+    status: row.status || "on_track",
+  };
+}
+
+export interface GoalsAndStrategyRow {
+  goals: GoalRow[];
+  strategy_markdown: string;
+  strategy_updated_at: string | null;
 }
 
 export interface KadRun {
@@ -691,6 +745,11 @@ export interface TemplateVersionRow {
   template_id: string;
   version: number;
   content: string;
+  // Phase 5 — set only for .docx/.pdf/.xlsx uploads; null for the original .md
+  // path, which keeps the real content inline as before.
+  file_path: string | null;
+  mime_type: string | null;
+  original_file_name: string | null;
   change_summary: string | null;
   status: "draft" | "approved" | "archived";
   approved_by: string | null;
@@ -735,6 +794,20 @@ export interface BlueprintRow {
   proposed_by: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  created_at: string;
+}
+
+export interface LearningNoteRow {
+  id: string;
+  department_id: string;
+  task_id: string | null;
+  correction_category: string;
+  severity: "minor" | "major" | "critical";
+  root_cause: string;
+  prevention: string;
+  affected_areas: string[];
+  proposed_change_target: string;
+  change_status: "noted" | "proposed" | "approved" | "applied" | "archived";
   created_at: string;
 }
 
@@ -869,10 +942,127 @@ export const kadApi = {
       }
       return chain;
     },
+    // /hoc-lieu upload (Phase 6) — loose files or an entire folder. `files`
+    // keeps FormData's repeated-field-name convention (multer .array("files")
+    // server-side); `relativePaths`, when given, is index-aligned with `files`
+    // and preserves a folder upload's structure (webkitRelativePath).
+    upload: (files: File[], relativePaths?: string[]) => {
+      const form = new FormData();
+      for (const f of files) form.append("files", f);
+      if (relativePaths) form.append("relative_paths", JSON.stringify(relativePaths));
+      return uploadForm<ArtifactRow[]>("/artifacts/upload", form).then((rows) =>
+        rows.map(toArtifact)
+      );
+    },
+    downloadUrl: (id: string) => `${BASE}/artifacts/${encodeURIComponent(id)}/download`,
   },
 
   agents: {
     list: () => request<AgentRow[]>("/agents").then((rows) => rows.map(toAgent)),
+    create: (input: {
+      display_name: string;
+      agent_type?: "sub" | "helper";
+      engine?: "claude" | "codex" | "antigravity";
+      role_description?: string;
+      permissions?: Record<string, boolean>;
+      skills?: string[];
+      parent_agent_id?: string | null;
+    }) =>
+      request<AgentRow>("/agents", { method: "POST", body: JSON.stringify(input) }).then(toAgent),
+    update: (
+      id: string,
+      patch: {
+        display_name?: string;
+        role_description?: string;
+        permissions?: Record<string, boolean>;
+        skills?: string[];
+        status?: "active" | "inactive";
+        parent_agent_id?: string | null;
+      }
+    ) =>
+      request<AgentRow>(`/agents/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(patch),
+      }).then(toAgent),
+    archive: (id: string) =>
+      request<AgentRow>(`/agents/${encodeURIComponent(id)}/archive`, { method: "POST" }).then(
+        toAgent
+      ),
+  },
+
+  goals: {
+    get: (org_id?: string) => {
+      const qs = org_id ? `?org_id=${encodeURIComponent(org_id)}` : "";
+      return request<GoalsAndStrategyRow>(`/goals${qs}`).then((r) => ({
+        goals: r.goals.map(toGoal),
+        strategyMarkdown: r.strategy_markdown,
+        strategyUpdatedAt: r.strategy_updated_at,
+      }));
+    },
+    save: (input: { goals: Goal[]; strategyMarkdown: string; org_id?: string }) =>
+      request<GoalsAndStrategyRow>("/goals", {
+        method: "PUT",
+        body: JSON.stringify({
+          org_id: input.org_id,
+          strategy_markdown: input.strategyMarkdown,
+          goals: input.goals.map((g) => ({
+            id: g.id,
+            title: g.title,
+            metric: g.metric,
+            current: g.current,
+            target: g.target,
+            due: g.due,
+            status: g.status,
+          })),
+        }),
+      }).then((r) => ({
+        goals: r.goals.map(toGoal),
+        strategyMarkdown: r.strategy_markdown,
+        strategyUpdatedAt: r.strategy_updated_at,
+      })),
+  },
+
+  // Single-file .xlsx import + downloadable template (source-request items 3
+  // and 7). Uploads bypass request()'s JSON Content-Type for the same reason
+  // attachments.upload does — the browser must set its own multipart boundary.
+  importXlsx: {
+    templateUrl: (kind: "muc-tieu" | "van-hoa" | "jd-ky-nang") =>
+      `${BASE}/import-templates/${kind}`,
+    async goals(file: File, org_id?: string) {
+      const form = new FormData();
+      form.append("file", file);
+      if (org_id) form.append("org_id", org_id);
+      const r = await uploadForm<GoalsAndStrategyRow>("/goals/import", form);
+      return {
+        goals: r.goals.map(toGoal),
+        strategyMarkdown: r.strategy_markdown,
+        strategyUpdatedAt: r.strategy_updated_at,
+      };
+    },
+    async orgContext(file: File) {
+      const form = new FormData();
+      form.append("file", file);
+      return uploadForm<OrgContextVersionRow>("/org-context/import", form);
+    },
+    async agentJd(agentId: string, file: File) {
+      const form = new FormData();
+      form.append("file", file);
+      const row = await uploadForm<AgentRow>(`/agents/${encodeURIComponent(agentId)}/import`, form);
+      return toAgent(row);
+    },
+  },
+
+  learningNotes: {
+    list: (department: string) =>
+      request<LearningNoteRow[]>(`/learning-notes?department=${encodeURIComponent(department)}`),
+    propose: (id: string) =>
+      request<LearningNoteRow>(`/learning-notes/${encodeURIComponent(id)}/propose`, {
+        method: "POST",
+      }),
+    approve: (id: string) =>
+      request<LearningNoteRow>(`/learning-notes/${encodeURIComponent(id)}/approve`, {
+        method: "POST",
+      }),
   },
 
   orgContext: {
@@ -888,7 +1078,11 @@ export const kadApi = {
         method: "POST",
       }),
     wizardDraft: () => request<WizardDraftRow | null>("/wizard/draft"),
-    saveWizardDraft: (input: { step: number; data?: Record<string, unknown>; draft?: Record<string, unknown> }) =>
+    saveWizardDraft: (input: {
+      step: number;
+      data?: Record<string, unknown>;
+      draft?: Record<string, unknown>;
+    }) =>
       request<WizardDraftRow>("/wizard/draft", {
         method: "POST",
         body: JSON.stringify(input),
@@ -911,7 +1105,10 @@ export const kadApi = {
       const qs = department ? `?department=${encodeURIComponent(department)}` : "";
       return request<BlueprintRow[]>(`/blueprints${qs}`);
     },
-    proposeBlueprint: (id: string, input: { data?: Record<string, unknown>; change_summary?: string }) =>
+    proposeBlueprint: (
+      id: string,
+      input: { data?: Record<string, unknown>; change_summary?: string }
+    ) =>
       request<BlueprintRow>(`/blueprints/${encodeURIComponent(id)}/propose`, {
         method: "POST",
         body: JSON.stringify(input),
@@ -950,7 +1147,30 @@ export const kadApi = {
         `/templates/${encodeURIComponent(id)}/approve`,
         { method: "POST" }
       ),
-    usage: (id: string) => request<TemplateUsageRow[]>(`/templates/${encodeURIComponent(id)}/usage`),
+    usage: (id: string) =>
+      request<TemplateUsageRow[]>(`/templates/${encodeURIComponent(id)}/usage`),
+    // Phase 5 — .docx/.pdf/.xlsx uploads (disk-backed, see templates-upload.js).
+    // The .md path above stays on the JSON body + request() helper unchanged.
+    uploadFile: (
+      file: File,
+      fields: {
+        template_id?: string;
+        name?: string;
+        template_type?: string;
+        purpose?: string;
+        change_summary?: string;
+      }
+    ) => {
+      const form = new FormData();
+      form.append("file", file);
+      for (const [k, v] of Object.entries(fields)) if (v) form.append(k, v);
+      return uploadForm<{ template: TemplateLibraryRow; version: TemplateVersionRow }>(
+        "/templates/upload",
+        form
+      );
+    },
+    downloadUrl: (versionId: string) =>
+      `${BASE}/templates/versions/${encodeURIComponent(versionId)}/download`,
   },
 
   workflows: {

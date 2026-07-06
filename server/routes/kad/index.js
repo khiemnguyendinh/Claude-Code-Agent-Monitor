@@ -15,6 +15,10 @@ const automationRulesRouter = require("./automation-rules");
 const attachmentsRouter = require("./attachments");
 const knowledgeRouter = require("./knowledge");
 const learningRouter = require("./learning");
+const goalsRouter = require("./goals");
+const importXlsxRouter = require("./import-xlsx");
+const templatesUploadRouter = require("./templates-upload");
+const artifactsUploadRouter = require("./artifacts-upload");
 
 const router = express.Router();
 router.use("/tasks", tasksRouter);
@@ -26,6 +30,10 @@ router.use("/", miscRouter); // /agents, /reports, /notifications, /audit
 router.use("/", dependenciesRouter); // /dependencies/:depId
 router.use("/", automationRulesRouter); // /automation-rules, /automation/*
 router.use("/", attachmentsRouter); // /attachments/:id
+router.use("/", goalsRouter); // /goals
+router.use("/", importXlsxRouter); // /import-templates/:kind, /goals/import, /org-context/import, /agents/:id/import
+router.use("/", templatesUploadRouter); // /templates/upload, /templates/versions/:versionId/download
+router.use("/", artifactsUploadRouter); // /artifacts/upload, /artifacts/:id/download
 router.use("/learning-notes", learningRouter);
 
 let started = false;

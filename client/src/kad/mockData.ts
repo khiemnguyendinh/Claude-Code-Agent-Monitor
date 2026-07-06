@@ -100,7 +100,11 @@ export const WF_FREEFORM: WorkflowDefinition = {
 };
 
 /** [spec 07 §1] Thứ tự hiển thị đúng như đã duyệt trực quan ở prototype. */
-export const WORKFLOW_QUICKSTARTS: WorkflowDefinition[] = [RD_WORKFLOW, WF_CONTENT_FUNNEL, WF_FREEFORM];
+export const WORKFLOW_QUICKSTARTS: WorkflowDefinition[] = [
+  RD_WORKFLOW,
+  WF_CONTENT_FUNNEL,
+  WF_FREEFORM,
+];
 
 /** [spec 07 §5] Demo file đính kèm — bấm 📎 sẽ lần lượt gắn từng tên vào
  * pending row (giống hành vi cycling trong prototype). */
@@ -262,48 +266,12 @@ export function findAgent(id: string): AgentProfile | undefined {
 }
 
 // Seed 6 R&D templates (spec 02 §8) assigned across agents.
-AGENTS.find((a) => a.id === "sub-program-architect")?.skills.push({
-  name: "program_framework",
-  description: "Khung chương trình chuẩn CDIO",
-  version: 2,
-  usageCount: 14,
-  enabled: true,
-});
-AGENTS.find((a) => a.id === "sub-syllabus-designer")?.skills.push({
-  name: "syllabus",
-  description: "Syllabus theo KASH + Bloom",
-  version: 3,
-  usageCount: 22,
-  enabled: true,
-});
-AGENTS.find((a) => a.id === "sub-lesson-planner")?.skills.push({
-  name: "lesson_plan",
-  description: "Giáo án theo mẫu Kstudy",
-  version: 1,
-  usageCount: 9,
-  enabled: true,
-});
-AGENTS.find((a) => a.id === "sub-slide-builder")?.skills.push({
-  name: "slide_outline",
-  description: "Outline slide 1920x1080 chuẩn brand",
-  version: 1,
-  usageCount: 11,
-  enabled: true,
-});
-AGENTS.find((a) => a.id === "sub-video-script-writer")?.skills.push({
-  name: "video_script",
-  description: "Kịch bản video micro-learning",
-  version: 1,
-  usageCount: 7,
-  enabled: true,
-});
-AGENTS.find((a) => a.id === "sub-quality-reviewer")?.skills.push({
-  name: "quality_rubric",
-  description: "Rubric 4 tiêu chí + sensitivity flags",
-  version: 2,
-  usageCount: 31,
-  enabled: true,
-});
+AGENTS.find((a) => a.id === "sub-program-architect")?.skills.push("program_framework");
+AGENTS.find((a) => a.id === "sub-syllabus-designer")?.skills.push("syllabus");
+AGENTS.find((a) => a.id === "sub-lesson-planner")?.skills.push("lesson_plan");
+AGENTS.find((a) => a.id === "sub-slide-builder")?.skills.push("slide_outline");
+AGENTS.find((a) => a.id === "sub-video-script-writer")?.skills.push("video_script");
+AGENTS.find((a) => a.id === "sub-quality-reviewer")?.skills.push("quality_rubric");
 
 export const AGENT_STATS: Record<string, AgentStats> = {
   "main-agent-rd": {
@@ -369,7 +337,14 @@ export const AGENT_STATS: Record<string, AgentStats> = {
 // ── Org chart (04-man-doi-ngu §1a) ──────────────────────────────────────
 
 export const ORG_CHART_NODES: OrgChartNode[] = [
-  { id: "node-human", parentId: null, name: "Anh Khiêm", nodeType: "position", agentId: null, isHuman: true },
+  {
+    id: "node-human",
+    parentId: null,
+    name: "Anh Khiêm",
+    nodeType: "position",
+    agentId: null,
+    isHuman: true,
+  },
   {
     id: "node-main",
     parentId: "node-human",
@@ -446,9 +421,33 @@ export const OBJECTIVES: Objective[] = [
     parentObjectiveId: null,
     confidence: "at_risk",
     keyResults: [
-      { id: "kr-cty-hocvien", title: "Học viên tốt nghiệp trong năm", metric: "Học viên", current: 320, target: 800, ownerId: "human", health: "at_risk" },
-      { id: "kr-cty-nps", title: "NPS học viên", metric: "NPS", current: 58, target: 70, ownerId: "human", health: "on_track" },
-      { id: "kr-cty-sanpham", title: "Sản phẩm/khóa AI-native ra mắt", metric: "Khóa", current: 2, target: 5, ownerId: "human", health: "at_risk" },
+      {
+        id: "kr-cty-hocvien",
+        title: "Học viên tốt nghiệp trong năm",
+        metric: "Học viên",
+        current: 320,
+        target: 800,
+        ownerId: "human",
+        health: "at_risk",
+      },
+      {
+        id: "kr-cty-nps",
+        title: "NPS học viên",
+        metric: "NPS",
+        current: 58,
+        target: 70,
+        ownerId: "human",
+        health: "on_track",
+      },
+      {
+        id: "kr-cty-sanpham",
+        title: "Sản phẩm/khóa AI-native ra mắt",
+        metric: "Khóa",
+        current: 2,
+        target: 5,
+        ownerId: "human",
+        health: "at_risk",
+      },
     ],
   },
   {
@@ -461,9 +460,34 @@ export const OBJECTIVES: Objective[] = [
     parentObjectiveId: "obj-cty-2026",
     confidence: "at_risk",
     keyResults: [
-      { id: "kr-ctyq3-pipeline", title: "Pipeline học liệu tự động hoá end-to-end", metric: "Mức tự động", current: 60, target: 100, unit: "%", ownerId: "main-agent-rd", health: "on_track" },
-      { id: "kr-ctyq3-khoa", title: "Khóa ra mắt trong quý", metric: "Khóa", current: 1, target: 2, ownerId: "human", health: "at_risk" },
-      { id: "kr-ctyq3-tuyensinh", title: "Lượt đăng ký tuyển sinh K3", metric: "Đăng ký", current: 145, target: 300, ownerId: "human", health: "at_risk" },
+      {
+        id: "kr-ctyq3-pipeline",
+        title: "Pipeline học liệu tự động hoá end-to-end",
+        metric: "Mức tự động",
+        current: 60,
+        target: 100,
+        unit: "%",
+        ownerId: "main-agent-rd",
+        health: "on_track",
+      },
+      {
+        id: "kr-ctyq3-khoa",
+        title: "Khóa ra mắt trong quý",
+        metric: "Khóa",
+        current: 1,
+        target: 2,
+        ownerId: "human",
+        health: "at_risk",
+      },
+      {
+        id: "kr-ctyq3-tuyensinh",
+        title: "Lượt đăng ký tuyển sinh K3",
+        metric: "Đăng ký",
+        current: 145,
+        target: 300,
+        ownerId: "human",
+        health: "at_risk",
+      },
     ],
   },
   {
@@ -476,9 +500,34 @@ export const OBJECTIVES: Objective[] = [
     parentObjectiveId: "obj-cty-q3",
     confidence: "on_track",
     keyResults: [
-      { id: "kr-rd1-hoclieu", title: "Học liệu K3 hoàn thành", metric: "Học liệu", current: 2, target: 7, ownerId: "sub-syllabus-designer", health: "on_track" },
-      { id: "kr-rd1-duyet", title: "Tỷ lệ đạt duyệt lần đầu", metric: "Chất lượng", current: 78, target: 90, unit: "%", ownerId: "sub-quality-reviewer", health: "at_risk" },
-      { id: "kr-rd1-video", title: "Video micro-learning hoàn thiện", metric: "Video", current: 3, target: 12, ownerId: "sub-video-script-writer", health: "off_track" },
+      {
+        id: "kr-rd1-hoclieu",
+        title: "Học liệu K3 hoàn thành",
+        metric: "Học liệu",
+        current: 2,
+        target: 7,
+        ownerId: "sub-syllabus-designer",
+        health: "on_track",
+      },
+      {
+        id: "kr-rd1-duyet",
+        title: "Tỷ lệ đạt duyệt lần đầu",
+        metric: "Chất lượng",
+        current: 78,
+        target: 90,
+        unit: "%",
+        ownerId: "sub-quality-reviewer",
+        health: "at_risk",
+      },
+      {
+        id: "kr-rd1-video",
+        title: "Video micro-learning hoàn thiện",
+        metric: "Video",
+        current: 3,
+        target: 12,
+        ownerId: "sub-video-script-writer",
+        health: "off_track",
+      },
     ],
   },
   {
@@ -491,9 +540,35 @@ export const OBJECTIVES: Objective[] = [
     parentObjectiveId: "obj-cty-q3",
     confidence: "at_risk",
     keyResults: [
-      { id: "kr-rd2-cost", title: "Chi phí trung bình / học liệu", metric: "Chi phí", current: 82, target: 60, unit: "K", direction: "down", ownerId: "main-agent-rd", health: "at_risk" },
-      { id: "kr-rd2-throughput", title: "Học liệu hoàn thành mỗi tuần", metric: "Throughput", current: 9, target: 14, ownerId: "main-agent-rd", health: "at_risk" },
-      { id: "kr-rd2-template", title: "Thư viện mẫu (template) mới", metric: "Template", current: 4, target: 6, ownerId: "sub-program-architect", health: "on_track" },
+      {
+        id: "kr-rd2-cost",
+        title: "Chi phí trung bình / học liệu",
+        metric: "Chi phí",
+        current: 82,
+        target: 60,
+        unit: "K",
+        direction: "down",
+        ownerId: "main-agent-rd",
+        health: "at_risk",
+      },
+      {
+        id: "kr-rd2-throughput",
+        title: "Học liệu hoàn thành mỗi tuần",
+        metric: "Throughput",
+        current: 9,
+        target: 14,
+        ownerId: "main-agent-rd",
+        health: "at_risk",
+      },
+      {
+        id: "kr-rd2-template",
+        title: "Thư viện mẫu (template) mới",
+        metric: "Template",
+        current: 4,
+        target: 6,
+        ownerId: "sub-program-architect",
+        health: "on_track",
+      },
     ],
   },
 ];
@@ -506,11 +581,75 @@ export function findObjective(id: string): Objective | undefined {
 // Khác OKR (đo "thay đổi/tham vọng"): KPI đo "duy trì", cập nhật TỰ ĐỘNG từ
 // nguồn (source) — không nhập tay. trend = các kỳ gần nhất, cũ→mới.
 export const KPIS: Kpi[] = [
-  { id: "kpi-throughput", level: "department", name: "Học liệu hoàn thành / tháng", metric: "Năng suất", current: 34, target: 48, cadence: "monthly", ownerId: "main-agent-rd", source: "Tự động · KAD", trend: [22, 26, 25, 30, 31, 34], health: "at_risk" },
-  { id: "kpi-quality", level: "department", name: "Tỷ lệ đạt duyệt lần đầu", metric: "Chất lượng", current: 78, target: 90, unit: "%", cadence: "monthly", ownerId: "sub-quality-reviewer", source: "Tự động · KAD", trend: [85, 84, 82, 80, 79, 78], health: "at_risk" },
-  { id: "kpi-cost", level: "department", name: "Chi phí / học liệu", metric: "Chi phí", current: 82, target: 60, unit: "K", direction: "down", cadence: "monthly", ownerId: "main-agent-rd", source: "Tự động · Cost ledger", trend: [95, 92, 90, 86, 84, 82], health: "off_track" },
-  { id: "kpi-sla", level: "department", name: "Duyệt đúng SLA", metric: "Vận hành", current: 88, target: 95, unit: "%", cadence: "weekly", ownerId: "human", source: "Tự động · KAD", trend: [90, 88, 92, 86, 88, 88], health: "at_risk" },
-  { id: "kpi-tuyensinh", level: "company", name: "Tuyển sinh K3 — lượt đăng ký", metric: "Marketing", current: 145, target: 300, cadence: "monthly", ownerId: "human", source: "Tự động · Analytics", trend: [40, 62, 85, 102, 128, 145], health: "at_risk" },
+  {
+    id: "kpi-throughput",
+    level: "department",
+    name: "Học liệu hoàn thành / tháng",
+    metric: "Năng suất",
+    current: 34,
+    target: 48,
+    cadence: "monthly",
+    ownerId: "main-agent-rd",
+    source: "Tự động · KAD",
+    trend: [22, 26, 25, 30, 31, 34],
+    health: "at_risk",
+  },
+  {
+    id: "kpi-quality",
+    level: "department",
+    name: "Tỷ lệ đạt duyệt lần đầu",
+    metric: "Chất lượng",
+    current: 78,
+    target: 90,
+    unit: "%",
+    cadence: "monthly",
+    ownerId: "sub-quality-reviewer",
+    source: "Tự động · KAD",
+    trend: [85, 84, 82, 80, 79, 78],
+    health: "at_risk",
+  },
+  {
+    id: "kpi-cost",
+    level: "department",
+    name: "Chi phí / học liệu",
+    metric: "Chi phí",
+    current: 82,
+    target: 60,
+    unit: "K",
+    direction: "down",
+    cadence: "monthly",
+    ownerId: "main-agent-rd",
+    source: "Tự động · Cost ledger",
+    trend: [95, 92, 90, 86, 84, 82],
+    health: "off_track",
+  },
+  {
+    id: "kpi-sla",
+    level: "department",
+    name: "Duyệt đúng SLA",
+    metric: "Vận hành",
+    current: 88,
+    target: 95,
+    unit: "%",
+    cadence: "weekly",
+    ownerId: "human",
+    source: "Tự động · KAD",
+    trend: [90, 88, 92, 86, 88, 88],
+    health: "at_risk",
+  },
+  {
+    id: "kpi-tuyensinh",
+    level: "company",
+    name: "Tuyển sinh K3 — lượt đăng ký",
+    metric: "Marketing",
+    current: 145,
+    target: 300,
+    cadence: "monthly",
+    ownerId: "human",
+    source: "Tự động · Analytics",
+    trend: [40, 62, 85, 102, 128, 145],
+    health: "at_risk",
+  },
 ];
 
 // ── Projects (tasks gốc — 02-man-tong-quan §3 / 03-man-cong-viec §3) ────
@@ -523,14 +662,23 @@ export const PROJECTS: Project[] = [
     workflowId: RD_WORKFLOW.id,
     itemsDone: 2,
     itemsTotal: 7,
-    agentIdsInvolved: ["sub-program-architect", "sub-curriculum-researcher", "sub-syllabus-designer"],
+    agentIdsInvolved: [
+      "sub-program-architect",
+      "sub-curriculum-researcher",
+      "sub-syllabus-designer",
+    ],
     dueDate: daysFromNow(18),
     priority: "normal",
     hasBlocker: false,
     createdAt: daysAgo(20),
     updatedAt: hoursAgo(2),
     steps: [
-      { key: "framework", label: "Khung chương trình", state: "done", agentId: "sub-program-architect" },
+      {
+        key: "framework",
+        label: "Khung chương trình",
+        state: "done",
+        agentId: "sub-program-architect",
+      },
       { key: "research", label: "Nghiên cứu", state: "done", agentId: "sub-curriculum-researcher" },
       { key: "syllabus", label: "Syllabus", state: "doing", agentId: "sub-syllabus-designer" },
       { key: "lesson", label: "Lesson", state: "todo" },
@@ -553,7 +701,12 @@ export const PROJECTS: Project[] = [
     createdAt: daysAgo(15),
     updatedAt: hoursAgo(3),
     steps: [
-      { key: "framework", label: "Khung chương trình", state: "done", agentId: "sub-program-architect" },
+      {
+        key: "framework",
+        label: "Khung chương trình",
+        state: "done",
+        agentId: "sub-program-architect",
+      },
       { key: "research", label: "Nghiên cứu", state: "done", agentId: "sub-curriculum-researcher" },
       { key: "syllabus", label: "Syllabus", state: "done", agentId: "sub-syllabus-designer" },
       { key: "lesson", label: "Lesson", state: "done", agentId: "sub-lesson-planner" },
@@ -596,7 +749,12 @@ export const PROJECTS: Project[] = [
     createdAt: daysAgo(10),
     updatedAt: hoursAgo(3),
     steps: [
-      { key: "framework", label: "Khung chương trình", state: "done", agentId: "sub-program-architect" },
+      {
+        key: "framework",
+        label: "Khung chương trình",
+        state: "done",
+        agentId: "sub-program-architect",
+      },
       { key: "research", label: "Nghiên cứu", state: "done", agentId: "sub-curriculum-researcher" },
       { key: "syllabus", label: "Syllabus", state: "done", agentId: "sub-syllabus-designer" },
       { key: "lesson", label: "Lesson", state: "done", agentId: "sub-lesson-planner" },
@@ -843,7 +1001,8 @@ export const APPROVALS: Approval[] = [
     approvalType: "sensitive_content",
     sensitivitySubtype: "metrics",
     title: "Nội dung có số liệu: case study tỷ lệ chuyển đổi 37%",
-    description: "Slide dẫn số liệu case study khách hàng — cần xác nhận trước khi đưa vào bài giảng.",
+    description:
+      "Slide dẫn số liệu case study khách hàng — cần xác nhận trước khi đưa vào bài giảng.",
     artifactId: null,
     status: "pending",
     reviewer: "human",
@@ -987,7 +1146,8 @@ export const ARTIFACTS: Artifact[] = [
     agentId: "sub-slide-builder",
     artifactType: "slide_outline",
     title: "Slide Outline: AI Agent Workspace cho SME — Bài 4",
-    content: "# Bài 4 — Thiết lập AI Agent đầu tiên\n\n- Mở bài: use case thực tế SME\n- Demo: dựng agent trả lời khách hàng\n- Bài tập: học viên tự cấu hình 1 agent",
+    content:
+      "# Bài 4 — Thiết lập AI Agent đầu tiên\n\n- Mở bài: use case thực tế SME\n- Demo: dựng agent trả lời khách hàng\n- Bài tập: học viên tự cấu hình 1 agent",
     parentArtifactId: null,
     status: "approved",
     version: 1,
@@ -1002,7 +1162,8 @@ export const ARTIFACTS: Artifact[] = [
     agentId: "sub-video-script-writer",
     artifactType: "video_script",
     title: "Video Script: AI Agent Workspace cho SME — Bài 4",
-    content: "# Kịch bản quay — Bài 4\n\n00:00 Mở đầu bằng câu hỏi thực tế\n00:30 Demo màn hình dựng agent\n03:00 Tóm tắt + bài tập",
+    content:
+      "# Kịch bản quay — Bài 4\n\n00:00 Mở đầu bằng câu hỏi thực tế\n00:30 Demo màn hình dựng agent\n03:00 Tóm tắt + bài tập",
     parentArtifactId: "art-slide-sme-b4",
     status: "approved",
     version: 1,
@@ -1017,7 +1178,8 @@ export const ARTIFACTS: Artifact[] = [
     agentId: "sub-syllabus-designer",
     artifactType: "syllabus",
     title: "Syllabus: Khóa AI Marketing K3 — Module 1",
-    content: "# Module 1 — Nền tảng Digital Marketing\n\n1. Facebook Ads cơ bản\n2. Google Ads cơ bản\n3. Đo lường & tối ưu",
+    content:
+      "# Module 1 — Nền tảng Digital Marketing\n\n1. Facebook Ads cơ bản\n2. Google Ads cơ bản\n3. Đo lường & tối ưu",
     parentArtifactId: null,
     status: "approved",
     version: 1,
@@ -1047,7 +1209,8 @@ export const ARTIFACTS: Artifact[] = [
     agentId: "sub-program-architect",
     artifactType: "program_framework",
     title: "Khung chương trình: Public Speaking AI-Augmented",
-    content: "# Khung chương trình\n\n- Mục tiêu\n- Learning pathway 6 module\n- Đối tượng học viên",
+    content:
+      "# Khung chương trình\n\n- Mục tiêu\n- Learning pathway 6 module\n- Đối tượng học viên",
     parentArtifactId: "art-research-ps",
     status: "review",
     version: 1,
@@ -1199,9 +1362,19 @@ export const TASK_DETAIL_SYLLABUS_K3: TaskDetail = {
   currentStepKey: "syllabus",
   isRunning: false,
   steps: [
-    { key: "framework", label: "Khung chương trình", state: "done", agentId: "sub-program-architect" },
+    {
+      key: "framework",
+      label: "Khung chương trình",
+      state: "done",
+      agentId: "sub-program-architect",
+    },
     { key: "research", label: "Nghiên cứu", state: "done", agentId: "sub-curriculum-researcher" },
-    { key: "syllabus", label: "Syllabus", state: "waiting_human", agentId: "sub-syllabus-designer" },
+    {
+      key: "syllabus",
+      label: "Syllabus",
+      state: "waiting_human",
+      agentId: "sub-syllabus-designer",
+    },
     { key: "lesson", label: "Lesson", state: "todo" },
     { key: "slide", label: "Slide", state: "todo" },
     { key: "video", label: "Video", state: "todo" },
@@ -1212,7 +1385,8 @@ export const TASK_DETAIL_SYLLABUS_K3: TaskDetail = {
     taskId: "task-syllabus-k3-m2",
     fromAgentId: "main-agent-rd",
     toAgentId: "sub-syllabus-designer",
-    instruction: "Viết syllabus module 2 dựa trên khung chương trình đã duyệt + research benchmark.",
+    instruction:
+      "Viết syllabus module 2 dựa trên khung chương trình đã duyệt + research benchmark.",
     status: "review",
     retryCount: 1,
     runId: "run-syllabus-k3-m2-v2",
@@ -1431,29 +1605,153 @@ export const ORG_CONTEXT_SECTIONS: OrgContextSection[] = [
 // ── Template library (JD & Kỹ năng tab) ──────────────────────────────────
 
 export const TEMPLATE_SKILLS: TemplateSkill[] = [
-  { id: "tpl-framework", name: "program_framework", templateType: "Khung chương trình", purpose: "Chuẩn CDIO", version: 2, usageCount: 14, status: "active" },
-  { id: "tpl-syllabus", name: "syllabus", templateType: "Syllabus", purpose: "Chuẩn KASH + Bloom", version: 3, usageCount: 22, status: "active" },
-  { id: "tpl-lesson", name: "lesson_plan", templateType: "Lesson plan", purpose: "Mẫu giáo án Kstudy", version: 1, usageCount: 9, status: "active" },
-  { id: "tpl-slide", name: "slide_outline", templateType: "Slide outline", purpose: "Chuẩn brand 1920x1080", version: 1, usageCount: 11, status: "active" },
-  { id: "tpl-video", name: "video_script", templateType: "Video script", purpose: "Micro-learning", version: 1, usageCount: 7, status: "active" },
-  { id: "tpl-rubric", name: "quality_rubric", templateType: "Quality rubric", purpose: "4 tiêu chí + sensitivity", version: 2, usageCount: 31, status: "active" },
+  {
+    id: "tpl-framework",
+    name: "program_framework",
+    templateType: "Khung chương trình",
+    purpose: "Chuẩn CDIO",
+    version: 2,
+    usageCount: 14,
+    status: "active",
+  },
+  {
+    id: "tpl-syllabus",
+    name: "syllabus",
+    templateType: "Syllabus",
+    purpose: "Chuẩn KASH + Bloom",
+    version: 3,
+    usageCount: 22,
+    status: "active",
+  },
+  {
+    id: "tpl-lesson",
+    name: "lesson_plan",
+    templateType: "Lesson plan",
+    purpose: "Mẫu giáo án Kstudy",
+    version: 1,
+    usageCount: 9,
+    status: "active",
+  },
+  {
+    id: "tpl-slide",
+    name: "slide_outline",
+    templateType: "Slide outline",
+    purpose: "Chuẩn brand 1920x1080",
+    version: 1,
+    usageCount: 11,
+    status: "active",
+  },
+  {
+    id: "tpl-video",
+    name: "video_script",
+    templateType: "Video script",
+    purpose: "Micro-learning",
+    version: 1,
+    usageCount: 7,
+    status: "active",
+  },
+  {
+    id: "tpl-rubric",
+    name: "quality_rubric",
+    templateType: "Quality rubric",
+    purpose: "4 tiêu chí + sensitivity",
+    version: 2,
+    usageCount: 31,
+    status: "active",
+  },
 ];
 
 // ── Approval matrix (spec 01 §4 — transcribed verbatim, no invented rows) ─
 
 export const APPROVAL_MATRIX: ApprovalMatrixRow[] = [
-  { action: "Kế hoạch tổng thể", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "24h", automatic: false },
-  { action: "Chiến lược đào tạo", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "24h", automatic: false },
-  { action: "Khung chương trình (sau QR)", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "48h", automatic: false },
-  { action: "Syllabus (sau QR)", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "48h", automatic: false },
-  { action: "Nội dung chứa số liệu / con người / thương hiệu", requestedBy: "Bất kỳ thành viên AI", cooldown: "—", slaHours: "24h", automatic: false },
-  { action: "Publish Facebook / WordPress", requestedBy: "Trợ lý vận hành", cooldown: "5 phút", slaHours: "4h", automatic: false },
-  { action: "Sửa blueprint / template mặc định", requestedBy: "Trợ lý vận hành", cooldown: "—", slaHours: "48h", automatic: false },
-  { action: "Sửa tri thức tổ chức", requestedBy: "Anh Khiêm qua UI", cooldown: "—", slaHours: "—", automatic: false },
-  { action: "Slide outline", requestedBy: "Xây dựng slide", cooldown: "—", slaHours: "Auto", automatic: true, condition: "Đã có approval “approved” cho syllabus cùng workflow" },
-  { action: "Video script", requestedBy: "Viết kịch bản video", cooldown: "—", slaHours: "Auto", automatic: true, condition: "Đã có approval “approved” cho lesson plan cùng workflow" },
-  { action: "Tạo trợ thủ tạm thời", requestedBy: "Thành viên AI có quyền", cooldown: "—", slaHours: "Auto", automatic: true, condition: "Agent có create_helper=true + task cha trong scope" },
-  { action: "Outline expansion, draft generation, nghiên cứu nội bộ, checklist", requestedBy: "Thành viên AI", cooldown: "—", slaHours: "Auto", automatic: true, condition: "Luôn tự động" },
+  {
+    action: "Kế hoạch tổng thể",
+    requestedBy: "Trợ lý vận hành",
+    cooldown: "—",
+    slaHours: "24h",
+    automatic: false,
+  },
+  {
+    action: "Chiến lược đào tạo",
+    requestedBy: "Trợ lý vận hành",
+    cooldown: "—",
+    slaHours: "24h",
+    automatic: false,
+  },
+  {
+    action: "Khung chương trình (sau QR)",
+    requestedBy: "Trợ lý vận hành",
+    cooldown: "—",
+    slaHours: "48h",
+    automatic: false,
+  },
+  {
+    action: "Syllabus (sau QR)",
+    requestedBy: "Trợ lý vận hành",
+    cooldown: "—",
+    slaHours: "48h",
+    automatic: false,
+  },
+  {
+    action: "Nội dung chứa số liệu / con người / thương hiệu",
+    requestedBy: "Bất kỳ thành viên AI",
+    cooldown: "—",
+    slaHours: "24h",
+    automatic: false,
+  },
+  {
+    action: "Publish Facebook / WordPress",
+    requestedBy: "Trợ lý vận hành",
+    cooldown: "5 phút",
+    slaHours: "4h",
+    automatic: false,
+  },
+  {
+    action: "Sửa blueprint / template mặc định",
+    requestedBy: "Trợ lý vận hành",
+    cooldown: "—",
+    slaHours: "48h",
+    automatic: false,
+  },
+  {
+    action: "Sửa tri thức tổ chức",
+    requestedBy: "Anh Khiêm qua UI",
+    cooldown: "—",
+    slaHours: "—",
+    automatic: false,
+  },
+  {
+    action: "Slide outline",
+    requestedBy: "Xây dựng slide",
+    cooldown: "—",
+    slaHours: "Auto",
+    automatic: true,
+    condition: "Đã có approval “approved” cho syllabus cùng workflow",
+  },
+  {
+    action: "Video script",
+    requestedBy: "Viết kịch bản video",
+    cooldown: "—",
+    slaHours: "Auto",
+    automatic: true,
+    condition: "Đã có approval “approved” cho lesson plan cùng workflow",
+  },
+  {
+    action: "Tạo trợ thủ tạm thời",
+    requestedBy: "Thành viên AI có quyền",
+    cooldown: "—",
+    slaHours: "Auto",
+    automatic: true,
+    condition: "Agent có create_helper=true + task cha trong scope",
+  },
+  {
+    action: "Outline expansion, draft generation, nghiên cứu nội bộ, checklist",
+    requestedBy: "Thành viên AI",
+    cooldown: "—",
+    slaHours: "Auto",
+    automatic: true,
+    condition: "Luôn tự động",
+  },
 ];
 
 export const DEPARTMENT_POLICIES: DepartmentPolicies = {
@@ -1563,7 +1861,13 @@ export const AUTOMATION_RULES: AutomationRule[] = [
     fireCount: 42,
     dryRun30d: "Sẽ kích 30 lần (mỗi sáng 07:00)",
     fires: [
-      { id: "fire-b1", firedAt: hoursAgo(6), triggerRef: "Lịch 07:00", result: "created", note: "Báo cáo đầu ngày" },
+      {
+        id: "fire-b1",
+        firedAt: hoursAgo(6),
+        triggerRef: "Lịch 07:00",
+        result: "created",
+        note: "Báo cáo đầu ngày",
+      },
       { id: "fire-b2", firedAt: hoursAgo(30), triggerRef: "Lịch 07:00", result: "created" },
     ],
   },

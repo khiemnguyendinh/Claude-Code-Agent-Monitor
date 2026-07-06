@@ -28,4 +28,6 @@ module.exports = {
   attachments: require("./task-attachments"),
   orgContext: require("./org-context"),
   templates: require("./templates"),
+  personnel: require("./personnel"),
+  strategicGoals: require("./strategic-goals"),
 };

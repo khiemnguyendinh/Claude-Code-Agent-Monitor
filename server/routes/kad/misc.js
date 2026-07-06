@@ -26,6 +26,39 @@ router.get("/agents/:id", (req, res) => {
   res.json(a);
 });
 
+// Nhân sự số (tab Tổ chức) — human-facing create/update/archive. catalog.js
+// stays read-only per its own header; repo.personnel owns these writes.
+router.post("/agents", (req, res) => {
+  const department_id = req.body?.department_id || deptId(req);
+  if (!department_id) return err(res, "ENODEPT", "no department resolved", 400);
+  try {
+    const agent = repo.personnel.createAgent({ ...req.body, department_id });
+    res.status(201).json(agent);
+  } catch (e) {
+    err(res, "EBADAGENT", e instanceof Error ? e.message : "could not create agent", 400);
+  }
+});
+
+router.put("/agents/:id", (req, res) => {
+  try {
+    const agent = repo.personnel.updateAgent(req.params.id, req.body || {});
+    if (!agent) return err(res, "ENOTFOUND", "agent not found", 404);
+    res.json(agent);
+  } catch (e) {
+    err(res, "EBADAGENT", e instanceof Error ? e.message : "could not update agent", 400);
+  }
+});
+
+router.post("/agents/:id/archive", (req, res) => {
+  try {
+    const agent = repo.personnel.archiveAgent(req.params.id, { actor_id: req.body?.actor_id });
+    if (!agent) return err(res, "ENOTFOUND", "agent not found", 404);
+    res.json(agent);
+  } catch (e) {
+    err(res, "EBADAGENT", e instanceof Error ? e.message : "could not archive agent", 400);
+  }
+});
+
 // [spec/ui/07 §1] Quickstart cards on Giao việc mới — active workflows only.
 router.get("/workflows", (req, res) => {
   const id = deptId(req);

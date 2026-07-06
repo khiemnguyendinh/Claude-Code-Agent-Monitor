@@ -18,8 +18,10 @@ import type { OrgChartNodeRow } from "../../api-client";
 import type { AgentProfile } from "../../types";
 import { usePeek } from "../../components/PeekDrawer";
 import { AgentAvatar, HumanAvatar } from "../../components/Avatar";
-import { KadButton, KadCard, KadInput, KadSkeleton } from "../../components/primitives";
+import { KadCard, KadSkeleton } from "../../components/primitives";
 import { useKadToast } from "../../components/Toast";
+import { OrgChartEditor } from "./OrgChartEditor";
+import { PersonnelRoster } from "./PersonnelRoster";
 
 export function ToChucTab() {
   const { openPeek } = usePeek();
@@ -28,20 +30,29 @@ export function ToChucTab() {
   const [loading, setLoading] = useState(true);
   const toast = useKadToast();
 
-  useEffect(() => {
+  const refresh = () => {
     Promise.all([kadApi.agents.list(), kadApi.orgContext.orgChart()])
       .then(([agentRows, nodeRows]) => {
         setAgents(agentRows);
         setNodes(nodeRows);
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (loading) return <KadSkeleton className="h-72 w-full" />;
 
-  const subAgents = agents.filter((a) => a.agentType === "sub");
-  const mainAgent = agents.find((a) => a.agentType === "main");
-  const helperGhosts = agents.filter((a) => a.agentType === "helper");
+  // Archived agents keep existing tasks/history but drop out of the live
+  // hub-and-spoke chart — otherwise "Xóa" in the roster below would have no
+  // visible effect here.
+  const liveAgents = agents.filter((a) => a.status !== "archived");
+  const subAgents = liveAgents.filter((a) => a.agentType === "sub");
+  const mainAgent = liveAgents.find((a) => a.agentType === "main");
+  const helperGhosts = liveAgents.filter((a) => a.agentType === "helper");
 
   return (
     <div className="space-y-8">
@@ -100,7 +111,10 @@ export function ToChucTab() {
                   const helper = helperGhosts.find((h) => h.parentAgentId === agent.id);
                   return (
                     <div key={agent.id} className="flex flex-col items-center">
-                      <button type="button" onClick={() => openPeek({ type: "agent", id: agent.id })}>
+                      <button
+                        type="button"
+                        onClick={() => openPeek({ type: "agent", id: agent.id })}
+                      >
                         <NodeCard
                           kind="sub"
                           agentId={agent.id}
@@ -113,7 +127,9 @@ export function ToChucTab() {
                         <>
                           <div className="w-px h-4 border-l border-dashed border-kad-text-faint" />
                           <div className="w-[110px] rounded-lg border border-dashed border-kad-text-faint px-1.5 py-1 text-center">
-                            <p className="kad-caption text-kad-text-muted leading-tight">Trợ thủ tạm thời</p>
+                            <p className="kad-caption text-kad-text-muted leading-tight">
+                              Trợ thủ tạm thời
+                            </p>
                             <p className="kad-caption text-kad-text-faint">helper</p>
                           </div>
                         </>
@@ -126,13 +142,16 @@ export function ToChucTab() {
           </div>
         </div>
         <p className="kad-caption text-kad-text-faint mt-4 text-center">
-          Đường nối = giao việc / báo cáo (2 chiều giữa Trưởng phòng ↔ Trợ lý vận hành). Không có đường ngang giữa các
-          thành viên AI — mọi điều phối đi qua Trợ lý vận hành.
+          Đường nối = giao việc / báo cáo (2 chiều giữa Trưởng phòng ↔ Trợ lý vận hành). Không có
+          đường ngang giữa các thành viên AI — mọi điều phối đi qua Trợ lý vận hành.
         </p>
       </KadCard>
 
       {/* 1b — quy trình chuẩn */}
       <WorkflowSection agents={agents} />
+
+      <PersonnelRoster agents={agents} onChanged={refresh} />
+
       <OrgChartEditor
         nodes={nodes}
         onChange={setNodes}
@@ -143,7 +162,12 @@ export function ToChucTab() {
               setNodes(saved);
               toast({ message: "Đã lưu org chart.", tone: "success" });
             })
-            .catch((e) => toast({ message: e instanceof Error ? e.message : "Không lưu được org chart.", tone: "warning" }));
+            .catch((e) =>
+              toast({
+                message: e instanceof Error ? e.message : "Không lưu được org chart.",
+                tone: "warning",
+              })
+            );
         }}
       />
     </div>
@@ -185,7 +209,9 @@ function NodeCard({
         />
       )}
       <div className="min-w-0 text-left">
-        <p className="kad-caption font-medium text-kad-text-strong leading-tight line-clamp-2">{name}</p>
+        <p className="kad-caption font-medium text-kad-text-strong leading-tight line-clamp-2">
+          {name}
+        </p>
         <p className="kad-caption text-kad-text-faint leading-tight truncate">{title}</p>
       </div>
     </div>
@@ -239,54 +265,16 @@ function WorkflowSection({ agents }: { agents: AgentProfile[] }) {
                       )}
                     </div>
                     {!isLast && (
-                      <ArrowRight className="w-4 h-4 text-kad-text-faint flex-shrink-0 mx-1" aria-hidden />
+                      <ArrowRight
+                        className="w-4 h-4 text-kad-text-faint flex-shrink-0 mx-1"
+                        aria-hidden
+                      />
                     )}
                   </div>
                 );
               })}
             </div>
           </KadCard>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function OrgChartEditor({
-  nodes,
-  onChange,
-  onSave,
-}: {
-  nodes: OrgChartNodeRow[];
-  onChange: (nodes: OrgChartNodeRow[]) => void;
-  onSave: () => void;
-}) {
-  const update = (id: string, patch: Partial<OrgChartNodeRow>) => {
-    onChange(nodes.map((n) => (n.id === id ? { ...n, ...patch } : n)));
-  };
-  return (
-    <div>
-      <div className="flex items-center justify-between mb-3">
-        <h3 className="kad-heading text-kad-text-strong">Org chart editor</h3>
-        <KadButton size="row" variant="primary" onClick={onSave}>
-          Lưu
-        </KadButton>
-      </div>
-      <div className="space-y-2">
-        {nodes.map((node) => (
-          <div key={node.id} className="grid grid-cols-1 sm:grid-cols-[1fr_150px_1fr] gap-2 border border-kad-border rounded-lg p-3">
-            <KadInput value={node.name} onChange={(e) => update(node.id, { name: e.target.value })} />
-            <select
-              value={node.node_type}
-              onChange={(e) => update(node.id, { node_type: e.target.value as OrgChartNodeRow["node_type"] })}
-              className="kad-body h-9 rounded-lg bg-kad-surface-2 px-3 text-kad-text"
-            >
-              <option value="company">company</option>
-              <option value="department">department</option>
-              <option value="position">position</option>
-            </select>
-            <KadInput value={node.parent_id ?? ""} onChange={(e) => update(node.id, { parent_id: e.target.value || null })} />
-          </div>
         ))}
       </div>
     </div>
