@@ -91,4 +91,36 @@ function setEnabled(id, enabled) {
   return getRule(id);
 }
 
-module.exports = { createRule, getRule, listRules, setEnabled, listFires };
+/**
+ * Record one rule evaluation outcome (spec/ui/09 §3). Inserts an
+ * automation_rule_fires row and stamps last_fired_at on the rule so the worker
+ * won't re-evaluate the same schedule slot. fire_count is bumped only when the
+ * rule actually produced work (result='created'|'notified') — skipped_* rows are
+ * audit trail, not a consumed fire.
+ * @param {{rule_id:string, result:string, trigger_ref?:string, action_task_id?:string, note?:string}} p
+ */
+function recordFire({ rule_id, result, trigger_ref, action_task_id, note }) {
+  const now = nowIso();
+  const id = newId("fire");
+  db.prepare(
+    `INSERT INTO automation_rule_fires (id, rule_id, fired_at, trigger_ref, action_task_id, result, note)
+     VALUES (@id,@rule_id,@now,@trigger_ref,@action_task_id,@result,@note)`
+  ).run({
+    id,
+    rule_id,
+    now,
+    trigger_ref: trigger_ref ?? null,
+    action_task_id: action_task_id ?? null,
+    result,
+    note: note ?? null,
+  });
+  const consumed = result === "created" || result === "notified";
+  db.prepare(
+    `UPDATE automation_rules
+       SET last_fired_at=@now, fire_count=fire_count + @inc
+     WHERE id=@rule_id`
+  ).run({ now, rule_id, inc: consumed ? 1 : 0 });
+  return getRule(rule_id);
+}
+
+module.exports = { createRule, getRule, listRules, setEnabled, listFires, recordFire };
