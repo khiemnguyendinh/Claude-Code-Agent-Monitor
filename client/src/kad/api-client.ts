@@ -1005,6 +1005,8 @@ export const kadApi = {
       patch: {
         display_name?: string;
         role_description?: string;
+        engine?: "claude" | "codex" | "antigravity";
+        model?: string | null;
         permissions?: Record<string, boolean>;
         skills?: string[];
         status?: "active" | "inactive";
@@ -1229,24 +1231,6 @@ export const kadApi = {
   // tên công việc" instead of the projectFromCwd heuristic, in one request.
   sessionTaskMap: () =>
     request<Record<string, { task_id: string; task_title: string }>>("/session-task-map"),
-
-  // [Phase 7 hardening] server/routes/kad/learning.js — was previously called
-  // through a nonexistent `api.get/post` import (client/src/kad/pages/
-  // LearningNotes.tsx), which broke the ENTIRE app's module graph in dev
-  // (Vite throws on an unresolvable named export at import time, before React
-  // ever mounts — not something an error boundary can catch).
-  learningNotes: {
-    list: (department: string) =>
-      request<LearningNoteRow[]>(`/learning-notes?department=${encodeURIComponent(department)}`),
-    propose: (id: string) =>
-      request<LearningNoteRow>(`/learning-notes/${encodeURIComponent(id)}/propose`, {
-        method: "POST",
-      }),
-    approve: (id: string) =>
-      request<LearningNoteRow>(`/learning-notes/${encodeURIComponent(id)}/approve`, {
-        method: "POST",
-      }),
-  },
 
   dependencies: {
     // spec/ui/09 §1 "Khi điều kiện" — creates the row AND flips the task to

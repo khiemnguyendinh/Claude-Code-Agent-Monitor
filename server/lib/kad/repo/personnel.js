@@ -144,6 +144,15 @@ function updateAgent(id, patch = {}) {
       ? assertLen("role_description", patch.role_description, 5000)
       : null;
   }
+  if (patch.engine !== undefined) {
+    if (!ENGINES.has(patch.engine)) throw new Error("invalid engine");
+    fields.engine = "@engine";
+    params.engine = patch.engine;
+  }
+  if (patch.model !== undefined) {
+    fields.model = "@model";
+    params.model = patch.model ? assertLen("model", patch.model, 100) : null;
+  }
   if (patch.permissions !== undefined) {
     fields.permissions = "@permissions";
     params.permissions = JSON.stringify(cleanPermissions(patch.permissions) || {});

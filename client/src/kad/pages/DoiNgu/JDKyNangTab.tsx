@@ -8,6 +8,7 @@ import { AgentAvatar } from "../../components/Avatar";
 import {
   KadButton,
   KadErrorBlock,
+  KadFieldLabel,
   KadInput,
   KadSkeleton,
   KadTextarea,
@@ -25,6 +26,10 @@ export function JDKyNangTab() {
   const [editingJd, setEditingJd] = useState(false);
   const [jdDraft, setJdDraft] = useState("");
   const [savingJd, setSavingJd] = useState(false);
+  const [editingEngine, setEditingEngine] = useState(false);
+  const [engineDraft, setEngineDraft] = useState<"claude" | "codex" | "antigravity">("claude");
+  const [modelDraft, setModelDraft] = useState("");
+  const [savingEngine, setSavingEngine] = useState(false);
   const [newSkill, setNewSkill] = useState("");
   const [savingSkills, setSavingSkills] = useState(false);
   const toast = useKadToast();
@@ -62,30 +67,23 @@ export function JDKyNangTab() {
   const pending = blueprints.find((bp) => bp.status === "pending_approval");
   const visibleTemplates = agent?.permissions.readTemplates ? templates : [];
 
-  const proposeBlueprint = (summary: string) => {
-    if (!approved) return;
-    kadApi.orgContext
-      .proposeBlueprint(approved.id, {
-        data: {
-          ...approved.data,
-          last_ui_proposal: {
-            summary,
-            agent_id: agent?.id,
-            proposed_at: new Date().toISOString(),
-          },
-        },
-        change_summary: summary,
-      })
+  const saveEngine = () => {
+    if (!agent) return;
+    setSavingEngine(true);
+    kadApi.agents
+      .update(agent.id, { engine: engineDraft, model: modelDraft.trim() || null })
       .then(() => {
-        toast({ message: "Đã gửi duyệt thay đổi blueprint.", tone: "success" });
+        toast({ message: "Đã cập nhật cấu hình engine.", tone: "success" });
+        setEditingEngine(false);
         refresh();
       })
       .catch((e) =>
         toast({
-          message: e instanceof Error ? e.message : "Không gửi được blueprint.",
+          message: e instanceof Error ? e.message : "Không lưu được cấu hình engine.",
           tone: "warning",
         })
-      );
+      )
+      .finally(() => setSavingEngine(false));
   };
 
   const saveJd = () => {
@@ -325,25 +323,72 @@ export function JDKyNangTab() {
           </section>
 
           <section className="pt-4 border-t border-kad-border">
-            <h3 className="kad-heading text-kad-text-strong mb-2">Cấu hình engine</h3>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <p className="kad-caption text-kad-text-muted">Engine</p>
-                <p className="kad-body text-kad-text capitalize">{agent.engine}</p>
-              </div>
-              <div>
-                <p className="kad-caption text-kad-text-muted">Model</p>
-                <p className="kad-body text-kad-text">{agent.model || "Claude CLI"}</p>
-              </div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="kad-heading text-kad-text-strong">Cấu hình engine</h3>
+              {!editingEngine && (
+                <KadButton
+                  variant="ghost"
+                  size="row"
+                  onClick={() => {
+                    setEngineDraft(agent.engine);
+                    setModelDraft(agent.model || "");
+                    setEditingEngine(true);
+                  }}
+                >
+                  Sửa
+                </KadButton>
+              )}
             </div>
-            <KadButton
-              variant="ghost"
-              size="row"
-              className="mt-3"
-              onClick={() => proposeBlueprint(`Đề xuất sửa engine cho ${agent.name}`)}
-            >
-              Gửi duyệt thay đổi
-            </KadButton>
+            {editingEngine ? (
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <KadFieldLabel>Engine</KadFieldLabel>
+                    <select
+                      value={engineDraft}
+                      onChange={(e) => setEngineDraft(e.target.value as typeof engineDraft)}
+                      className="kad-body h-9 w-full rounded-lg bg-kad-surface-2 px-3 text-kad-text"
+                    >
+                      <option value="claude">claude</option>
+                      <option value="codex">codex</option>
+                      <option value="antigravity">antigravity</option>
+                    </select>
+                  </div>
+                  <div>
+                    <KadFieldLabel>Model</KadFieldLabel>
+                    <KadInput
+                      value={modelDraft}
+                      onChange={(e) => setModelDraft(e.target.value)}
+                      placeholder="Claude Sonnet 5"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <KadButton
+                    variant="primary"
+                    size="row"
+                    loading={savingEngine}
+                    onClick={saveEngine}
+                  >
+                    Lưu
+                  </KadButton>
+                  <KadButton variant="ghost" size="row" onClick={() => setEditingEngine(false)}>
+                    Hủy
+                  </KadButton>
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="kad-caption text-kad-text-muted">Engine</p>
+                  <p className="kad-body text-kad-text capitalize">{agent.engine}</p>
+                </div>
+                <div>
+                  <p className="kad-caption text-kad-text-muted">Model</p>
+                  <p className="kad-body text-kad-text">{agent.model || "Claude CLI"}</p>
+                </div>
+              </div>
+            )}
           </section>
         </div>
       )}
