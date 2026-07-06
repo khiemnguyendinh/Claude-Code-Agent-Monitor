@@ -3,9 +3,11 @@
  * chính, sửa qua duyệt. Ma trận phê duyệt render đúng data spec 01 —
  * KHÔNG bịa hàng mới.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldCheck } from "lucide-react";
 import { APPROVAL_MATRIX, DEPARTMENT_POLICIES } from "../../mockData";
+import { kadApi } from "../../api-client";
+import type { KadBudgetStatus } from "../../api-client";
 import { ARTIFACT_TYPE_LABEL } from "../../labels";
 import { useKadToast } from "../../components/Toast";
 import { KadCard, KadCardHeader, KadButton } from "../../components/primitives";
@@ -17,8 +19,33 @@ const SENSITIVE_ROW_ACTION = "Nội dung chứa số liệu / con người / th�
 
 export function KiemSoatTab() {
   const toast = useKadToast();
+  // Ma trận phê duyệt + quy tắc auto-approve là CẤU HÌNH chính sách (mô tả
+  // luật đang được enforce), không phải hoạt động realtime — giữ nguyên. Khối
+  // Ngân sách bên dưới đọc số THẬT từ GET /api/kad/reports/budget (hạn mức từ
+  // blueprint phòng + token dùng hôm nay tính qua cost.js).
   const [autoApprove, setAutoApprove] = useState(DEPARTMENT_POLICIES.autoApprove);
-  const usedPercent = (DEPARTMENT_POLICIES.tokensUsedToday / DEPARTMENT_POLICIES.dailyTokenLimit) * 100;
+  const [budget, setBudget] = useState<KadBudgetStatus | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    kadApi.reports
+      .budget()
+      .then((b) => {
+        if (!cancelled) setBudget(b);
+      })
+      .catch(() => {
+        /* giữ hạn mức mặc định, usage = 0 khi lỗi tải */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  // Hạn mức: dùng số thật khi tải xong; mặc định DEPT_SETTINGS (khớp) trong lúc
+  // chờ để tránh nháy. Token đã dùng hôm nay: 0 tới khi có số thật (không hiện
+  // số giả).
+  const dailyLimit = budget?.dailyTokenLimit ?? DEPARTMENT_POLICIES.dailyTokenLimit;
+  const perTaskLimit = budget?.perTaskTokenLimit ?? DEPARTMENT_POLICIES.perTaskTokenLimit;
+  const tokensUsedToday = budget?.tokensUsedToday ?? 0;
+  const usedPercent = dailyLimit > 0 ? (tokensUsedToday / dailyLimit) * 100 : 0;
 
   return (
     <div className="space-y-6 max-w-[900px]">
@@ -117,8 +144,8 @@ export function KiemSoatTab() {
         <div className="mb-4">
           <div className="flex items-baseline justify-between mb-1.5">
             <p className="kad-body text-kad-text">
-              Token hôm nay: {formatTokens(DEPARTMENT_POLICIES.tokensUsedToday)} /{" "}
-              {formatTokens(DEPARTMENT_POLICIES.dailyTokenLimit)}
+              Token hôm nay: {formatTokens(tokensUsedToday)} /{" "}
+              {formatTokens(dailyLimit)}
             </p>
             <span className="kad-caption text-kad-text-muted">{formatPercent(usedPercent)}</span>
           </div>
@@ -127,7 +154,7 @@ export function KiemSoatTab() {
         <div className="grid grid-cols-2 gap-4 pt-3 border-t border-kad-border">
           <div>
             <p className="kad-caption text-kad-text-muted">Ngưỡng / task</p>
-            <p className="kad-heading text-kad-text-strong">{formatTokens(DEPARTMENT_POLICIES.perTaskTokenLimit)}</p>
+            <p className="kad-heading text-kad-text-strong">{formatTokens(perTaskLimit)}</p>
           </div>
           <div>
             <p className="kad-caption text-kad-text-muted">Khi vượt ngưỡng</p>

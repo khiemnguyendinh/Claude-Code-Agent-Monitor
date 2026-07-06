@@ -104,6 +104,21 @@ router.get("/reports/metrics", (req, res) => {
   res.json({ metrics: repo.reports.listMetrics({ department_id: deptId(req) }) });
 });
 
+// [GAP 04-man-doi-ngu] Đội ngũ roster aggregate — one row per active agent,
+// real tasks_this_week/quality_pass_rate_30d/cost_7d_vnd (repo/reports.js).
+// Distinct from GET /agents/:id/stats (client AgentStats type) — separate
+// path, separate camelCase-vs-snake_case shape, not implemented here.
+router.get("/reports/agent-stats", (req, res) => {
+  res.json(repo.reports.agentStats(deptId(req)));
+});
+
+// [GAP] Budget/guardrail snapshot — real stored department budget limits
+// (departments.settings.budget, guardrails.js budgetFor()) plus today's real
+// token/cost usage (repo/reports.js).
+router.get("/reports/budget", (req, res) => {
+  res.json(repo.reports.budgetStatus(deptId(req)));
+});
+
 // [GAP spec/ui/02 §5] Standup rút gọn — deterministic (see repo/standup.js),
 // not a Main Agent narrative. GET reads today's snapshot (null if not yet
 // generated); POST regenerates it now.

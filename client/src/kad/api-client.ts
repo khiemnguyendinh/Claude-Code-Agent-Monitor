@@ -891,6 +891,56 @@ export function toOpsMetric(row: MetricRow): OpsMetricCard {
   };
 }
 
+// ── per-agent stats (spec/ui/04, Báo cáo) — real aggregation of tasks done /
+// approval pass-rate / run cost, one row per active agent.
+export interface AgentStatsRow {
+  agent_id: string;
+  tasks_this_week: number;
+  quality_pass_rate_30d: number; // server sends a 0..1 fraction
+  cost_7d_vnd: number;
+}
+export interface KadAgentStats {
+  agentId: string;
+  tasksThisWeek: number;
+  qualityPassRate30d: number; // 0-100 (AgentStats/formatPercent contract)
+  cost7dVnd: number;
+}
+export function toAgentStats(row: AgentStatsRow): KadAgentStats {
+  return {
+    agentId: row.agent_id,
+    tasksThisWeek: row.tasks_this_week,
+    // server returns 0..1; UI's formatPercent + AgentStats are 0-100 — scale here.
+    qualityPassRate30d: Math.round(row.quality_pass_rate_30d * 1000) / 10,
+    cost7dVnd: row.cost_7d_vnd,
+  };
+}
+
+// ── budget status (spec/ui/04 §4) — real dept limits (blueprint/DEPT_SETTINGS)
+// + today's real token/cost usage.
+export interface BudgetStatusRow {
+  daily_token_limit: number;
+  per_task_token_limit: number;
+  monthly_cost_limit_usd: number;
+  tokens_used_today: number;
+  cost_today_vnd: number;
+}
+export interface KadBudgetStatus {
+  dailyTokenLimit: number;
+  perTaskTokenLimit: number;
+  monthlyCostLimitUsd: number;
+  tokensUsedToday: number;
+  costTodayVnd: number;
+}
+export function toBudgetStatus(row: BudgetStatusRow): KadBudgetStatus {
+  return {
+    dailyTokenLimit: row.daily_token_limit,
+    perTaskTokenLimit: row.per_task_token_limit,
+    monthlyCostLimitUsd: row.monthly_cost_limit_usd,
+    tokensUsedToday: row.tokens_used_today,
+    costTodayVnd: row.cost_today_vnd,
+  };
+}
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 export const kadApi = {
@@ -985,6 +1035,16 @@ export const kadApi = {
       return request<{ metrics: MetricRow[] }>(`/reports/metrics${qs}`).then((r) =>
         (r.metrics ?? []).map(toOpsMetric)
       );
+    },
+    agentStats: (department?: string) => {
+      const qs = department ? `?department=${encodeURIComponent(department)}` : "";
+      return request<AgentStatsRow[]>(`/reports/agent-stats${qs}`).then((rows) =>
+        rows.map(toAgentStats)
+      );
+    },
+    budget: (department?: string) => {
+      const qs = department ? `?department=${encodeURIComponent(department)}` : "";
+      return request<BudgetStatusRow>(`/reports/budget${qs}`).then(toBudgetStatus);
     },
   },
 

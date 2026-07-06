@@ -1,14 +1,25 @@
 /**
  * @file server/lib/kad/repo/reports.js — cross-cutting read-only aggregation
- * for the "Tổng quan" screen's two remaining [GAP] endpoints (client/src/kad/
- * types.ts §Exceptions, §OpsMetricCard): GET /api/kad/exceptions and
- * GET /api/kad/reports/metrics. Every value here is a real column from
- * task_runs / approvals / notifications / task_delegations / tasks — no
- * fabricated series or placeholder rows. A candidate source that has no real
- * backing column (e.g. artifacts.quality_score, which is never written —
- * only read speculatively from JSON metadata by the client) or no writer at
- * all (connector_actions — schema exists, nothing ever inserts into it) is
- * omitted outright rather than stubbed with zeroes/randoms.
+ * for the "Tổng quan" screen's [GAP] endpoints (client/src/kad/types.ts
+ * §Exceptions, §OpsMetricCard): GET /api/kad/exceptions and
+ * GET /api/kad/reports/metrics, plus the Đội ngũ tab's per-agent roster
+ * aggregate (GET /api/kad/reports/agent-stats) and budget/guardrail snapshot
+ * (GET /api/kad/reports/budget). Every value here is a real column from
+ * task_runs / approvals / notifications / task_delegations / tasks /
+ * agent_profiles / departments — no fabricated series or placeholder rows. A
+ * candidate source that has no real backing column (e.g. artifacts.quality_score,
+ * which is never written — only read speculatively from JSON metadata by the
+ * client) or no writer at all (connector_actions — schema exists, nothing ever
+ * inserts into it) is omitted outright rather than stubbed with zeroes/randoms.
+ *
+ * NOTE: agent-stats/budget here are DISTINCT from two other [GAP]-annotated
+ * client shapes that look similar but are separate features with separate
+ * paths/shapes: `AgentStats` (client/src/kad/types.ts) backs the *per-agent*
+ * GET /api/kad/agents/:id/stats (camelCase, qualityPassRate30d as 0-100,
+ * includes sparkline14d) — not implemented here. `DepartmentPolicies` backs a
+ * department-policies page (camelCase, includes autoApprove rules) — also not
+ * implemented here. This file's agent-stats/budget are the snake_case,
+ * whole-department aggregates requested for the Reports screen.
  */
 const { db, nowIso } = require("./db");
 
@@ -369,4 +380,180 @@ function listMetrics({ department_id } = {}) {
   return metrics;
 }
 
-module.exports = { listExceptions, listMetrics };
+// ---------------------------------------------------------------------------
+// Agent stats — GET /api/kad/reports/agent-stats (Đội ngũ roster aggregate)
+// ---------------------------------------------------------------------------
+
+/** Tasks assigned to `agent_id` completed in the last 7 days (tasks.assigned_agent_id,
+ * .status='done', .completed_at — real columns; same "done" convention as
+ * completedTasksMetric). */
+function tasksThisWeekForAgent(agent_id, since7dIso) {
+  return db
+    .prepare(
+      `SELECT COUNT(*) n FROM tasks
+       WHERE assigned_agent_id=? AND status='done' AND completed_at IS NOT NULL AND completed_at>=?`
+    )
+    .get(agent_id, since7dIso).n;
+}
+
+/** Approved / (approved+needs_changes+rejected) ratio for approvals this agent
+ * requested (approvals.requested_by, .status, .decided_at — real columns), decided
+ * in the last 30 days. Fraction 0..1; 0 when nothing was decided in range — that is
+ * a real "no decisions" state, not a fabricated zero. */
+function qualityPassRate30dForAgent(agent_id, since30dIso) {
+  const rows = db
+    .prepare(
+      `SELECT status FROM approvals
+       WHERE requested_by=? AND decided_at IS NOT NULL AND decided_at>=?
+         AND status IN ('approved','needs_changes','rejected')`
+    )
+    .all(agent_id, since30dIso);
+  if (!rows.length) return 0;
+  const approved = rows.filter((r) => r.status === "approved").length;
+  return Math.round((approved / rows.length) * 1000) / 1000; // fraction 0..1, 3dp
+}
+
+// cost.js keeps its per-run USD pricer (`runUsd`) private (not in its
+// module.exports — only estimateRoundCost/estimateDeptCostForRange/VND_PER_USD
+// are), and this file cannot modify cost.js to export it (out of scope for
+// these endpoints). priceTokensVnd() below replicates that same real pricing
+// path — the model_pricing table (server/db.js DEFAULT_PRICING, real Anthropic
+// list prices) matched against the run's agent.model, falling back to the
+// documented Claude Sonnet 5 rate cost.js itself falls back to when no
+// model_pricing row matches (Phase 1 seed does not set agent_profiles.model) —
+// never an invented rate, and priced with the same VND_PER_USD cost.js exports.
+const FALLBACK_INPUT_PER_MTOK = 3;
+const FALLBACK_OUTPUT_PER_MTOK = 15;
+
+function ratesForModel(model) {
+  if (model) {
+    const rows = db.prepare("SELECT * FROM model_pricing").all();
+    const rule = rows
+      .filter((r) => new RegExp("^" + r.model_pattern.replace(/%/g, ".*") + "$").test(model))
+      .sort((a, b) => b.model_pattern.length - a.model_pattern.length)[0];
+    if (rule) return { input: rule.input_per_mtok, output: rule.output_per_mtok };
+  }
+  return { input: FALLBACK_INPUT_PER_MTOK, output: FALLBACK_OUTPUT_PER_MTOK };
+}
+
+/** VND price for one run's real tokens_used JSON, given its real agent_id (or null). */
+function priceTokensVnd(tokens, agent_id, VND_PER_USD) {
+  if (!tokens) return 0;
+  const catalog = require("./catalog");
+  const agent = agent_id && catalog.getAgent(agent_id);
+  const rates = ratesForModel(agent && agent.model);
+  const input = Number(tokens.input_tokens || tokens.input || 0);
+  const output = Number(tokens.output_tokens || tokens.output || 0);
+  const usd =
+    !input && !output
+      ? ((input + output) / 1_000_000) * rates.input // unknown split — price as input (mirrors cost.js)
+      : (input / 1_000_000) * rates.input + (output / 1_000_000) * rates.output;
+  return usd * VND_PER_USD;
+}
+
+/** Real round-cost (VND) of this agent's runs completed in the last 7 days
+ * (task_runs.agent_id, .tokens_used, .completed_at — real columns), priced via
+ * the same rate table/VND rate the Report Card and the "Chi phí 7 ngày" metric
+ * use (cost.js VND_PER_USD; per-run pricing replicated in priceTokensVnd() —
+ * see its header comment for why). Integer VND. */
+function cost7dVndForAgent(agent_id, since7dIso) {
+  // Lazy require: cost.js requires the repo barrel, which requires this file —
+  // deferring avoids a require() cycle mid-construction (same reason costMetric()
+  // above and repo/standup.js defer it).
+  const { VND_PER_USD } = require("../cost");
+  const rows = db
+    .prepare(
+      `SELECT tokens_used FROM task_runs
+       WHERE agent_id=? AND completed_at IS NOT NULL AND completed_at>=?`
+    )
+    .all(agent_id, since7dIso);
+  let vnd = 0;
+  for (const r of rows) {
+    const tokens = require("./db").parseJson(r.tokens_used, null);
+    if (!tokens) continue;
+    vnd += priceTokensVnd(tokens, agent_id, VND_PER_USD);
+  }
+  return Math.round(vnd);
+}
+
+/**
+ * One row per active agent in the department (catalog.listAgents-equivalent
+ * query, status='active' — real agent_profiles rows; zeros are a real "idle
+ * agent this week" state, not fabricated). Each field sourced from real
+ * columns — see per-field helpers above.
+ * @param {string} department_id
+ * @returns {{agent_id:string, tasks_this_week:number, quality_pass_rate_30d:number, cost_7d_vnd:number}[]}
+ */
+function agentStats(department_id) {
+  if (!department_id) return [];
+  const nowMs = Date.now();
+  const since7d = isoDaysAgo(7, nowMs);
+  const since30d = isoDaysAgo(30, nowMs);
+  const agents = db
+    .prepare(
+      "SELECT id FROM agent_profiles WHERE department_id=? AND status='active' ORDER BY agent_type, name"
+    )
+    .all(department_id);
+  return agents.map((a) => ({
+    agent_id: a.id,
+    tasks_this_week: tasksThisWeekForAgent(a.id, since7d),
+    quality_pass_rate_30d: qualityPassRate30dForAgent(a.id, since30d),
+    cost_7d_vnd: cost7dVndForAgent(a.id, since7d),
+  }));
+}
+
+// ---------------------------------------------------------------------------
+// Budget status — GET /api/kad/reports/budget (guardrail snapshot)
+// ---------------------------------------------------------------------------
+
+/**
+ * Real token/VND spend for runs COMPLETED today (server-local UTC day, same
+ * substr(completed_at,1,10) bucket convention costMetric() above uses for
+ * "Chi phí 7 ngày") — reuses cost.js' own exported estimateDeptCostForRange()
+ * (department-joined tasks->task_runs, real pricing) rather than duplicating
+ * its range math; only the [today 00:00, tomorrow 00:00) window is computed
+ * here.
+ */
+function tokensAndCostUsedToday(department_id) {
+  // Lazy require: cost.js requires the repo barrel, which requires this file —
+  // deferring avoids a require() cycle mid-construction (same reason
+  // costMetric() above defers cost.js).
+  const { estimateDeptCostForRange } = require("../cost");
+  if (!department_id) return { tokens: 0, vnd: 0 };
+  const today = dayKey(nowIso());
+  const fromIso = `${today}T00:00:00.000Z`;
+  const toIso = isoDaysAgo(-1, new Date(fromIso).getTime()); // start of tomorrow (exclusive end)
+  const { tokens, vnd } = estimateDeptCostForRange(department_id, fromIso, toIso);
+  return { tokens, vnd };
+}
+
+/**
+ * Budget limits + today's real usage for a department. Limits come from the
+ * department's REAL stored settings JSON (departments.settings.budget —
+ * populated at wizard-completion/seed time; see org-context.js completeWizard()
+ * and scripts/kad-seed.mjs) merged over guardrails.js' DEFAULT_BUDGET via the
+ * same budgetFor() the guardrail breaker itself uses — so this report always
+ * reflects the limits actually enforced, never a value read fresh from
+ * DEPT_SETTINGS in isolation.
+ * @param {string} department_id
+ * @returns {{daily_token_limit:number, per_task_token_limit:number, monthly_cost_limit_usd:number, tokens_used_today:number, cost_today_vnd:number}}
+ */
+function budgetStatus(department_id) {
+  // Lazy require: guardrails.js requires the repo barrel, which requires this
+  // file — deferring avoids a require() cycle mid-construction (same reason
+  // cost.js is deferred above).
+  const { budgetFor } = require("../guardrails");
+  const catalog = require("./catalog");
+  const dept = department_id ? catalog.getDepartment(department_id) : null;
+  const budget = budgetFor(dept);
+  const { tokens, vnd } = tokensAndCostUsedToday(department_id);
+  return {
+    daily_token_limit: budget.daily_token_limit,
+    per_task_token_limit: budget.per_task_token_limit,
+    monthly_cost_limit_usd: budget.monthly_cost_limit_usd,
+    tokens_used_today: tokens,
+    cost_today_vnd: vnd,
+  };
+}
+
+module.exports = { listExceptions, listMetrics, agentStats, budgetStatus };

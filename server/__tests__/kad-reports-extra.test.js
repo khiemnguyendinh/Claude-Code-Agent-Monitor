@@ -422,3 +422,237 @@ describe("GET /api/kad/reports/metrics — real 14-day daily buckets only", () =
     assert.equal(qc.series_14d[13], 50);
   });
 });
+
+describe("GET /api/kad/reports/agent-stats — real per-agent roster aggregate", () => {
+  it("returns [] for a department with no active agents", async () => {
+    const emptyDept = "dept-kad-reports-agentstats-empty";
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO departments (id, slug, org_id, name, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?)`
+    ).run(emptyDept, "kad-reports-agentstats-empty", "org-kad-reports-extra-test", "Empty Dept", "active", now, now);
+
+    const res = await get(`/api/kad/reports/agent-stats?department=${emptyDept}`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, []);
+  });
+
+  it("aggregates tasks_this_week / quality_pass_rate_30d / cost_7d_vnd for a real seeded agent", async () => {
+    const agentDept = "dept-kad-reports-agentstats-1";
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO departments (id, slug, org_id, name, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?)`
+    ).run(agentDept, "kad-reports-agentstats-1", "org-kad-reports-extra-test", "Agent Stats Dept", "active", now, now);
+
+    // Real agent_profiles row (agent_type/status are live CHECK constraints).
+    const agentId = "agent_test_stats_1";
+    db.prepare(
+      `INSERT INTO agent_profiles
+       (id, department_id, agent_type, name, display_name, engine, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(agentId, agentDept, "sub", "sub-stats-tester", "Stats Tester", "claude", "active", now, now);
+    // An inactive agent in the same department must NOT appear in the result.
+    const inactiveAgentId = "agent_test_stats_inactive";
+    db.prepare(
+      `INSERT INTO agent_profiles
+       (id, department_id, agent_type, name, display_name, engine, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(inactiveAgentId, agentDept, "sub", "sub-stats-inactive", "Inactive Tester", "claude", "inactive", now, now);
+
+    // A task completed this week, assigned to the agent (tasks.assigned_agent_id/.status/.completed_at).
+    const task = repo.tasks.createTask({ department_id: agentDept, title: "Task hoàn thành tuần này" });
+    db.prepare(
+      `UPDATE tasks SET status='done', assigned_agent_id=?, completed_at=? WHERE id=?`
+    ).run(agentId, isoHoursAgo(2), task.id);
+    // A second task completed 10 days ago must NOT count toward tasks_this_week.
+    const oldTask = repo.tasks.createTask({ department_id: agentDept, title: "Task hoàn thành lâu rồi" });
+    db.prepare(
+      `UPDATE tasks SET status='done', assigned_agent_id=?, completed_at=? WHERE id=?`
+    ).run(agentId, isoDaysAgo(10), oldTask.id);
+
+    // Two approvals requested by the agent, decided within 30 days — 1 approved, 1 rejected -> 0.5.
+    const approved = repo.approvals.createApproval({
+      task_id: task.id,
+      requested_by: agentId,
+      approval_type: "artifact",
+      title: "Duyệt học liệu A",
+    });
+    repo.approvals.decide(approved.id, { decision: "approved" });
+    const rejected = repo.approvals.createApproval({
+      task_id: task.id,
+      requested_by: agentId,
+      approval_type: "artifact",
+      title: "Duyệt học liệu B",
+    });
+    repo.approvals.decide(rejected.id, { decision: "rejected" });
+    // An approval decided 40 days ago must NOT count toward the 30d window.
+    const oldApproval = repo.approvals.createApproval({
+      task_id: task.id,
+      requested_by: agentId,
+      approval_type: "artifact",
+      title: "Duyệt học liệu cũ",
+    });
+    db.prepare(`UPDATE approvals SET status='approved', decided_at=? WHERE id=?`).run(
+      isoDaysAgo(40),
+      oldApproval.id
+    );
+
+    // A run for this agent completed this week with real tokens_used JSON.
+    const run = repo.runs.createRun({ task_id: task.id, agent_id: agentId, engine: "claude" });
+    db.prepare(`UPDATE task_runs SET status='completed', tokens_used=?, completed_at=? WHERE id=?`).run(
+      JSON.stringify({ input_tokens: 100_000, output_tokens: 50_000 }),
+      isoHoursAgo(1),
+      run.id
+    );
+    // A run completed 10 days ago must NOT count toward cost_7d_vnd.
+    const oldRun = repo.runs.createRun({ task_id: task.id, agent_id: agentId, engine: "claude" });
+    db.prepare(`UPDATE task_runs SET status='completed', tokens_used=?, completed_at=? WHERE id=?`).run(
+      JSON.stringify({ input_tokens: 999_999, output_tokens: 999_999 }),
+      isoDaysAgo(10),
+      oldRun.id
+    );
+
+    const res = await get(`/api/kad/reports/agent-stats?department=${agentDept}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.length, 1, "expected only the active agent, not the inactive one");
+    const row = res.body[0];
+    assert.equal(row.agent_id, agentId);
+    assert.equal(row.tasks_this_week, 1);
+    assert.equal(row.quality_pass_rate_30d, 0.5);
+    // Fallback rate (no model_pricing match for this agent): $3/Mtok in + $15/Mtok out.
+    const expectedUsd = (100_000 / 1_000_000) * 3 + (50_000 / 1_000_000) * 15;
+    const expectedVnd = Math.round(expectedUsd * 26000);
+    assert.equal(row.cost_7d_vnd, expectedVnd);
+  });
+
+  it("reports quality_pass_rate_30d=0 for an active agent with zero decided approvals in range", async () => {
+    const idleDept = "dept-kad-reports-agentstats-idle";
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO departments (id, slug, org_id, name, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?)`
+    ).run(idleDept, "kad-reports-agentstats-idle", "org-kad-reports-extra-test", "Idle Dept", "active", now, now);
+    const idleAgentId = "agent_test_stats_idle";
+    db.prepare(
+      `INSERT INTO agent_profiles
+       (id, department_id, agent_type, name, display_name, engine, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?)`
+    ).run(idleAgentId, idleDept, "sub", "sub-stats-idle", "Idle Tester", "claude", "active", now, now);
+
+    const res = await get(`/api/kad/reports/agent-stats?department=${idleDept}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.length, 1);
+    assert.deepEqual(res.body[0], {
+      agent_id: idleAgentId,
+      tasks_this_week: 0,
+      quality_pass_rate_30d: 0,
+      cost_7d_vnd: 0,
+    });
+  });
+});
+
+describe("GET /api/kad/reports/budget — real stored limits + today's real usage", () => {
+  it("returns the seeded rd department's stored budget.* limits and zero usage on a fresh dept", async () => {
+    const freshDept = "dept-kad-reports-budget-fresh";
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO departments (id, slug, org_id, name, status, settings, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).run(
+      freshDept,
+      "kad-reports-budget-fresh",
+      "org-kad-reports-extra-test",
+      "Budget Fresh Dept",
+      "active",
+      JSON.stringify({
+        budget: {
+          daily_token_limit: 1_500_000,
+          per_task_token_limit: 750_000,
+          monthly_cost_limit_usd: 123,
+        },
+      }),
+      now,
+      now
+    );
+
+    const res = await get(`/api/kad/reports/budget?department=${freshDept}`);
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, {
+      daily_token_limit: 1_500_000,
+      per_task_token_limit: 750_000,
+      monthly_cost_limit_usd: 123,
+      tokens_used_today: 0,
+      cost_today_vnd: 0,
+    });
+  });
+
+  it("falls back to guardrails.js DEFAULT_BUDGET when a department has no stored settings.budget", async () => {
+    const noSettingsDept = "dept-kad-reports-budget-nosettings";
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO departments (id, slug, org_id, name, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?)`
+    ).run(
+      noSettingsDept,
+      "kad-reports-budget-nosettings",
+      "org-kad-reports-extra-test",
+      "Budget No Settings Dept",
+      "active",
+      now,
+      now
+    );
+
+    const res = await get(`/api/kad/reports/budget?department=${noSettingsDept}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.daily_token_limit, 2_000_000);
+    assert.equal(res.body.per_task_token_limit, 2_000_000);
+    assert.equal(res.body.monthly_cost_limit_usd, 200);
+    assert.equal(res.body.tokens_used_today, 0);
+    assert.equal(res.body.cost_today_vnd, 0);
+  });
+
+  it("sums real tokens_used for runs completed today into tokens_used_today/cost_today_vnd", async () => {
+    const usageDept = "dept-kad-reports-budget-usage";
+    const now = new Date().toISOString();
+    db.prepare(
+      `INSERT INTO departments (id, slug, org_id, name, status, settings, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?)`
+    ).run(
+      usageDept,
+      "kad-reports-budget-usage",
+      "org-kad-reports-extra-test",
+      "Budget Usage Dept",
+      "active",
+      JSON.stringify({ budget: { daily_token_limit: 5_000_000, per_task_token_limit: 1_000_000, monthly_cost_limit_usd: 300 } }),
+      now,
+      now
+    );
+    const task = repo.tasks.createTask({ department_id: usageDept, title: "Task dùng ngân sách hôm nay" });
+    const run = repo.runs.createRun({ task_id: task.id, engine: "claude" });
+    // tokens_used + completed_at set directly; completed_at is the real bucket column.
+    db.prepare(`UPDATE task_runs SET tokens_used=?, completed_at=? WHERE id=?`).run(
+      JSON.stringify({ input_tokens: 200_000, output_tokens: 100_000 }),
+      new Date().toISOString(),
+      run.id
+    );
+    // A run completed yesterday must NOT count toward today's usage even if tokens_used is set.
+    const yesterdayTask = repo.tasks.createTask({ department_id: usageDept, title: "Task hôm qua" });
+    const yesterdayRun = repo.runs.createRun({ task_id: yesterdayTask.id, engine: "claude" });
+    db.prepare(`UPDATE task_runs SET started_at=?, tokens_used=?, completed_at=? WHERE id=?`).run(
+      isoDaysAgo(1),
+      JSON.stringify({ input_tokens: 999_999, output_tokens: 999_999 }),
+      isoDaysAgo(1),
+      yesterdayRun.id
+    );
+
+    const res = await get(`/api/kad/reports/budget?department=${usageDept}`);
+    assert.equal(res.status, 200);
+    assert.equal(res.body.daily_token_limit, 5_000_000);
+    assert.equal(res.body.per_task_token_limit, 1_000_000);
+    assert.equal(res.body.monthly_cost_limit_usd, 300);
+    assert.equal(res.body.tokens_used_today, 300_000);
+    const expectedUsd = (200_000 / 1_000_000) * 3 + (100_000 / 1_000_000) * 15;
+    assert.equal(res.body.cost_today_vnd, Math.round(expectedUsd * 26000));
+  });
+});
