@@ -10,12 +10,11 @@ import {
   AGENT_STATS,
   findAgent,
   findArtifact,
-  findProject,
   PROJECTS,
   TASK_DETAIL_SYLLABUS_K3,
 } from "../mockData";
-import { kadApi } from "../api-client";
-import type { Artifact } from "../types";
+import { kadApi, type KadTask } from "../api-client";
+import type { Artifact, StepState, TaskStatus } from "../types";
 import { useKadStore } from "../store";
 import { useKadToast } from "./Toast";
 import { AgentAvatar } from "./Avatar";
@@ -32,13 +31,7 @@ import {
   formatVnd,
 } from "../format";
 import { Sparkline } from "./Sparkline";
-import {
-  AgentProgressList,
-  FilesPanel,
-  agentProgress,
-  artifactsForProject,
-  artifactsForTask,
-} from "./DetailPanels";
+import { FilesPanel, artifactsForTask } from "./DetailPanels";
 import { WorkflowRunPeek } from "./WorkflowRunPeek";
 
 export const PEEK_TITLES: Record<PeekType, string> = {
@@ -189,31 +182,83 @@ function TaskPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) 
 
 // ── Project ────────────────────────────────────────────────────────────
 
+// Real project peek — mirrors KanbanBoard.tsx's ProjectProgressStrip: a "project"
+// is the group of real tasks sharing a workflowId (the sentinel below = tasks with
+// none). `id` arriving here is that workflowId (or the sentinel), so we fetch real
+// tasks + workflow name instead of a mock roster lookup.
+const PROJECT_UNASSIGNED_ID = "__unassigned__";
+const TASK_STATUS_TO_STEP: Record<TaskStatus, StepState> = {
+  blocked: "todo",
+  inbox: "todo",
+  triaged: "todo",
+  doing: "doing",
+  waiting_human: "waiting_human",
+  review: "doing",
+  needs_changes: "waiting_human",
+  done: "done",
+  failed: "failed",
+  archived: "todo",
+};
+
 function ProjectPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
-  const project = findProject(id);
-  if (!project) return <KadEmptyState icon={MessageSquare} message="Không tìm thấy dự án." />;
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<{ title: string; tasks: KadTask[] } | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    Promise.all([kadApi.tasks.list({ limit: 500 }), kadApi.workflows.list()])
+      .then(([tasks, workflows]) => {
+        if (!alive) return;
+        const inGroup = tasks.filter((t) => (t.workflowId ?? PROJECT_UNASSIGNED_ID) === id);
+        const title =
+          id === PROJECT_UNASSIGNED_ID
+            ? "Việc lẻ"
+            : (workflows.find((w) => w.id === id)?.name ?? id);
+        setData({ title, tasks: inGroup });
+      })
+      .catch(() => alive && setData({ title: "Dự án", tasks: [] }))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  if (loading) return <div className="p-4 kad-caption text-kad-text-faint">Đang tải…</div>;
+  if (!data || data.tasks.length === 0)
+    return <KadEmptyState icon={MessageSquare} message="Chưa có việc nào trong dự án này." />;
+
+  const done = data.tasks.filter((t) => t.status === "done").length;
+  const steps = data.tasks.map((t) => ({
+    key: t.id,
+    label: t.title,
+    state: TASK_STATUS_TO_STEP[t.status],
+  }));
 
   return (
     <div className="p-4 space-y-5">
       <div>
-        <h2 className="kad-title text-kad-text-strong">{project.title}</h2>
+        <h2 className="kad-title text-kad-text-strong">{data.title}</h2>
         <p className="kad-caption text-kad-text-muted mt-1">
-          {project.itemsDone}/{project.itemsTotal} hạng mục ·{" "}
-          {formatDueDate(project.dueDate) ?? "Chưa có hạn"}
+          {done}/{data.tasks.length} hạng mục
         </p>
       </div>
-      <Field label="Workflow & tiến độ">
-        <SegmentedProgress steps={project.steps} height={6} showLabels />
+      <Field label="Tiến độ theo việc">
+        <SegmentedProgress steps={steps} height={6} showLabels />
       </Field>
-      <Field label="Thành viên AI & tiến độ">
-        <AgentProgressList items={agentProgress(project.agentIdsInvolved, project.steps)} />
-      </Field>
-      <Field label="Files & học liệu">
-        <FilesPanel
-          artifacts={artifactsForProject(id)}
-          onOpen={(aid) => onOpenPeek({ type: "artifact", id: aid })}
-          emptyHint="Chưa có học liệu cho dự án này."
-        />
+      <Field label="Danh sách việc">
+        <div className="flex flex-col gap-1">
+          {data.tasks.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onOpenPeek({ type: "task", id: t.id })}
+              className="w-full flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-kad-surface-2 text-left"
+            >
+              <span className="kad-body text-kad-text truncate min-w-0">{t.title}</span>
+              <TaskStatusChip status={t.status} />
+            </button>
+          ))}
+        </div>
       </Field>
     </div>
   );

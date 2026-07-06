@@ -7,14 +7,13 @@
  * 1b/1c thay cho grid "Nhân sự" ban đầu (PersonnelCard) — bị bỏ 2026-07-04
  * theo góp ý anh Khiêm: grid đó trùng chức năng với peek khi click node
  * trên sơ đồ 1a. Thay bằng 2 khối có giá trị riêng, không lặp lại cấu trúc
- * cây tĩnh ở trên: quy trình chuẩn của phòng ban (tĩnh, RD_WORKFLOW) và
- * các phiên đang thực sự chạy ngay lúc này (động, từ TASK_CARDS).
+ * cây tĩnh ở trên: quy trình chuẩn của phòng ban (thật, GET /api/kad/workflows)
+ * và các phiên đang thực sự chạy ngay lúc này (động, từ TASK_CARDS).
  */
 import { useEffect, useState } from "react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
-import { RD_WORKFLOW } from "../../mockData";
 import { kadApi } from "../../api-client";
-import type { OrgChartNodeRow } from "../../api-client";
+import type { OrgChartNodeRow, KadWorkflow } from "../../api-client";
 import type { AgentProfile } from "../../types";
 import { usePeek } from "../../components/PeekDrawer";
 import { AgentAvatar, HumanAvatar } from "../../components/Avatar";
@@ -219,64 +218,97 @@ function NodeCard({
 }
 
 // ── 1b — Quy trình chuẩn ─────────────────────────────────────────────────
-// Chỉ render workflow thật đang có (RD_WORKFLOW) — không bịa thêm quy
-// trình khác. Cấu trúc để sẵn cho nhiều workflow (map qua 1 mảng), nên khi
-// phòng ban có thêm loại việc mới chỉ cần thêm phần tử, không đổi UI.
-
-const WORKFLOWS = [RD_WORKFLOW];
+// Đọc workflow THẬT từ GET /api/kad/workflows (danh sách) rồi GET
+// /api/kad/workflows/:id (chi tiết, có steps) — danh sách quickstart không
+// mang steps nên phải lấy chi tiết từng workflow. Không bịa thêm quy trình
+// nào ngoài dữ liệu server trả về.
 
 function WorkflowSection({ agents }: { agents: AgentProfile[] }) {
+  const [workflows, setWorkflows] = useState<KadWorkflow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    kadApi.workflows
+      .list()
+      .then((summaries) =>
+        Promise.all(summaries.map((s) => kadApi.workflows.get(s.id)))
+      )
+      .then((full) => {
+        if (!cancelled) setWorkflows(full);
+      })
+      .catch(() => {
+        if (!cancelled) setWorkflows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div>
       <h3 className="kad-heading text-kad-text-strong mb-3">Quy trình chuẩn</h3>
-      <div className="space-y-4">
-        {WORKFLOWS.map((wf) => (
-          <KadCard key={wf.id}>
-            <div className="flex items-center justify-between mb-3">
-              <p className="kad-label text-kad-text-strong">{wf.name}</p>
-              <span className="kad-caption text-kad-text-faint">{wf.description}</span>
-            </div>
-            <div className="flex items-center overflow-x-auto pb-1 -mx-1 px-1">
-              {wf.steps.map((step, i) => {
-                const agent = agents.find((a) => a.name === step.agentName);
-                const isLast = i === wf.steps.length - 1;
-                return (
-                  <div key={step.key} className="flex items-center flex-shrink-0">
-                    <div className="w-[132px] flex flex-col items-center text-center gap-1.5 px-1">
-                      {agent ? (
-                        <AgentAvatar
-                          agentId={agent.id}
-                          size={28}
-                          displayNameOverride={agent.displayName}
-                          agentNameOverride={agent.name}
+      {loading ? (
+        <KadSkeleton className="h-32 w-full" />
+      ) : workflows.length === 0 ? (
+        <KadCard>
+          <p className="kad-body text-kad-text-faint text-center py-4">
+            Chưa có quy trình chuẩn nào được cấu hình.
+          </p>
+        </KadCard>
+      ) : (
+        <div className="space-y-4">
+          {workflows.map((wf) => (
+            <KadCard key={wf.id}>
+              <div className="flex items-center justify-between mb-3">
+                <p className="kad-label text-kad-text-strong">{wf.name}</p>
+                <span className="kad-caption text-kad-text-faint">{wf.description}</span>
+              </div>
+              <div className="flex items-center overflow-x-auto pb-1 -mx-1 px-1">
+                {wf.steps.map((step, i) => {
+                  const agent = agents.find((a) => a.id === step.agent_ref);
+                  const isLast = i === wf.steps.length - 1;
+                  return (
+                    <div key={step.id} className="flex items-center flex-shrink-0">
+                      <div className="w-[132px] flex flex-col items-center text-center gap-1.5 px-1">
+                        {agent ? (
+                          <AgentAvatar
+                            agentId={agent.id}
+                            size={28}
+                            displayNameOverride={agent.displayName}
+                            agentNameOverride={agent.name}
+                          />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-kad-surface-2" />
+                        )}
+                        <p className="kad-label text-kad-text-strong leading-tight">{step.name}</p>
+                        <p className="kad-caption text-kad-text-faint truncate w-full">
+                          {agent?.displayName ?? "—"}
+                        </p>
+                        {step.approval && (
+                          <span className="kad-caption inline-flex items-center gap-1 text-kad-warning">
+                            <ShieldCheck className="w-3 h-3" aria-hidden />
+                            Cần duyệt
+                          </span>
+                        )}
+                      </div>
+                      {!isLast && (
+                        <ArrowRight
+                          className="w-4 h-4 text-kad-text-faint flex-shrink-0 mx-1"
+                          aria-hidden
                         />
-                      ) : (
-                        <div className="w-8 h-8 rounded-full bg-kad-surface-2" />
-                      )}
-                      <p className="kad-label text-kad-text-strong leading-tight">{step.label}</p>
-                      <p className="kad-caption text-kad-text-faint truncate w-full">
-                        {agent?.displayName ?? step.agentName}
-                      </p>
-                      {step.approval && (
-                        <span className="kad-caption inline-flex items-center gap-1 text-kad-warning">
-                          <ShieldCheck className="w-3 h-3" aria-hidden />
-                          Cần duyệt
-                        </span>
                       )}
                     </div>
-                    {!isLast && (
-                      <ArrowRight
-                        className="w-4 h-4 text-kad-text-faint flex-shrink-0 mx-1"
-                        aria-hidden
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </KadCard>
-        ))}
-      </div>
+                  );
+                })}
+              </div>
+            </KadCard>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

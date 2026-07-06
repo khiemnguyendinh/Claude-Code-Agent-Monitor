@@ -18,12 +18,14 @@ import { api } from "../lib/api";
 import { eventBus } from "../lib/eventBus";
 import { Tabs } from "../kad/components/Tabs";
 import { BaoCao } from "../kad/pages/BaoCao";
-import { AGENTS, PROJECTS } from "../kad/mockData";
+import { kadApi } from "../kad/api-client";
+import type { KadTask, KadWorkflowSummary } from "../kad/api-client";
 import { SegmentedProgress } from "../kad/components/Progress";
 import { KadStoreProvider } from "../kad/store";
 import { KadToastProvider } from "../kad/components/Toast";
 import { PeekDrawerHost, usePeek } from "../kad/components/PeekDrawer";
 import { LiveFlowSection } from "../kad/components/LiveFlowSection";
+import type { AgentProfile as KadAgentProfile, StepState, TaskStatus } from "../kad/types";
 import { AgentCard } from "../components/AgentCard";
 import { SessionCard } from "../components/SessionCard";
 import { WorkflowRunCard } from "../components/WorkflowRunCard";
@@ -500,12 +502,31 @@ export function KanbanBoard() {
   );
 }
 
-// Tab "Công việc": Tiến độ dự án (mock projects) + Đang chạy trực tiếp (live
-// flow, chuyển từ Đội ngũ > Tổ chức). Bấm 1 dự án / 1 phiên đang chạy → mở khay
-// chi tiết bên phải (peek), nhờ PeekDrawerHost bọc ở KanbanBoard.
+// Tab "Công việc": Tiến độ dự án (real, nhóm task theo workflowId) + Đang chạy
+// trực tiếp (live flow, chuyển từ Đội ngũ > Tổ chức). Bấm 1 dự án / 1 phiên
+// đang chạy → mở khay chi tiết bên phải (peek), nhờ PeekDrawerHost bọc ở
+// KanbanBoard. 2026-07-07: bỏ mock AGENTS — main agent tra từ /api/kad/agents
+// thật để LiveFlowSection vẽ đúng avatar điều phối viên.
 function CongViecTab() {
   const { openPeek } = usePeek();
-  const mainAgent = AGENTS.find((a) => a.agentType === "main");
+  const [mainAgent, setMainAgent] = useState<KadAgentProfile | undefined>(undefined);
+
+  useEffect(() => {
+    let cancelled = false;
+    kadApi.agents
+      .list()
+      .then((agents) => {
+        if (cancelled) return;
+        setMainAgent(agents.find((a) => a.agentType === "main"));
+      })
+      .catch(() => {
+        if (!cancelled) setMainAgent(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="space-y-6">
       <ProjectProgressStrip />
@@ -518,14 +539,65 @@ function CongViecTab() {
 }
 
 // ── Tiến độ dự án ─────────────────────────────────────────────────────────
-// Nằm trong tab "Công việc". Bấm 1 dự án → mở khay chi tiết (peek) bên phải —
-// dùng chung PeekContent.ProjectPeek với KAD shell nhờ KanbanBoard bọc
-// PeekDrawerHost. Dữ liệu PROJECTS mock; bản chuẩn đọc /api/kad/projects
-// (spec/ui/08).
+// Nằm trong tab "Công việc". 2026-07-07: nối dữ liệu thật — nhóm
+// kadApi.tasks.list() theo workflowId, ghép tên dự án qua kadApi.workflows
+// .list(); mỗi task trong nhóm là 1 segment (màu theo status thật, không có
+// pipeline theo bước nên không bịa step label). Task không gắn workflowId gộp
+// vào nhóm "Việc lẻ". Bấm 1 dự án → mở khay chi tiết (peek) bên phải — dùng
+// chung PeekContent.ProjectPeek (vẫn đọc mock PROJECTS cho tới khi peek được
+// nối thật ở phase khác; ở đây id truyền là workflowId thật nên peek sẽ hiện
+// "Không tìm thấy dự án" thay vì bịa dữ liệu).
 const PROGRESS_COLLAPSE_KEY = "kanban-progress-collapsed";
+const UNASSIGNED_GROUP_ID = "__unassigned__";
+
+const TASK_STATUS_TO_STEP_STATE: Record<TaskStatus, StepState> = {
+  blocked: "todo",
+  inbox: "todo",
+  triaged: "todo",
+  doing: "doing",
+  waiting_human: "waiting_human",
+  review: "doing",
+  needs_changes: "waiting_human",
+  done: "done",
+  failed: "failed",
+  archived: "todo",
+};
+
+interface DerivedProject {
+  id: string;
+  title: string;
+  itemsDone: number;
+  itemsTotal: number;
+  steps: { key: string; label: string; state: StepState }[];
+}
+
+function deriveProjects(tasks: KadTask[], workflows: KadWorkflowSummary[]): DerivedProject[] {
+  const workflowNameById = new Map(workflows.map((w) => [w.id, w.name]));
+  const groups = new Map<string, KadTask[]>();
+  for (const task of tasks) {
+    const groupId = task.workflowId ?? UNASSIGNED_GROUP_ID;
+    const group = groups.get(groupId);
+    if (group) group.push(task);
+    else groups.set(groupId, [task]);
+  }
+
+  return Array.from(groups.entries()).map(([groupId, groupTasks]) => ({
+    id: groupId,
+    title: groupId === UNASSIGNED_GROUP_ID ? "Việc lẻ" : (workflowNameById.get(groupId) ?? groupId),
+    itemsDone: groupTasks.filter((t) => t.status === "done").length,
+    itemsTotal: groupTasks.length,
+    steps: groupTasks.map((t) => ({
+      key: t.id,
+      label: t.title,
+      state: TASK_STATUS_TO_STEP_STATE[t.status],
+    })),
+  }));
+}
 
 function ProjectProgressStrip() {
   const { openPeek } = usePeek();
+  const [projects, setProjects] = useState<DerivedProject[]>([]);
+  const [loading, setLoading] = useState(true);
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(PROGRESS_COLLAPSE_KEY) === "true";
@@ -533,6 +605,24 @@ function ProjectProgressStrip() {
       return false;
     }
   });
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([kadApi.tasks.list({ limit: 500 }), kadApi.workflows.list()])
+      .then(([tasks, workflows]) => {
+        if (cancelled) return;
+        setProjects(deriveProjects(tasks, workflows));
+      })
+      .catch(() => {
+        if (!cancelled) setProjects([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const toggle = () =>
     setCollapsed((prev) => {
@@ -545,7 +635,7 @@ function ProjectProgressStrip() {
       return next;
     });
 
-  if (PROJECTS.length === 0) return null;
+  if (!loading && projects.length === 0) return null;
 
   return (
     <div>
@@ -560,7 +650,7 @@ function ProjectProgressStrip() {
         </button>
         {!collapsed && (
           <div className="mt-3 max-h-[280px] overflow-y-auto space-y-3">
-            {PROJECTS.map((project) => (
+            {projects.map((project) => (
               <button
                 key={project.id}
                 type="button"
@@ -571,7 +661,7 @@ function ProjectProgressStrip() {
                   {project.title}
                 </span>
                 <span className="flex-1 min-w-[160px]">
-                  <SegmentedProgress steps={project.steps} height={6} showLabels pulseDoing />
+                  <SegmentedProgress steps={project.steps} height={6} pulseDoing />
                 </span>
                 <span className="text-xs font-semibold text-kad-text-strong flex-shrink-0 w-10 text-right">
                   {project.itemsTotal > 0

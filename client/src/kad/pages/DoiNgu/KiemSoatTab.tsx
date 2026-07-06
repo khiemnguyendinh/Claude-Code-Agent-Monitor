@@ -1,21 +1,31 @@
 /**
  * Tab "Kiểm soát & Phân quyền" — 04-man-doi-ngu.md §4. Ba khối, đọc là
- * chính, sửa qua duyệt. Ma trận phê duyệt render đúng data spec 01 —
- * KHÔNG bịa hàng mới.
+ * chính, sửa qua duyệt. Ma trận phê duyệt render quyền THẬT của agent
+ * (GET /api/kad/agents → agent_profiles.permissions) — KHÔNG bịa hàng/cột.
  */
 import { useEffect, useState } from "react";
-import { ShieldCheck } from "lucide-react";
-import { APPROVAL_MATRIX, DEPARTMENT_POLICIES } from "../../mockData";
+import { ShieldCheck, Check, Minus } from "lucide-react";
+import { DEPARTMENT_POLICIES } from "../../mockData";
 import { kadApi } from "../../api-client";
 import type { KadBudgetStatus } from "../../api-client";
+import type { AgentProfile, AgentPermissions } from "../../types";
 import { ARTIFACT_TYPE_LABEL } from "../../labels";
 import { useKadToast } from "../../components/Toast";
-import { KadCard, KadCardHeader, KadButton } from "../../components/primitives";
-import { StatusChip, SensitivityBadge } from "../../components/StatusChip";
+import { KadCard, KadCardHeader, KadButton, KadSkeleton } from "../../components/primitives";
 import { ProgressBar } from "../../components/Progress";
 import { formatTokens, formatPercent } from "../../format";
 
-const SENSITIVE_ROW_ACTION = "Nội dung chứa số liệu / con người / thương hiệu";
+// Cột ma trận phê duyệt = quyền THẬT của agent (agent_profiles.permissions).
+// Mỗi cột ánh xạ 1:1 sang 1 flag trong AgentPermissions (api-client.ts
+// toAgent(), types.ts). Không bịa thêm cột nào ngoài các flag đã có.
+const APPROVAL_PERMISSION_COLUMNS: { key: keyof AgentPermissions; label: string }[] = [
+  { key: "requestApproval", label: "Xin duyệt" },
+  { key: "modifyBlueprint", label: "Sửa blueprint" },
+  { key: "modifyOrgContext", label: "Sửa org-context" },
+  { key: "assignTask", label: "Giao việc" },
+  { key: "createHelper", label: "Tạo trợ thủ" },
+  { key: "publishConnector", label: "Publish connector" },
+];
 
 export function KiemSoatTab() {
   const toast = useKadToast();
@@ -25,6 +35,10 @@ export function KiemSoatTab() {
   // blueprint phòng + token dùng hôm nay tính qua cost.js).
   const [autoApprove, setAutoApprove] = useState(DEPARTMENT_POLICIES.autoApprove);
   const [budget, setBudget] = useState<KadBudgetStatus | null>(null);
+  // Ma trận phê duyệt: hàng = agent THẬT (agents.list()), cột = quyền
+  // approval-related THẬT (agent.permissions) — không còn bảng tĩnh.
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(true);
   useEffect(() => {
     let cancelled = false;
     kadApi.reports
@@ -34,6 +48,17 @@ export function KiemSoatTab() {
       })
       .catch(() => {
         /* giữ hạn mức mặc định, usage = 0 khi lỗi tải */
+      });
+    kadApi.agents
+      .list()
+      .then((rows) => {
+        if (!cancelled) setAgents(rows.filter((a) => a.status !== "archived"));
+      })
+      .catch(() => {
+        if (!cancelled) setAgents([]);
+      })
+      .finally(() => {
+        if (!cancelled) setAgentsLoading(false);
       });
     return () => {
       cancelled = true;
@@ -53,48 +78,61 @@ export function KiemSoatTab() {
       <KadCard>
         <KadCardHeader title="Ma trận phê duyệt" />
         <p className="kad-caption text-kad-text-faint mb-3">
-          Loại việc/nội dung · Ai xin · Người duyệt · SLA · Cooldown — nguồn: approval matrix (spec 01 §4).
+          Thành viên AI · quyền liên quan tới phê duyệt — nguồn: agent_profiles.permissions (thật).
         </p>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="border-b border-kad-border">
-                <th className="kad-caption text-kad-text-faint font-normal py-2 pr-3">Hành động / nội dung</th>
-                <th className="kad-caption text-kad-text-faint font-normal py-2 pr-3">Ai xin</th>
-                <th className="kad-caption text-kad-text-faint font-normal py-2 pr-3">Người duyệt</th>
-                <th className="kad-caption text-kad-text-faint font-normal py-2 pr-3">SLA</th>
-                <th className="kad-caption text-kad-text-faint font-normal py-2">Cooldown</th>
-              </tr>
-            </thead>
-            <tbody>
-              {APPROVAL_MATRIX.map((row) => (
-                <tr key={row.action} className="border-b border-kad-border last:border-0 align-top">
-                  <td className="py-2.5 pr-3 max-w-[260px]">
-                    <p className="kad-body text-kad-text">{row.action}</p>
-                    {row.action === SENSITIVE_ROW_ACTION && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        <SensitivityBadge subtype="metrics" />
-                        <SensitivityBadge subtype="people" />
-                        <SensitivityBadge subtype="brand" />
-                      </div>
-                    )}
-                    {row.condition && <p className="kad-caption text-kad-text-faint mt-1">{row.condition}</p>}
-                  </td>
-                  <td className="py-2.5 pr-3 kad-body text-kad-text-muted whitespace-nowrap">{row.requestedBy}</td>
-                  <td className="py-2.5 pr-3 whitespace-nowrap">
-                    {row.automatic ? (
-                      <StatusChip kind="neutral" label="Hệ thống (auto)" />
-                    ) : (
-                      <span className="kad-body text-kad-text-muted">Anh Khiêm</span>
-                    )}
-                  </td>
-                  <td className="py-2.5 pr-3 kad-body text-kad-text-muted whitespace-nowrap">{row.slaHours}</td>
-                  <td className="py-2.5 kad-body text-kad-text-muted whitespace-nowrap">{row.cooldown}</td>
+        {agentsLoading ? (
+          <KadSkeleton className="h-40 w-full" />
+        ) : agents.length === 0 ? (
+          <p className="kad-body text-kad-text-faint text-center py-4">
+            Chưa có thành viên AI nào được cấu hình.
+          </p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead>
+                <tr className="border-b border-kad-border">
+                  <th className="kad-caption text-kad-text-faint font-normal py-2 pr-3">Thành viên AI</th>
+                  {APPROVAL_PERMISSION_COLUMNS.map((col) => (
+                    <th
+                      key={col.key}
+                      className="kad-caption text-kad-text-faint font-normal py-2 pr-3 text-center whitespace-nowrap"
+                    >
+                      {col.label}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {agents.map((agent) => (
+                  <tr key={agent.id} className="border-b border-kad-border last:border-0 align-top">
+                    <td className="py-2.5 pr-3 max-w-[220px]">
+                      <p className="kad-body text-kad-text">{agent.displayName}</p>
+                      <p className="kad-caption text-kad-text-faint">{agent.title || agent.name}</p>
+                    </td>
+                    {APPROVAL_PERMISSION_COLUMNS.map((col) => {
+                      const granted = !!agent.permissions[col.key];
+                      return (
+                        <td key={col.key} className="py-2.5 pr-3 text-center">
+                          {granted ? (
+                            <Check
+                              className="w-4 h-4 text-kad-success inline-block"
+                              aria-label="Có quyền"
+                            />
+                          ) : (
+                            <Minus
+                              className="w-4 h-4 text-kad-text-faint inline-block"
+                              aria-label="Không có quyền"
+                            />
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </KadCard>
 
       {/* 2 — Kiểm soát chéo */}

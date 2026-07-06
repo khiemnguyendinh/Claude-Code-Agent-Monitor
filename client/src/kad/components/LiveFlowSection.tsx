@@ -1,17 +1,20 @@
 /**
  * "Đang chạy trực tiếp" (live flow) — vốn là 04-man-doi-ngu §1c; 2026-07-04
  * chuyển sang tab "Công việc" của trang /he-thong/kanban (spec/ui/08) theo yêu
- * cầu Khiêm. Nguồn thật: TASK_CARDS status=doing + assignedAgentId = các
- * delegation đang active (không phải dữ liệu mô phỏng riêng). `onOpenTask` do
- * nơi nhúng quyết định — mở khay peek (khi có PeekDrawerHost) hoặc điều hướng.
+ * cầu Khiêm. 2026-07-07: nối dữ liệu thật — kadApi.tasks.list() lọc
+ * status='doing', tên agent tra từ kadApi.agents.list() (không còn mock
+ * TASK_CARDS/findAgent). `onOpenTask` do nơi nhúng quyết định — mở khay peek
+ * (khi có PeekDrawerHost) hoặc điều hướng.
  */
+import { useEffect, useState } from "react";
 import { Zap } from "lucide-react";
-import { TASK_CARDS, findAgent } from "../mockData";
+import { kadApi } from "../api-client";
+import type { KadTask } from "../api-client";
 import { AgentAvatar } from "./Avatar";
 import { KadCard, KadEmptyState } from "./primitives";
 import { StatusChip } from "./StatusChip";
 import { formatRelativeTime } from "../format";
-import type { AgentProfile, TaskCard } from "../types";
+import type { AgentProfile } from "../types";
 
 export function LiveFlowSection({
   mainAgent,
@@ -20,7 +23,31 @@ export function LiveFlowSection({
   mainAgent: AgentProfile | undefined;
   onOpenTask: (taskId: string) => void;
 }) {
-  const running = TASK_CARDS.filter((t) => t.status === "doing" && t.assignedAgentId);
+  const [running, setRunning] = useState<KadTask[]>([]);
+  const [agentNames, setAgentNames] = useState<Map<string, string>>(new Map());
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([kadApi.tasks.list({ limit: 200 }), kadApi.agents.list()])
+      .then(([tasks, agents]) => {
+        if (cancelled) return;
+        setRunning(tasks.filter((t) => t.status === "doing"));
+        setAgentNames(new Map(agents.map((a) => [a.id, a.displayName])));
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setRunning([]);
+        setAgentNames(new Map());
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div>
@@ -37,12 +64,20 @@ export function LiveFlowSection({
         Các phiên Trợ lý vận hành đang giao việc ngay lúc này — bấm để xem chi tiết.
       </p>
       <KadCard padding="sm">
-        {running.length === 0 ? (
+        {loading ? (
+          <KadEmptyState icon={Zap} message="Đang tải..." />
+        ) : running.length === 0 ? (
           <KadEmptyState icon={Zap} message="Không có phiên nào đang chạy." />
         ) : (
           <div>
             {running.map((task) => (
-              <FlowRow key={task.id} mainAgent={mainAgent} task={task} onOpen={() => onOpenTask(task.id)} />
+              <FlowRow
+                key={task.id}
+                mainAgent={mainAgent}
+                task={task}
+                agentName={task.assignedAgentId ? agentNames.get(task.assignedAgentId) : undefined}
+                onOpen={() => onOpenTask(task.id)}
+              />
             ))}
           </div>
         )}
@@ -54,13 +89,14 @@ export function LiveFlowSection({
 function FlowRow({
   mainAgent,
   task,
+  agentName,
   onOpen,
 }: {
   mainAgent: AgentProfile | undefined;
-  task: TaskCard;
+  task: KadTask;
+  agentName: string | undefined;
   onOpen: () => void;
 }) {
-  if (!task.assignedAgentId) return null;
   return (
     <button
       type="button"
@@ -81,11 +117,16 @@ function FlowRow({
           className="kad-flow-line"
         />
       </svg>
-      <AgentAvatar agentId={task.assignedAgentId} size={24} status="running" />
+      <AgentAvatar
+        agentId={task.assignedAgentId ?? task.id}
+        size={24}
+        status="running"
+        displayNameOverride={agentName}
+      />
       <div className="min-w-0 flex-1">
         <p className="kad-body text-kad-text truncate">{task.title}</p>
         <p className="kad-caption text-kad-text-faint">
-          {findAgent(task.assignedAgentId)?.displayName} · {formatRelativeTime(task.updatedAt)}
+          {agentName ?? "Chưa gán agent"} · {formatRelativeTime(task.updatedAt)}
         </p>
       </div>
       <StatusChip kind="doing" label="Đang chạy" />
