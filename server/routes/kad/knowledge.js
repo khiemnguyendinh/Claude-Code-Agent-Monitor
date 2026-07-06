@@ -133,6 +133,14 @@ router.post("/templates/:id/approve", (req, res) =>
   })
 );
 
+router.post("/templates/:id/archive", (req, res) =>
+  safe(res, () => {
+    const result = repo.templates.archiveTemplate(req.params.id, { actor_id: "human" });
+    if (!result) return err(res, "ENOTFOUND", "template not found", 404);
+    res.json(result);
+  })
+);
+
 router.get("/templates/:id/usage", (req, res) => {
   res.json(repo.templates.usage(req.params.id));
 });

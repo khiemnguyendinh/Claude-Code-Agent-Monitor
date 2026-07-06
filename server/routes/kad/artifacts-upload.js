@@ -115,10 +115,13 @@ router.get("/artifacts/:id/download", (req, res) => {
   const a = repo.artifacts.getArtifact(req.params.id);
   if (!a || !a.file_path) return err(res, "ENOTFOUND", "no file for this artifact", 404);
   const meta = a.metadata || {};
+  // ?inline=1 -> quick-view preview tab (browser renders in place when it can,
+  // e.g. PDF); omitted/anything else keeps the existing forced-download behavior.
+  const disposition = req.query.inline === "1" ? "inline" : "attachment";
   res.setHeader("Content-Type", meta.mime_type || "application/octet-stream");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="${(meta.original_name || a.title || "file").replace(/"/g, "")}"`
+    `${disposition}; filename="${(meta.original_name || a.title || "file").replace(/"/g, "")}"`
   );
   res.sendFile(a.file_path, (e) => {
     if (e && !res.headersSent) err(res, "ENOTFOUND", "file no longer on disk", 404);

@@ -25,7 +25,10 @@ import type {
   AutomationRuleFire,
   AutomationTriggerType,
   DependencyCondition,
+  ExceptionItem,
   Goal,
+  KadNotification,
+  OpsMetricCard,
   Priority,
   RuleFireResult,
   StandupBrief,
@@ -76,6 +79,7 @@ export interface TaskRow {
   id: string;
   department_id: string | null;
   workflow_id: string | null;
+  workflow_step: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -112,6 +116,7 @@ export interface KadTask {
   id: string;
   departmentId: string | null;
   workflowId: string | null;
+  workflowStep: string | null;
   title: string;
   description: string | null;
   status: TaskStatus;
@@ -130,6 +135,7 @@ function toTask(row: TaskRow): KadTask {
     id: row.id,
     departmentId: row.department_id,
     workflowId: row.workflow_id,
+    workflowStep: row.workflow_step,
     title: row.title,
     description: row.description,
     status: row.status,
@@ -281,6 +287,7 @@ export function toArtifact(row: ArtifactRow): Artifact {
     hasFile: row.file_path != null,
     source: row.metadata?.source === "uploaded" ? "uploaded" : "generated",
     fileName: row.metadata?.original_name ?? null,
+    mimeType: row.metadata?.mime_type ?? null,
     parentArtifactId: row.parent_artifact_id,
     status: row.status,
     version: row.version,
@@ -811,6 +818,79 @@ export interface LearningNoteRow {
   created_at: string;
 }
 
+// ── notifications (spec/ui/02 §7, server/lib/kad/repo/notifications.js) ─────
+export interface NotificationRow {
+  id: string;
+  department_id: string | null;
+  kind: KadNotification["kind"];
+  title: string;
+  body: string | null;
+  link_path: string | null;
+  target_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+export function toNotification(row: NotificationRow): KadNotification {
+  return {
+    id: row.id,
+    kind: row.kind,
+    title: row.title,
+    body: row.body ?? row.title,
+    // Bell rows always navigate somewhere; fall back to Tổng quan if a
+    // producer didn't set link_path so the click is never a dead no-op.
+    linkPath: row.link_path ?? "/",
+    readAt: row.read_at,
+    createdAt: row.created_at,
+  };
+}
+
+// ── exceptions (spec/ui/02 §4/§7) — synthesized server-side aggregation of
+// real signals (failed runs, SLA-breached approvals, budget warnings, stuck
+// delegations); no dedicated table, so GET /exceptions returns them directly.
+export interface ExceptionRow {
+  id: string;
+  kind: ExceptionItem["kind"];
+  description: string;
+  task_id: string | null;
+  severity: ExceptionItem["severity"];
+  occurred_at: string;
+}
+
+export function toException(row: ExceptionRow): ExceptionItem {
+  return {
+    id: row.id,
+    kind: row.kind,
+    description: row.description,
+    taskId: row.task_id,
+    severity: row.severity,
+    occurredAt: row.occurred_at,
+  };
+}
+
+// ── ops metrics (spec/ui/02 block C) — GET /reports/metrics returns up to 3
+// real 14-day daily-bucket series; the strip shows fewer cards if a metric
+// has no real data source (never fabricated).
+export interface MetricRow {
+  label: string;
+  value: string;
+  delta_label: string;
+  delta_direction: OpsMetricCard["deltaDirection"];
+  delta_good: boolean;
+  series_14d: number[];
+}
+
+export function toOpsMetric(row: MetricRow): OpsMetricCard {
+  return {
+    label: row.label,
+    value: row.value,
+    deltaLabel: row.delta_label,
+    deltaDirection: row.delta_direction,
+    deltaGood: row.delta_good,
+    series14d: row.series_14d,
+  };
+}
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 export const kadApi = {
@@ -896,6 +976,29 @@ export const kadApi = {
       const qs = department ? `?department=${encodeURIComponent(department)}` : "";
       return request<OverviewRow>(`/reports/overview${qs}`).then(toOverview);
     },
+    exceptions: (department?: string) => {
+      const qs = department ? `?department=${encodeURIComponent(department)}` : "";
+      return request<ExceptionRow[]>(`/exceptions${qs}`).then((rows) => rows.map(toException));
+    },
+    metrics: (department?: string) => {
+      const qs = department ? `?department=${encodeURIComponent(department)}` : "";
+      return request<{ metrics: MetricRow[] }>(`/reports/metrics${qs}`).then((r) =>
+        (r.metrics ?? []).map(toOpsMetric)
+      );
+    },
+  },
+
+  notifications: {
+    list: (department?: string) => {
+      const qs = department ? `?department=${encodeURIComponent(department)}` : "";
+      return request<NotificationRow[]>(`/notifications${qs}`).then((rows) =>
+        rows.map(toNotification)
+      );
+    },
+    markRead: (id: string) =>
+      request<NotificationRow>(`/notifications/${encodeURIComponent(id)}/read`, {
+        method: "POST",
+      }).then(toNotification),
   },
 
   standup: {
@@ -955,6 +1058,9 @@ export const kadApi = {
       );
     },
     downloadUrl: (id: string) => `${BASE}/artifacts/${encodeURIComponent(id)}/download`,
+    previewUrl: (id: string) => `${BASE}/artifacts/${encodeURIComponent(id)}/download?inline=1`,
+    delete: (id: string) =>
+      request<{ id: string }>(`/artifacts/${encodeURIComponent(id)}`, { method: "DELETE" }),
   },
 
   agents: {
@@ -1171,6 +1277,12 @@ export const kadApi = {
     },
     downloadUrl: (versionId: string) =>
       `${BASE}/templates/versions/${encodeURIComponent(versionId)}/download`,
+    previewUrl: (versionId: string) =>
+      `${BASE}/templates/versions/${encodeURIComponent(versionId)}/download?inline=1`,
+    archive: (id: string) =>
+      request<TemplateLibraryRow>(`/templates/${encodeURIComponent(id)}/archive`, {
+        method: "POST",
+      }),
   },
 
   workflows: {

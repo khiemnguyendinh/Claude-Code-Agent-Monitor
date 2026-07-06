@@ -89,6 +89,21 @@ router.get("/reports/overview", (req, res) => {
   });
 });
 
+// [GAP spec/ui/02 §4/§7] Real-data exceptions feed for "Tổng quan" (Block G) —
+// aggregates run_failed/approval_sla/budget_exceeded/delegation_stuck from real
+// columns only (repo/reports.js). connector_error is never emitted — no writer
+// anywhere populates connectors/connector_actions, so there is no real event.
+router.get("/exceptions", (req, res) => {
+  res.json(repo.reports.listExceptions({ department_id: deptId(req) }));
+});
+
+// [GAP spec/ui/02 §3] Ops metric cards (Block C) — up to 3 MetricRow entries
+// from real 14-day daily buckets (repo/reports.js). A candidate metric with no
+// real source in range (e.g. no decided approvals yet) is omitted, not zeroed.
+router.get("/reports/metrics", (req, res) => {
+  res.json({ metrics: repo.reports.listMetrics({ department_id: deptId(req) }) });
+});
+
 // [GAP spec/ui/02 §5] Standup rút gọn — deterministic (see repo/standup.js),
 // not a Main Agent narrative. GET reads today's snapshot (null if not yet
 // generated); POST regenerates it now.

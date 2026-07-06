@@ -39,6 +39,7 @@ import {
   artifactsForProject,
   artifactsForTask,
 } from "./DetailPanels";
+import { WorkflowRunPeek } from "./WorkflowRunPeek";
 
 export const PEEK_TITLES: Record<PeekType, string> = {
   task: "Công việc",
@@ -47,6 +48,7 @@ export const PEEK_TITLES: Record<PeekType, string> = {
   approval: "Phê duyệt",
   agent: "Hồ sơ AI Agent",
   goal: "Mục tiêu",
+  "workflow-run": "Workflow",
 };
 
 export function peekFullPagePath(target: PeekTarget): string | null {
@@ -77,13 +79,15 @@ export function PeekContent({ target, onOpenPeek, onClose }: PeekContentProps) {
     case "project":
       return <ProjectPeek id={target.id} onOpenPeek={onOpenPeek} />;
     case "artifact":
-      return <ArtifactPeek id={target.id} onOpenPeek={onOpenPeek} />;
+      return <ArtifactPeek id={target.id} onOpenPeek={onOpenPeek} onClose={onClose} />;
     case "approval":
       return <ApprovalPeek id={target.id} onOpenPeek={onOpenPeek} onClose={onClose} />;
     case "agent":
       return <AgentPeek id={target.id} onOpenPeek={onOpenPeek} />;
     case "goal":
       return <GoalPeek id={target.id} onOpenPeek={onOpenPeek} />;
+    case "workflow-run":
+      return <WorkflowRunPeek id={target.id} onOpenPeek={onOpenPeek} />;
     default:
       return null;
   }
@@ -223,7 +227,15 @@ function ProjectPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarge
 // resolves synchronously and instantly for the mock ids those screens still
 // pass, so checking it first preserves their exact current behavior; only an
 // id it doesn't recognize (i.e. a real one) falls through to a live fetch.
-function ArtifactPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
+function ArtifactPeek({
+  id,
+  onOpenPeek,
+  onClose,
+}: {
+  id: string;
+  onOpenPeek: (t: PeekTarget) => void;
+  onClose: () => void;
+}) {
   const mockArtifact = findArtifact(id);
   const [real, setReal] = useState<{ artifact: Artifact; lineage: Artifact[] } | null>(null);
   const [loading, setLoading] = useState(!mockArtifact);
@@ -278,6 +290,7 @@ function ArtifactPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarg
         versions={[real.artifact]}
         lineage={real.lineage}
         onSelectLineageItem={(aid) => onOpenPeek({ type: "artifact", id: aid })}
+        onDeleted={onClose}
       />
     </div>
   );

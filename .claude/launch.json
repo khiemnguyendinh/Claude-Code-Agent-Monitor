@@ -2,6 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "client-only",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": ["-c", "cd client && npx vite --port \"$PORT\""],
+      "port": 5280,
+      "autoPort": true
+    },
+    {
       "name": "dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],

@@ -88,10 +88,13 @@ router.get("/templates/versions/:versionId/download", (req, res) => {
   const version = repo.templates.getVersion(req.params.versionId);
   if (!version || !version.file_path)
     return err(res, "ENOTFOUND", "no file for this template version", 404);
+  // ?inline=1 -> quick-view preview tab (browser renders in place when it can,
+  // e.g. PDF); omitted/anything else keeps the existing forced-download behavior.
+  const disposition = req.query.inline === "1" ? "inline" : "attachment";
   res.setHeader("Content-Type", version.mime_type || "application/octet-stream");
   res.setHeader(
     "Content-Disposition",
-    `attachment; filename="${(version.original_file_name || "template").replace(/"/g, "")}"`
+    `${disposition}; filename="${(version.original_file_name || "template").replace(/"/g, "")}"`
   );
   res.sendFile(version.file_path, (e) => {
     if (e && !res.headersSent) err(res, "ENOTFOUND", "file no longer on disk", 404);

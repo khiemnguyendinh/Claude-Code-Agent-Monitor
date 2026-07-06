@@ -1,17 +1,19 @@
 /**
  * Reactive overlay shared across KAD screens (Tổng quan, peek drawer, command
  * palette, ...) so an action in one place (e.g. "Duyệt" in the peek drawer)
- * is reflected everywhere on screen. `approvals`/`standup`/`agentsById` are
- * wired to the real `/api/kad/*` backend (Phase 2 "Tổng quan" track) + WS —
- * this was always the intended seam for that swap (see git history). The rest
- * (tasks/automation/goals/notifications) is still the mock overlay, out of
- * scope for that track.
+ * is reflected everywhere on screen. `approvals`/`standup`/`agentsById`/`goals`/
+ * `notifications` are wired to the real `/api/kad/*` backend + WS (the notification
+ * bell refetches live on the `kad.notification` event). `tasks`/`automationRules`
+ * remain in-memory mock overlays here — but nothing renders them anymore (the
+ * real screens fetch via kadApi directly: TuDongHoa/CongViecMoi call
+ * `kadApi.automationRules`, the Tổng quan project list calls `kadApi.tasks`), so
+ * they're vestigial rather than a visible mock surface.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { kadApi } from "./api-client";
 import { departmentScope, subscribeKadScope } from "./ws-client";
-import { AUTOMATION_RULES, BLOCKED_TASKS, NOTIFICATIONS, TASK_CARDS } from "./mockData";
+import { AUTOMATION_RULES, BLOCKED_TASKS, TASK_CARDS } from "./mockData";
 import type {
   AgentProfile,
   Approval,
@@ -77,7 +79,7 @@ interface KadStoreValue {
 const KadStoreContext = createContext<KadStoreValue | null>(null);
 
 export function KadStoreProvider({ children }: { children: ReactNode }) {
-  const [notifications, setNotifications] = useState<KadNotification[]>(NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<KadNotification[]>([]);
   const [tasks, setTasks] = useState<TaskCard[]>([...BLOCKED_TASKS, ...TASK_CARDS]);
   const [automationRules, setAutomationRules] = useState<AutomationRule[]>(AUTOMATION_RULES);
   const [allAutomationPaused, setAllAutomationPaused] = useState(false);
@@ -102,6 +104,13 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
       });
   }, []);
 
+  const refetchNotifications = useCallback((deptId: string | null) => {
+    kadApi.notifications
+      .list(deptId ?? undefined)
+      .then(setNotifications)
+      .catch((e) => console.warn("[kad] failed to load notifications:", e && e.message));
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
@@ -119,6 +128,7 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
         const deptId = overview.departmentId;
         departmentIdRef.current = deptId;
         refetchApprovals(deptId);
+        refetchNotifications(deptId);
         kadApi.standup
           .today(deptId ?? undefined)
           .then(setStandup)
@@ -127,6 +137,12 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
         unsubscribe = subscribeKadScope(departmentScope(deptId), (ev) => {
           if (ev.type === "kad.approval.created" || ev.type === "kad.approval.decided") {
             refetchApprovals(departmentIdRef.current);
+          }
+          // Server pushes kad.notification on every createNotification (budget
+          // warning, approval SLA, run failed, daily briefing, ...) — refetch so
+          // the bell's unread dot lights up live, no page reload.
+          if (ev.type === "kad.notification") {
+            refetchNotifications(departmentIdRef.current);
           }
         });
       })
@@ -179,10 +195,16 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markAllNotificationsRead = useCallback(() => {
-    setNotifications((prev) =>
-      prev.map((n) => ({ ...n, readAt: n.readAt ?? new Date().toISOString() }))
+    const unreadIds = notifications.filter((n) => !n.readAt).map((n) => n.id);
+    if (unreadIds.length === 0) return;
+    const readAt = new Date().toISOString();
+    // Optimistic: dot clears immediately; each row persisted via POST
+    // /notifications/:id/read (no batch endpoint), then refetch reconciles.
+    setNotifications((prev) => prev.map((n) => ({ ...n, readAt: n.readAt ?? readAt })));
+    Promise.allSettled(unreadIds.map((id) => kadApi.notifications.markRead(id))).then(() =>
+      refetchNotifications(departmentIdRef.current)
     );
-  }, []);
+  }, [notifications, refetchNotifications]);
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 

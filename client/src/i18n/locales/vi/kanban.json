@@ -3,8 +3,29 @@
   "subtitle": "Góc nhìn kanban của mọi Agent theo trạng thái",
   "subtitleSessions": "Góc nhìn kanban của mọi phiên theo trạng thái",
   "viewToggle": {
+    "workflow": "Workflow",
     "agents": "Agent",
     "sessions": "Phiên"
+  },
+  "workflowCount": "Đã theo dõi {{count}} workflow run",
+  "workflowCount_plural": "Đã theo dõi {{count}} workflow run",
+  "noWorkflows": "Chưa có workflow đang chạy",
+  "noWorkflowsDesc": "Giao việc theo workflow (KAD) hoặc chạy Workflow tool trong Claude Code để thấy run xuất hiện tại đây.",
+  "noWorkflowsInColumn": "Không có workflow",
+  "wf": {
+    "queued": "Chờ chạy",
+    "running": "Đang chạy",
+    "waitingApproval": "Chờ duyệt",
+    "blocked": "Bị chặn",
+    "done": "Hoàn tất",
+    "unlinked": "Chưa gắn hạng mục",
+    "step": "Bước",
+    "noCurrentStep": "Chưa vào bước nào",
+    "approvalBadge": "Cần duyệt",
+    "approvalNeeded": "Có bước cần phê duyệt",
+    "sourceCcRun": "Workflow-tool run (Claude Code)",
+    "sourceCcRunShort": "CC run",
+    "assignTask": "Giao việc"
   },
   "noAgents": "Chưa có Agent được theo dõi",
   "noAgentsDesc": "Bắt đầu một phiên Claude Code với hooks đã cài để thấy Agent xuất hiện tại đây.",
@@ -28,6 +49,13 @@
     "turnSummary_other": "{{count}} lượt"
   },
   "tooltip": {
+    "workflow": {
+      "queued": "Workflow đã được tạo/giao nhưng chưa bắt đầu chạy (task ở inbox/triaged, hoặc run chưa khởi động).",
+      "running": "Workflow đang thực thi — có bước/phase đang chạy ngay lúc này.",
+      "waiting_approval": "Workflow dừng ở bước chờ con người phê duyệt. Duyệt xong sẽ tự chạy tiếp bước sau.",
+      "blocked": "Workflow bị chặn — điều kiện phụ thuộc chưa thoả hoặc run gặp lỗi.",
+      "done": "Workflow đã hoàn tất toàn bộ các bước."
+    },
     "agent": {
       "working": "Agent đang chạy một tool call ngay lúc này.\n\nVào trạng thái khi PreToolUse hoặc UserPromptSubmit, thoát khi Stop (hết lượt).",
       "waiting": "Agent đã kết thúc lượt và đang chờ người dùng - Claude chờ tin nhắn tiếp theo hoặc đã hỏi xin quyền sử dụng tool.\n\nXóa khi PreToolUse / PostToolUse tiếp theo, hoặc khi phiên kết thúc.",

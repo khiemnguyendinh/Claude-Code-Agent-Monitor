@@ -30,4 +30,5 @@ module.exports = {
   templates: require("./templates"),
   personnel: require("./personnel"),
   strategicGoals: require("./strategic-goals"),
+  reports: require("./reports"),
 };

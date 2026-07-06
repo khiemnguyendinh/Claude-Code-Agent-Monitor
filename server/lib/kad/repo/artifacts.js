@@ -7,7 +7,19 @@ function hydrate(row) {
   return row ? { ...row, metadata: parseJson(row.metadata, null) } : null;
 }
 
-function createArtifact({ task_id, agent_id, artifact_type, title, content, file_path, parent_artifact_id, template_version_id, org_context_version_id, status, metadata }) {
+function createArtifact({
+  task_id,
+  agent_id,
+  artifact_type,
+  title,
+  content,
+  file_path,
+  parent_artifact_id,
+  template_version_id,
+  org_context_version_id,
+  status,
+  metadata,
+}) {
   const id = newId("artifact");
   const now = nowIso();
   const taskSnapshot =
@@ -45,11 +57,17 @@ function updateArtifact(id, { status, content, metadata, bumpVersion }) {
   const p = { id, now: nowIso() };
   if (status !== undefined) (sets.push("status=@status"), (p.status = status));
   if (content !== undefined) (sets.push("content=@content"), (p.content = content));
-  if (metadata !== undefined) (sets.push("metadata=@metadata"), (p.metadata = metadata != null ? JSON.stringify(metadata) : null));
+  if (metadata !== undefined)
+    (sets.push("metadata=@metadata"),
+      (p.metadata = metadata != null ? JSON.stringify(metadata) : null));
   if (bumpVersion) sets.push("version=version+1");
   sets.push("updated_at=@now");
   db.prepare(`UPDATE artifacts SET ${sets.join(", ")} WHERE id=@id`).run(p);
   return getArtifact(id);
+}
+
+function deleteArtifact(id) {
+  db.prepare("DELETE FROM artifacts WHERE id=?").run(id);
 }
 
 function listArtifacts({ task_id, type, status } = {}) {
@@ -58,8 +76,14 @@ function listArtifacts({ task_id, type, status } = {}) {
   if (task_id) (where.push("task_id=?"), args.push(task_id));
   if (type) (where.push("artifact_type=?"), args.push(type));
   if (status) (where.push("status=?"), args.push(status));
-  const sql = "SELECT * FROM artifacts" + (where.length ? " WHERE " + where.join(" AND ") : "") + " ORDER BY created_at ASC";
-  return db.prepare(sql).all(...args).map(hydrate);
+  const sql =
+    "SELECT * FROM artifacts" +
+    (where.length ? " WHERE " + where.join(" AND ") : "") +
+    " ORDER BY created_at ASC";
+  return db
+    .prepare(sql)
+    .all(...args)
+    .map(hydrate);
 }
 
-module.exports = { createArtifact, getArtifact, updateArtifact, listArtifacts };
+module.exports = { createArtifact, getArtifact, updateArtifact, listArtifacts, deleteArtifact };

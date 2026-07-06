@@ -1,16 +1,19 @@
 /**
  * @file KanbanBoard.tsx
- * @description Kanban-style board with two views: agents grouped by their
- * AgentStatus (working/waiting/completed/error) or sessions grouped
- * by their SessionStatus (active/completed/error/abandoned). The view toggle
- * is persisted in localStorage so the user's choice survives reloads. Each
- * column paginates client-side at COLUMN_PAGE_SIZE.
+ * @description Kanban-style board with three views. "Workflow" (default) shows
+ * workflow runs — KAD workflow-bound tasks + Claude Code Workflow-tool runs —
+ * grouped by queued/running/waiting_approval/blocked/done (see
+ * lib/workflow-board.ts). "Agents" and "Sessions" remain as trace/debug views
+ * grouped by AgentStatus / SessionStatus. The view toggle is persisted in
+ * localStorage so the user's choice survives reloads. Each column paginates
+ * client-side at COLUMN_PAGE_SIZE.
  * @author Son Nguyen <hoangson091104@gmail.com>
  */
 
 import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { RefreshCw, Columns3, ChevronDown, ChevronUp, HelpCircle } from "lucide-react";
+import { RefreshCw, Columns3, ChevronDown, ChevronUp, HelpCircle, UserPlus } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../lib/api";
 import { eventBus } from "../lib/eventBus";
 import { Tabs } from "../kad/components/Tabs";
@@ -23,6 +26,13 @@ import { PeekDrawerHost, usePeek } from "../kad/components/PeekDrawer";
 import { LiveFlowSection } from "../kad/components/LiveFlowSection";
 import { AgentCard } from "../components/AgentCard";
 import { SessionCard } from "../components/SessionCard";
+import { WorkflowRunCard } from "../components/WorkflowRunCard";
+import {
+  WORKFLOW_COLUMNS,
+  WORKFLOW_STATUS_CONFIG,
+  fetchWorkflowBoardItems,
+} from "../lib/workflow-board";
+import type { WorkflowBoardItem, WorkflowBoardStatus } from "../lib/workflow-board";
 import { EmptyState } from "../components/EmptyState";
 import { CardSkeleton } from "../components/Skeleton";
 import {
@@ -40,7 +50,7 @@ import type {
   WSMessage,
 } from "../lib/types";
 
-type BoardView = "agents" | "sessions";
+type BoardView = "workflow" | "agents" | "sessions";
 
 // Persisted statuses we fetch from the API.
 const AGENT_FETCH_STATUSES: AgentStatus[] = ["working", "waiting", "completed", "error"];
@@ -60,12 +70,13 @@ const VIEW_STORAGE_KEY = "kanban-board-view";
 function loadView(): BoardView {
   try {
     const stored = localStorage.getItem(VIEW_STORAGE_KEY);
-    if (stored === "agents" || stored === "sessions") return stored;
+    if (stored === "workflow" || stored === "agents" || stored === "sessions") return stored;
   } catch {
     /* ignore */
   }
-  // Default tab is "sessions" (Khiêm's call) when nothing is stored yet.
-  return "sessions";
+  // 2026-07-06: default is "workflow" — the operational unit is a workflow
+  // run, not an agent/session (those stay as trace/debug views).
+  return "workflow";
 }
 
 function persistView(view: BoardView): void {
@@ -83,9 +94,12 @@ function persistView(view: BoardView): void {
 // board logic lives unchanged in `KanbanBoardInner`.
 function KanbanBoardInner() {
   const { t } = useTranslation("kanban");
+  const { openPeek } = usePeek();
+  const navigate = useNavigate();
   const [view, setViewState] = useState<BoardView>(loadView);
   const [agents, setAgents] = useState<Agent[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [workflowItems, setWorkflowItems] = useState<WorkflowBoardItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState<Record<string, number>>({});
 
@@ -125,14 +139,19 @@ function KanbanBoardInner() {
     setSessions(results.flatMap((r) => r.sessions));
   }, []);
 
+  const loadWorkflows = useCallback(async () => {
+    setWorkflowItems(await fetchWorkflowBoardItems());
+  }, []);
+
   const load = useCallback(async () => {
     try {
-      if (view === "agents") await loadAgents();
+      if (view === "workflow") await loadWorkflows();
+      else if (view === "agents") await loadAgents();
       else await loadSessions();
     } finally {
       setLoading(false);
     }
-  }, [view, loadAgents, loadSessions]);
+  }, [view, loadWorkflows, loadAgents, loadSessions]);
 
   useEffect(() => {
     setLoading(true);
@@ -142,7 +161,14 @@ function KanbanBoardInner() {
   useEffect(() => {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     return eventBus.subscribe((msg: WSMessage) => {
-      if (view === "agents") {
+      if (view === "workflow") {
+        // Workflow-tool run upserts + session updates (KAD task events are
+        // channel-scoped and don't reach this bus — manual refresh covers them).
+        if (msg.type === "workflow_upserted" || msg.type === "session_updated") {
+          if (debounceTimer) clearTimeout(debounceTimer);
+          debounceTimer = setTimeout(loadWorkflows, 300);
+        }
+      } else if (view === "agents") {
         if (
           msg.type === "agent_created" ||
           msg.type === "agent_updated" ||
@@ -159,7 +185,7 @@ function KanbanBoardInner() {
         }
       }
     });
-  }, [view, loadAgents, loadSessions]);
+  }, [view, loadWorkflows, loadAgents, loadSessions]);
 
   // Lookup map for AgentCard's session prop - memoized to avoid rebuilding on every render
   const sessionsById = useMemo(() => {
@@ -195,11 +221,26 @@ function KanbanBoardInner() {
     {} as Record<EffectiveSessionStatus, Session[]>
   );
 
-  const total = view === "agents" ? agents.length : sessions.length;
+  const groupedWorkflows = WORKFLOW_COLUMNS.reduce(
+    (acc, status) => {
+      acc[status] = workflowItems.filter((w) => w.status === status);
+      return acc;
+    },
+    {} as Record<WorkflowBoardStatus, WorkflowBoardItem[]>
+  );
+
+  const total =
+    view === "workflow"
+      ? workflowItems.length
+      : view === "agents"
+        ? agents.length
+        : sessions.length;
   const subtitle =
-    view === "agents"
-      ? t("agentCount", { count: agents.length })
-      : t("sessionCount", { count: sessions.length });
+    view === "workflow"
+      ? t("workflowCount", { count: workflowItems.length })
+      : view === "agents"
+        ? t("agentCount", { count: agents.length })
+        : t("sessionCount", { count: sessions.length });
 
   const wsConnected = useSyncExternalStore(eventBus.onConnection, () => eventBus.connected);
 
@@ -243,8 +284,20 @@ function KanbanBoardInner() {
         <div className="flex-1 flex items-center justify-center">
           <EmptyState
             icon={Columns3}
-            title={view === "agents" ? t("noAgents") : t("noSessions")}
-            description={view === "agents" ? t("noAgentsDesc") : t("noSessionsDesc")}
+            title={
+              view === "workflow"
+                ? t("noWorkflows")
+                : view === "agents"
+                  ? t("noAgents")
+                  : t("noSessions")
+            }
+            description={
+              view === "workflow"
+                ? t("noWorkflowsDesc")
+                : view === "agents"
+                  ? t("noAgentsDesc")
+                  : t("noSessionsDesc")
+            }
             action={
               <button onClick={load} className="btn-primary">
                 <RefreshCw className="w-4 h-4" /> {t("common:refresh")}
@@ -261,10 +314,10 @@ function KanbanBoardInner() {
       {Header}
 
       <div className="flex gap-4 min-h-[600px] overflow-x-auto pb-4 -mx-8 px-8">
-        {view === "agents"
-          ? AGENT_COLUMNS.map((status) => {
-              const config = STATUS_CONFIG[status];
-              const items = groupedAgents[status];
+        {view === "workflow"
+          ? WORKFLOW_COLUMNS.map((status) => {
+              const config = WORKFLOW_STATUS_CONFIG[status];
+              const items = groupedWorkflows[status];
               const limit = expanded[status] || COLUMN_PAGE_SIZE;
               return (
                 <Column
@@ -272,10 +325,24 @@ function KanbanBoardInner() {
                   labelKey={config.labelKey}
                   color={config.color}
                   dotClass={config.dot}
-                  pulse={status === "working" || status === "waiting"}
+                  pulse={status === "running" || status === "waiting_approval"}
                   count={items?.length ?? 0}
-                  emptyLabel={t("noAgentsInColumn")}
-                  tooltip={t(`tooltip.agent.${status}`)}
+                  emptyLabel={t("noWorkflowsInColumn")}
+                  tooltip={t(`tooltip.workflow.${status}`)}
+                  topAction={
+                    status === "queued" ? (
+                      // Same target as the sidebar "Giao việc" CTA (spec/ui/07):
+                      // the blank task-creation chat at /cong-viec/moi.
+                      <button
+                        type="button"
+                        onClick={() => navigate("/cong-viec/moi")}
+                        className="w-full h-9 flex items-center justify-center gap-2 rounded-lg bg-accent text-white text-xs font-semibold transition-colors hover:bg-accent-hover"
+                      >
+                        <UserPlus className="w-4 h-4 flex-shrink-0" strokeWidth={2} />
+                        {t("wf.assignTask")}
+                      </button>
+                    ) : undefined
+                  }
                   remaining={Math.max(0, (items?.length ?? 0) - limit)}
                   onShowMore={() =>
                     setExpanded((prev) => ({
@@ -290,48 +357,87 @@ function KanbanBoardInner() {
                       ))
                     : items
                         ?.slice(0, limit)
-                        .map((agent) => (
-                          <AgentCard
-                            key={agent.id}
-                            agent={agent}
-                            session={sessionsById.get(agent.session_id)}
+                        .map((item) => (
+                          <WorkflowRunCard
+                            key={item.id}
+                            item={item}
+                            onClick={() => openPeek({ type: "workflow-run", id: item.id })}
                           />
                         ))}
                 </Column>
               );
             })
-          : SESSION_COLUMNS.map((status) => {
-              const config = SESSION_STATUS_CONFIG[status];
-              const items = groupedSessions[status];
-              const limit = expanded[status] || COLUMN_PAGE_SIZE;
-              return (
-                <Column
-                  key={status}
-                  labelKey={config.labelKey}
-                  color={config.color}
-                  dotClass={config.dot}
-                  pulse={status === "active" || status === "waiting"}
-                  count={items?.length ?? 0}
-                  emptyLabel={t("noSessionsInColumn")}
-                  tooltip={t(`tooltip.session.${status}`)}
-                  remaining={Math.max(0, (items?.length ?? 0) - limit)}
-                  onShowMore={() =>
-                    setExpanded((prev) => ({
-                      ...prev,
-                      [status]: limit + COLUMN_PAGE_SIZE,
-                    }))
-                  }
-                >
-                  {loading && (items?.length ?? 0) === 0
-                    ? Array.from({ length: 3 }).map((_, i) => (
-                        <CardSkeleton key={`sk-${status}-${i}`} />
-                      ))
-                    : items
-                        ?.slice(0, limit)
-                        .map((session) => <SessionCard key={session.id} session={session} />)}
-                </Column>
-              );
-            })}
+          : view === "agents"
+            ? AGENT_COLUMNS.map((status) => {
+                const config = STATUS_CONFIG[status];
+                const items = groupedAgents[status];
+                const limit = expanded[status] || COLUMN_PAGE_SIZE;
+                return (
+                  <Column
+                    key={status}
+                    labelKey={config.labelKey}
+                    color={config.color}
+                    dotClass={config.dot}
+                    pulse={status === "working" || status === "waiting"}
+                    count={items?.length ?? 0}
+                    emptyLabel={t("noAgentsInColumn")}
+                    tooltip={t(`tooltip.agent.${status}`)}
+                    remaining={Math.max(0, (items?.length ?? 0) - limit)}
+                    onShowMore={() =>
+                      setExpanded((prev) => ({
+                        ...prev,
+                        [status]: limit + COLUMN_PAGE_SIZE,
+                      }))
+                    }
+                  >
+                    {loading && (items?.length ?? 0) === 0
+                      ? Array.from({ length: 3 }).map((_, i) => (
+                          <CardSkeleton key={`sk-${status}-${i}`} />
+                        ))
+                      : items
+                          ?.slice(0, limit)
+                          .map((agent) => (
+                            <AgentCard
+                              key={agent.id}
+                              agent={agent}
+                              session={sessionsById.get(agent.session_id)}
+                            />
+                          ))}
+                  </Column>
+                );
+              })
+            : SESSION_COLUMNS.map((status) => {
+                const config = SESSION_STATUS_CONFIG[status];
+                const items = groupedSessions[status];
+                const limit = expanded[status] || COLUMN_PAGE_SIZE;
+                return (
+                  <Column
+                    key={status}
+                    labelKey={config.labelKey}
+                    color={config.color}
+                    dotClass={config.dot}
+                    pulse={status === "active" || status === "waiting"}
+                    count={items?.length ?? 0}
+                    emptyLabel={t("noSessionsInColumn")}
+                    tooltip={t(`tooltip.session.${status}`)}
+                    remaining={Math.max(0, (items?.length ?? 0) - limit)}
+                    onShowMore={() =>
+                      setExpanded((prev) => ({
+                        ...prev,
+                        [status]: limit + COLUMN_PAGE_SIZE,
+                      }))
+                    }
+                  >
+                    {loading && (items?.length ?? 0) === 0
+                      ? Array.from({ length: 3 }).map((_, i) => (
+                          <CardSkeleton key={`sk-${status}-${i}`} />
+                        ))
+                      : items
+                          ?.slice(0, limit)
+                          .map((session) => <SessionCard key={session.id} session={session} />)}
+                  </Column>
+                );
+              })}
       </div>
     </div>
   );
@@ -403,7 +509,10 @@ function CongViecTab() {
   return (
     <div className="space-y-6">
       <ProjectProgressStrip />
-      <LiveFlowSection mainAgent={mainAgent} onOpenTask={(taskId) => openPeek({ type: "task", id: taskId })} />
+      <LiveFlowSection
+        mainAgent={mainAgent}
+        onOpenTask={(taskId) => openPeek({ type: "task", id: taskId })}
+      />
     </div>
   );
 }
@@ -458,12 +567,17 @@ function ProjectProgressStrip() {
                 onClick={() => openPeek({ type: "project", id: project.id })}
                 className="w-full flex items-center gap-3 text-left hover:opacity-90 transition-opacity"
               >
-                <span className="text-sm text-kad-text truncate w-44 flex-shrink-0">{project.title}</span>
+                <span className="text-sm text-kad-text truncate w-44 flex-shrink-0">
+                  {project.title}
+                </span>
                 <span className="flex-1 min-w-[160px]">
                   <SegmentedProgress steps={project.steps} height={6} showLabels pulseDoing />
                 </span>
                 <span className="text-xs font-semibold text-kad-text-strong flex-shrink-0 w-10 text-right">
-                  {project.itemsTotal > 0 ? Math.round((project.itemsDone / project.itemsTotal) * 100) : 0}%
+                  {project.itemsTotal > 0
+                    ? Math.round((project.itemsDone / project.itemsTotal) * 100)
+                    : 0}
+                  %
                 </span>
               </button>
             ))}
@@ -489,15 +603,28 @@ function ViewToggle({ view, onChange }: ViewToggleProps) {
   return (
     <div
       role="tablist"
-      aria-label={t("viewToggle.agents") + " / " + t("viewToggle.sessions")}
+      aria-label={
+        t("viewToggle.workflow") + " / " + t("viewToggle.agents") + " / " + t("viewToggle.sessions")
+      }
       className="inline-flex border border-border rounded-lg overflow-hidden bg-surface-2"
     >
       <button
         type="button"
         role="tab"
+        aria-selected={view === "workflow"}
+        onClick={() => onChange("workflow")}
+        className={`${baseClass} ${view === "workflow" ? activeClass : inactiveClass}`}
+      >
+        {t("viewToggle.workflow")}
+      </button>
+      <button
+        type="button"
+        role="tab"
         aria-selected={view === "agents"}
         onClick={() => onChange("agents")}
-        className={`${baseClass} ${view === "agents" ? activeClass : inactiveClass}`}
+        className={`${baseClass} border-l border-border ${
+          view === "agents" ? activeClass : inactiveClass
+        }`}
       >
         {t("viewToggle.agents")}
       </button>
@@ -528,6 +655,10 @@ interface ColumnProps {
   tooltip?: string;
   remaining: number;
   onShowMore: () => void;
+  /** Optional action rendered pinned above the card list (e.g. the "Giao
+   *  việc" CTA on the workflow board's Queued column). Shown even when the
+   *  column is empty. */
+  topAction?: React.ReactNode;
   children: React.ReactNode;
 }
 
@@ -541,6 +672,7 @@ function Column({
   tooltip,
   remaining,
   onShowMore,
+  topAction,
   children,
 }: ColumnProps) {
   const { t } = useTranslation("kanban");
@@ -559,6 +691,8 @@ function Column({
           {count}
         </span>
       </div>
+
+      {topAction && <div className="mb-2.5">{topAction}</div>}
 
       <div className="flex-1 space-y-2.5 overflow-y-auto">
         {hasChildren ? (

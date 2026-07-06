@@ -290,6 +290,7 @@ export interface Artifact {
   hasFile?: boolean;
   source?: "generated" | "uploaded";
   fileName?: string | null;
+  mimeType?: string | null;
   parentArtifactId: string | null;
   status: ArtifactStatus;
   version: number;

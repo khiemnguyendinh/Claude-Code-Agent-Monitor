@@ -3,8 +3,29 @@
   "subtitle": "Kanban view of all agents by status",
   "subtitleSessions": "Kanban view of all sessions by status",
   "viewToggle": {
+    "workflow": "Workflow",
     "agents": "Agents",
     "sessions": "Sessions"
+  },
+  "workflowCount": "{{count}} workflow run tracked",
+  "workflowCount_plural": "{{count}} workflow runs tracked",
+  "noWorkflows": "No workflows running yet",
+  "noWorkflowsDesc": "Assign a workflow-bound task (KAD) or launch the Claude Code Workflow tool to see runs appear here.",
+  "noWorkflowsInColumn": "No workflows",
+  "wf": {
+    "queued": "Queued",
+    "running": "Running",
+    "waitingApproval": "Waiting Approval",
+    "blocked": "Blocked",
+    "done": "Done",
+    "unlinked": "Unlinked",
+    "step": "Step",
+    "noCurrentStep": "No step started",
+    "approvalBadge": "Approval",
+    "approvalNeeded": "A step requires approval",
+    "sourceCcRun": "Workflow-tool run (Claude Code)",
+    "sourceCcRunShort": "CC run",
+    "assignTask": "Assign task"
   },
   "noAgents": "No agents tracked yet",
   "noAgentsDesc": "Start a Claude Code session with hooks installed to see agents appear here.",
@@ -28,6 +49,13 @@
     "turnSummary_other": "{{count}} turns"
   },
   "tooltip": {
+    "workflow": {
+      "queued": "Workflow created/assigned but not started yet (task in inbox/triaged, or run not launched).",
+      "running": "Workflow is executing — a step/phase is running right now.",
+      "waiting_approval": "Workflow paused at a step awaiting human approval. Approving resumes the next step.",
+      "blocked": "Workflow blocked — a dependency condition is unmet or the run errored.",
+      "done": "Workflow finished all its steps."
+    },
     "agent": {
       "working": "Agent is actively running a tool call right now.\n\nEntered on PreToolUse or UserPromptSubmit, exits on Stop (turn finished).",
       "waiting": "Agent finished its turn and is blocked on the human - either Claude is waiting for the next user message or has prompted for permission to use a tool.\n\nCleared on the next PreToolUse / PostToolUse, or when the session ends.",

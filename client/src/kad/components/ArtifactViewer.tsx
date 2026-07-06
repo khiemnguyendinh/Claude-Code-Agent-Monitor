@@ -5,7 +5,7 @@
  * §3), so the two surfaces never drift apart.
  */
 import { useState } from "react";
-import { Download, File as FileIcon, FileQuestion } from "lucide-react";
+import { Download, Eye, File as FileIcon, FileQuestion } from "lucide-react";
 import { ARTIFACTS, findArtifact } from "../mockData";
 import { kadApi } from "../api-client";
 import type { Artifact } from "../types";
@@ -14,6 +14,7 @@ import { ArtifactStatusChip, SensitivityBadge } from "./StatusChip";
 import { KadButton, KadEmptyState } from "./primitives";
 import { MarkdownDiffView, MarkdownLite } from "./MarkdownLite";
 import { diffLines } from "../diff";
+import { FilePreviewModal } from "./FilePreviewModal";
 
 interface ArtifactViewerProps {
   artifactId: string;
@@ -25,6 +26,9 @@ interface ArtifactViewerProps {
   // parent first (see kadApi.artifacts.lineage). Undefined/empty renders nothing.
   lineage?: Artifact[];
   onSelectLineageItem?: (artifactId: string) => void;
+  // Only wired for real (non-mockData) uploaded artifacts — see PeekContent's
+  // ArtifactPeek. Its presence is also what gates showing the "Xóa" button.
+  onDeleted?: () => void;
 }
 
 export function ArtifactViewer({
@@ -33,10 +37,13 @@ export function ArtifactViewer({
   versions: versionsOverride,
   lineage,
   onSelectLineageItem,
+  onDeleted,
 }: ArtifactViewerProps) {
   const toast = useKadToast();
   const artifact = artifactOverride ?? findArtifact(artifactId);
   const [showDiff, setShowDiff] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   if (!artifact) return <KadEmptyState icon={FileQuestion} message="Không tìm thấy học liệu." />;
 
   const versions = (
@@ -132,6 +139,15 @@ export function ArtifactViewer({
           <p className="kad-body text-kad-text truncate flex-1 min-w-0">
             {artifact.fileName || artifact.title}
           </p>
+          <KadButton
+            variant="ghost"
+            size="row"
+            icon={Eye}
+            onClick={() => setPreviewing(true)}
+            className="flex-shrink-0"
+          >
+            Xem trước
+          </KadButton>
           <a
             href={kadApi.artifacts.downloadUrl(artifact.id)}
             className="kad-label text-kad-accent hover:underline flex-shrink-0"
@@ -168,6 +184,34 @@ export function ArtifactViewer({
             Xuất bản…
           </KadButton>
         )}
+        {isUploaded && onDeleted && (
+          <KadButton
+            variant="danger"
+            loading={deleting}
+            onClick={() => {
+              if (
+                !window.confirm(`Gỡ "${artifact.fileName || artifact.title}"? Không thể hoàn tác.`)
+              )
+                return;
+              setDeleting(true);
+              kadApi.artifacts
+                .delete(artifact.id)
+                .then(() => {
+                  toast({ message: "Đã gỡ học liệu.", tone: "success" });
+                  onDeleted();
+                })
+                .catch((e) => {
+                  toast({
+                    message: e instanceof Error ? e.message : "Không gỡ được.",
+                    tone: "warning",
+                  });
+                  setDeleting(false);
+                });
+            }}
+          >
+            Gỡ
+          </KadButton>
+        )}
         <KadButton
           variant="ghost"
           icon={Download}
@@ -187,6 +231,16 @@ export function ArtifactViewer({
           {isUploaded ? "Tải xuống" : "Tải .md"}
         </KadButton>
       </div>
+
+      {previewing && (
+        <FilePreviewModal
+          fileName={artifact.fileName || artifact.title}
+          mimeType={artifact.mimeType}
+          previewUrl={kadApi.artifacts.previewUrl(artifact.id)}
+          downloadUrl={kadApi.artifacts.downloadUrl(artifact.id)}
+          onClose={() => setPreviewing(false)}
+        />
+      )}
     </div>
   );
 }

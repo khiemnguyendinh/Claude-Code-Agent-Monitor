@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { File as FileIcon, Upload } from "lucide-react";
+import { Eye, File as FileIcon, Upload } from "lucide-react";
 import { kadApi } from "../../api-client";
 import type { TemplateLibraryRow } from "../../api-client";
 import { useKadToast } from "../../components/Toast";
@@ -11,6 +11,7 @@ import {
   KadSkeleton,
 } from "../../components/primitives";
 import { MarkdownLite } from "../../components/MarkdownLite";
+import { FilePreviewModal } from "../../components/FilePreviewModal";
 
 const BINARY_EXTENSIONS = [".docx", ".pdf", ".xlsx"];
 
@@ -24,6 +25,11 @@ export function ThuVienMauTab() {
   const [uploadContent, setUploadContent] = useState("");
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState<{
+    id: string;
+    fileName: string;
+    mimeType?: string | null;
+  } | null>(null);
   const toast = useKadToast();
 
   const refresh = () => {
@@ -196,28 +202,56 @@ export function ThuVienMauTab() {
                   {selected.template_type} · {selected.purpose || "Không có mô tả"}
                 </p>
               </div>
-              {selected.latest_version?.status === "draft" && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {selected.latest_version?.status === "draft" && (
+                  <KadButton
+                    variant="primary"
+                    size="row"
+                    onClick={() => {
+                      kadApi.templates
+                        .approve(selected.latest_version?.id || selected.id)
+                        .then(() => {
+                          toast({ message: "Đã duyệt template.", tone: "success" });
+                          refresh();
+                        })
+                        .catch((e) =>
+                          toast({
+                            message: e instanceof Error ? e.message : "Không duyệt được.",
+                            tone: "warning",
+                          })
+                        );
+                    }}
+                  >
+                    Duyệt v{selected.latest_version.version}
+                  </KadButton>
+                )}
                 <KadButton
-                  variant="primary"
+                  variant="danger"
                   size="row"
                   onClick={() => {
+                    if (
+                      !window.confirm(
+                        `Xóa template "${selected.name}"? Có thể khôi phục lại nếu cần.`
+                      )
+                    )
+                      return;
                     kadApi.templates
-                      .approve(selected.latest_version?.id || selected.id)
+                      .archive(selected.id)
                       .then(() => {
-                        toast({ message: "Đã duyệt template.", tone: "success" });
+                        toast({ message: "Đã xóa template.", tone: "success" });
                         refresh();
                       })
                       .catch((e) =>
                         toast({
-                          message: e instanceof Error ? e.message : "Không duyệt được.",
+                          message: e instanceof Error ? e.message : "Không xóa được.",
                           tone: "warning",
                         })
                       );
                   }}
                 >
-                  Duyệt v{selected.latest_version.version}
+                  Xóa
                 </KadButton>
-              )}
+              </div>
             </div>
             {(() => {
               const displayVersion = selected.latest_version || selected.approved_version;
@@ -231,6 +265,21 @@ export function ThuVienMauTab() {
                       </p>
                       <p className="kad-caption text-kad-text-faint">{displayVersion.mime_type}</p>
                     </div>
+                    <KadButton
+                      variant="ghost"
+                      size="row"
+                      icon={Eye}
+                      onClick={() =>
+                        setPreview({
+                          id: displayVersion.id,
+                          fileName: displayVersion.original_file_name || "template",
+                          mimeType: displayVersion.mime_type,
+                        })
+                      }
+                      className="flex-shrink-0"
+                    >
+                      Xem trước
+                    </KadButton>
                     <a
                       href={kadApi.templates.downloadUrl(displayVersion.id)}
                       className="kad-label text-kad-accent hover:underline flex-shrink-0"
@@ -249,6 +298,16 @@ export function ThuVienMauTab() {
           </KadCard>
         )}
       </div>
+
+      {preview && (
+        <FilePreviewModal
+          fileName={preview.fileName}
+          mimeType={preview.mimeType}
+          previewUrl={kadApi.templates.previewUrl(preview.id)}
+          downloadUrl={kadApi.templates.downloadUrl(preview.id)}
+          onClose={() => setPreview(null)}
+        />
+      )}
     </div>
   );
 }

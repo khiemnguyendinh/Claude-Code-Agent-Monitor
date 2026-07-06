@@ -240,6 +240,26 @@ function approve(id, { actor_id = "human", actor_type = "human" } = {}) {
   return { template: getTemplate(version.template_id), version: getVersion(version.id) };
 }
 
+function archiveTemplate(id, { actor_id = "human", actor_type = "human" } = {}) {
+  const template = getTemplate(id);
+  if (!template) return null;
+  const now = nowIso();
+  db.prepare("UPDATE template_library SET status='archived', updated_at=@now WHERE id=@id").run({
+    id,
+    now,
+  });
+  audit({
+    department_id: template.department_id,
+    action: "template_changed",
+    actor_type,
+    actor_id,
+    target_type: "template",
+    target_id: id,
+    details: { status: "archived" },
+  });
+  return getTemplate(id);
+}
+
 function usage(template_id) {
   return db
     .prepare(
@@ -263,5 +283,6 @@ module.exports = {
   getVersion,
   createDraft,
   approve,
+  archiveTemplate,
   usage,
 };

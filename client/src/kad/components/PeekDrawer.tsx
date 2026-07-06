@@ -10,7 +10,14 @@ import { ArrowLeft, ExternalLink, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PeekContent, PEEK_TITLES, peekFullPagePath } from "./PeekContent";
 
-export type PeekType = "task" | "project" | "artifact" | "approval" | "agent" | "goal";
+export type PeekType =
+  | "task"
+  | "project"
+  | "artifact"
+  | "approval"
+  | "agent"
+  | "goal"
+  | "workflow-run";
 
 export interface PeekTarget {
   type: PeekType;

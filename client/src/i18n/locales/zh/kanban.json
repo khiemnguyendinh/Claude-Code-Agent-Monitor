@@ -3,8 +3,29 @@
   "subtitle": "按状态排列的 Agent 看板视图",
   "subtitleSessions": "按状态排列的会话看板视图",
   "viewToggle": {
+    "workflow": "Workflow",
     "agents": "Agent",
     "sessions": "会话"
+  },
+  "workflowCount": "已追踪 {{count}} 个 workflow run",
+  "workflowCount_plural": "已追踪 {{count}} 个 workflow run",
+  "noWorkflows": "暂无运行中的 workflow",
+  "noWorkflowsDesc": "分配一个绑定 workflow 的任务(KAD)或在 Claude Code 中启动 Workflow 工具即可在此看到运行。",
+  "noWorkflowsInColumn": "暂无 workflow",
+  "wf": {
+    "queued": "排队中",
+    "running": "运行中",
+    "waitingApproval": "等待审批",
+    "blocked": "已阻塞",
+    "done": "已完成",
+    "unlinked": "未关联项目",
+    "step": "步骤",
+    "noCurrentStep": "尚未开始任何步骤",
+    "approvalBadge": "需审批",
+    "approvalNeeded": "有步骤需要审批",
+    "sourceCcRun": "Workflow-tool run (Claude Code)",
+    "sourceCcRunShort": "CC run",
+    "assignTask": "分配任务"
   },
   "noAgents": "暂无追踪的 Agent",
   "noAgentsDesc": "启动一个安装了 hooks 的 Claude Code 会话以查看 Agent。",
@@ -28,6 +49,13 @@
     "turnSummary_other": "{{count}} 轮"
   },
   "tooltip": {
+    "workflow": {
+      "queued": "Workflow 已创建/分配但尚未开始运行(任务在 inbox/triaged,或 run 尚未启动)。",
+      "running": "Workflow 正在执行 — 有步骤/阶段正在运行。",
+      "waiting_approval": "Workflow 停在等待人工审批的步骤。审批后自动继续下一步。",
+      "blocked": "Workflow 被阻塞 — 依赖条件未满足或运行出错。",
+      "done": "Workflow 已完成全部步骤。"
+    },
     "agent": {
       "working": "Agent 当前正在执行工具调用。\n\nPreToolUse 或 UserPromptSubmit 时进入,Stop(回合结束)时退出。",
       "waiting": "Agent 已结束本回合,正在等待用户 - 要么 Claude 在等下一条用户消息,要么弹出了使用工具的权限请求。\n\n下一次 PreToolUse / PostToolUse 或会话结束时清除。",
