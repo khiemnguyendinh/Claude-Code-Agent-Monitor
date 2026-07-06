@@ -12,15 +12,15 @@
   "categories": ["developer-tools", "productivity"],
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/kad/kstudy-icon.png",
+      "sizes": "815x815",
+      "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/kad/kstudy-icon.png",
+      "sizes": "815x815",
+      "type": "image/png",
       "purpose": "maskable"
     }
   ]
