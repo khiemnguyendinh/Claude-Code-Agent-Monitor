@@ -119,6 +119,15 @@ router.get("/reports/budget", (req, res) => {
   res.json(repo.reports.budgetStatus(deptId(req)));
 });
 
+// "Đội ngũ ▸ Mục tiêu" computed KPI panel — 3 built-in KPIs from real monthly
+// aggregates (repo/reports.js kpis()); targets are real department settings
+// (or documented defaults) since a target is a policy goal, not activity data.
+// Distinct from GET /okr/objectives (routes/kad/okr.js) — that's the tab's
+// MANUAL objectives/key_results tree, a separate table-backed feature.
+router.get("/reports/kpis", (req, res) => {
+  res.json(repo.reports.kpis({ department_id: deptId(req), level: req.query.level || undefined }));
+});
+
 // [GAP spec/ui/02 §5] Standup rút gọn — deterministic (see repo/standup.js),
 // not a Main Agent narrative. GET reads today's snapshot (null if not yet
 // generated); POST regenerates it now.

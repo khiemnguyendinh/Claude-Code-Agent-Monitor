@@ -28,6 +28,9 @@ import type {
   ExceptionItem,
   Goal,
   KadNotification,
+  KeyResult,
+  Kpi,
+  Objective,
   OpsMetricCard,
   Priority,
   RuleFireResult,
@@ -941,6 +944,92 @@ export function toBudgetStatus(row: BudgetStatusRow): KadBudgetStatus {
   };
 }
 
+// ── OKR: objectives + key results (spec/ui/04) — real manual OKRs. ─────────
+export interface KeyResultRow {
+  id: string;
+  objective_id: string;
+  title: string;
+  metric: string;
+  current_value: number;
+  target_value: number;
+  unit: string | null;
+  direction: KeyResult["direction"];
+  owner_id: string;
+  health: KeyResult["health"];
+}
+export interface ObjectiveRow {
+  id: string;
+  department_id: string | null;
+  level: Objective["level"];
+  cycle: Objective["cycle"];
+  period: string;
+  title: string;
+  owner_id: string;
+  parent_objective_id: string | null;
+  confidence: Objective["confidence"];
+  key_results: KeyResultRow[];
+}
+export function toKeyResult(row: KeyResultRow): KeyResult {
+  return {
+    id: row.id,
+    title: row.title,
+    metric: row.metric,
+    current: row.current_value,
+    target: row.target_value,
+    unit: row.unit ?? undefined,
+    direction: row.direction,
+    ownerId: row.owner_id,
+    health: row.health,
+  };
+}
+export function toObjective(row: ObjectiveRow): Objective {
+  return {
+    id: row.id,
+    level: row.level,
+    cycle: row.cycle,
+    period: row.period,
+    title: row.title,
+    ownerId: row.owner_id,
+    parentObjectiveId: row.parent_objective_id,
+    keyResults: (row.key_results ?? []).map(toKeyResult),
+    confidence: row.confidence,
+  };
+}
+
+// ── KPI (computed, spec/ui/04) — real current+trend, target from config. ───
+export interface KpiRow {
+  id: string;
+  level: Kpi["level"];
+  name: string;
+  metric: string;
+  current: number;
+  target: number;
+  unit: string | null;
+  direction: Kpi["direction"];
+  cadence: Kpi["cadence"];
+  owner_id: string;
+  source: string;
+  trend: number[];
+  health: Kpi["health"];
+}
+export function toKpi(row: KpiRow): Kpi {
+  return {
+    id: row.id,
+    level: row.level,
+    name: row.name,
+    metric: row.metric,
+    current: row.current,
+    target: row.target,
+    unit: row.unit ?? undefined,
+    direction: row.direction,
+    cadence: row.cadence,
+    ownerId: row.owner_id,
+    source: row.source,
+    trend: row.trend ?? [],
+    health: row.health,
+  };
+}
+
 // ── Public API ──────────────────────────────────────────────────────────
 
 export const kadApi = {
@@ -1046,6 +1135,79 @@ export const kadApi = {
       const qs = department ? `?department=${encodeURIComponent(department)}` : "";
       return request<BudgetStatusRow>(`/reports/budget${qs}`).then(toBudgetStatus);
     },
+    kpis: (department?: string, level?: string) => {
+      const qs = new URLSearchParams();
+      if (department) qs.set("department", department);
+      if (level) qs.set("level", level);
+      const q = qs.toString();
+      return request<KpiRow[]>(`/reports/kpis${q ? `?${q}` : ""}`).then((rows) => rows.map(toKpi));
+    },
+  },
+
+  // Objectives + key results (spec/ui/04) — real CRUD (server/routes/kad/okr.js).
+  // KPIs live under reports.kpis() (computed), objectives here (manual).
+  okr: {
+    objectives: (params?: { department?: string; level?: string }) => {
+      const qs = new URLSearchParams();
+      if (params?.department) qs.set("department", params.department);
+      if (params?.level) qs.set("level", params.level);
+      const q = qs.toString();
+      return request<ObjectiveRow[]>(`/okr/objectives${q ? `?${q}` : ""}`).then((rows) =>
+        rows.map(toObjective)
+      );
+    },
+    createObjective: (input: {
+      level: Objective["level"];
+      cycle: Objective["cycle"];
+      period: string;
+      title: string;
+      owner_id: string;
+      parent_objective_id?: string | null;
+      department_id?: string;
+    }) =>
+      request<ObjectiveRow>("/okr/objectives", {
+        method: "POST",
+        body: JSON.stringify(input),
+      }).then(toObjective),
+    updateObjective: (
+      id: string,
+      patch: { title?: string; confidence?: Objective["confidence"]; period?: string }
+    ) =>
+      request<ObjectiveRow>(`/okr/objectives/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(patch),
+      }).then(toObjective),
+    createKeyResult: (
+      objectiveId: string,
+      input: {
+        title: string;
+        metric: string;
+        current_value: number;
+        target_value: number;
+        unit?: string;
+        direction?: KeyResult["direction"];
+        owner_id: string;
+      }
+    ) =>
+      request<KeyResultRow>(`/okr/objectives/${encodeURIComponent(objectiveId)}/key-results`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }).then(toKeyResult),
+    updateKeyResult: (
+      id: string,
+      patch: {
+        current_value?: number;
+        target_value?: number;
+        title?: string;
+        metric?: string;
+        unit?: string;
+        direction?: KeyResult["direction"];
+      }
+    ) =>
+      request<KeyResultRow>(`/okr/key-results/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        body: JSON.stringify(patch),
+      }).then(toKeyResult),
   },
 
   notifications: {

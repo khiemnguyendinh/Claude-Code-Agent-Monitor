@@ -20,8 +20,17 @@
  * department-policies page (camelCase, includes autoApprove rules) — also not
  * implemented here. This file's agent-stats/budget are the snake_case,
  * whole-department aggregates requested for the Reports screen.
+ *
+ * Also here: kpis() — GET /api/kad/reports/kpis, the "Đội ngũ ▸ Mục tiêu" tab's
+ * COMPUTED panel (as opposed to that tab's MANUAL objectives/key_results tree,
+ * repo/okr.js). current/trend are always real monthly aggregates from
+ * tasks/approvals/task_runs/artifacts — only each KPI's *target* is a policy
+ * number (a set goal, not activity data), read from departments.settings.kpi_targets
+ * with a documented default when unset. health reuses okr.js' healthFor() so
+ * "on_track/at_risk/off_track" means the same thing across both panels of the tab.
  */
 const { db, nowIso } = require("./db");
+const { healthFor } = require("./okr");
 
 const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
@@ -556,4 +565,232 @@ function budgetStatus(department_id) {
   };
 }
 
-module.exports = { listExceptions, listMetrics, agentStats, budgetStatus };
+// ---------------------------------------------------------------------------
+// KPIs — GET /api/kad/reports/kpis ("Đội ngũ ▸ Mục tiêu" computed panel)
+// ---------------------------------------------------------------------------
+
+// Documented policy defaults, used only when a department has not set its own
+// departments.settings.kpi_targets.{throughput,quality,cost}. These are goal
+// numbers (what "good" looks like), never activity data — real current/trend
+// values always come from the aggregation queries below, never from here.
+const DEFAULT_KPI_TARGETS = {
+  throughput: 48, // học liệu hoàn thành / tháng — ~2/ngày làm việc, round MVP target
+  quality: 90, // % duyệt đạt lần đầu
+  cost: 60000, // VND / học liệu hoàn thành — round MVP target, see estimateDeptCostForRange for real pricing
+};
+
+/** YYYY-MM (UTC) — one bucket per calendar month, oldest→newest ordering handled by caller. */
+function monthKey(iso) {
+  return String(iso || "").slice(0, 7);
+}
+
+/** Last `count` UTC month-keys ending with the current month, oldest→newest. */
+function lastMonths(count, nowMs = Date.now()) {
+  const out = [];
+  const base = new Date(nowMs);
+  for (let i = count - 1; i >= 0; i--) {
+    const d = new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth() - i, 1));
+    out.push(monthKey(d.toISOString()));
+  }
+  return out;
+}
+
+/** Real department kpi_targets override merged over the documented defaults —
+ * same merge shape as guardrails.js budgetFor(), so an org can tune one target
+ * (e.g. cost) without needing to set all three. */
+function kpiTargetsFor(department) {
+  const t = (department && department.settings && department.settings.kpi_targets) || {};
+  return { ...DEFAULT_KPI_TARGETS, ...t };
+}
+
+/** Main agent id for a department, or the documented 'human' fallback when the
+ * department has no active main agent yet (fresh/setup-stage department). */
+function ownerForDepartment(department_id) {
+  if (!department_id) return "human";
+  const catalog = require("./catalog");
+  const main = catalog.getMainAgent(department_id);
+  return main ? main.id : "human";
+}
+
+/**
+ * KPI 1 — "Học liệu hoàn thành / tháng" (tasks.status='done', .completed_at —
+ * same real "completed" convention completedTasksMetric() above uses, just
+ * bucketed by month instead of by day; artifacts have no completion timestamp
+ * column of their own to bucket by, so tasks is the real per-month completion
+ * signal here).
+ */
+function throughputSeries(department_id, months) {
+  const since = `${months[0]}-01`;
+  const rows = department_id
+    ? db
+        .prepare(
+          `SELECT substr(completed_at,1,7) as m, COUNT(*) n FROM tasks
+           WHERE department_id=? AND status='done' AND completed_at IS NOT NULL AND substr(completed_at,1,7)>=?
+           GROUP BY m`
+        )
+        .all(department_id, since)
+    : db
+        .prepare(
+          `SELECT substr(completed_at,1,7) as m, COUNT(*) n FROM tasks
+           WHERE status='done' AND completed_at IS NOT NULL AND substr(completed_at,1,7)>=?
+           GROUP BY m`
+        )
+        .all(since);
+  const byMonth = {};
+  for (const r of rows) byMonth[r.m] = r.n;
+  return months.map((m) => byMonth[m] || 0);
+}
+
+/**
+ * KPI 2 — "Tỷ lệ đạt duyệt lần đầu" (approvals.status/.decided_at, same
+ * decided-status convention qcApprovalRateMetric() above uses, bucketed by
+ * month). 0 for a month with zero decided approvals is a real "nothing
+ * decided" state, not a fabricated zero.
+ */
+function qualitySeries(department_id, months) {
+  const since = `${months[0]}-01`;
+  const rows = department_id
+    ? db
+        .prepare(
+          `SELECT a.status, substr(a.decided_at,1,7) as m FROM approvals a
+           JOIN tasks t ON a.task_id=t.id
+           WHERE t.department_id=? AND a.decided_at IS NOT NULL AND substr(a.decided_at,1,7)>=?
+             AND a.status IN ('approved','needs_changes','rejected')`
+        )
+        .all(department_id, since)
+    : db
+        .prepare(
+          `SELECT status, substr(decided_at,1,7) as m FROM approvals
+           WHERE decided_at IS NOT NULL AND substr(decided_at,1,7)>=?
+             AND status IN ('approved','needs_changes','rejected')`
+        )
+        .all(since);
+  const approvedByMonth = {};
+  const totalByMonth = {};
+  for (const r of rows) {
+    totalByMonth[r.m] = (totalByMonth[r.m] || 0) + 1;
+    if (r.status === "approved") approvedByMonth[r.m] = (approvedByMonth[r.m] || 0) + 1;
+  }
+  return months.map((m) =>
+    totalByMonth[m] ? Math.round((100 * (approvedByMonth[m] || 0)) / totalByMonth[m]) : 0
+  );
+}
+
+/**
+ * KPI 3 — "Chi phí / học liệu" = monthly real run cost (VND, cost.js'
+ * estimateDeptCostForRange — same pricer costMetric()/budgetStatus() above
+ * use) divided by artifacts completed that month. artifacts has no
+ * completion-timestamp column (only created_at/updated_at), so "completed
+ * that month" here is real artifacts.created_at bucketed by month — the same
+ * proxy this file already documents using for "no real completed_at on
+ * artifacts" elsewhere. A month with zero artifacts has no real ratio to
+ * report — 0 (not a divide-by-zero/Infinity) so the series stays numeric.
+ */
+function costPerArtifactSeries(department_id, months) {
+  // Lazy require: cost.js requires the repo barrel, which requires this file —
+  // deferring avoids a require() cycle mid-construction (same reason
+  // costMetric()/budgetStatus() above defer it).
+  const { estimateDeptCostForRange } = require("../cost");
+  const artifactRows = department_id
+    ? db
+        .prepare(
+          `SELECT substr(a.created_at,1,7) as m, COUNT(*) n FROM artifacts a
+           JOIN tasks t ON a.task_id=t.id
+           WHERE t.department_id=? AND a.created_at IS NOT NULL AND substr(a.created_at,1,7)>=?
+           GROUP BY m`
+        )
+        .all(department_id, `${months[0]}-01`)
+    : db
+        .prepare(
+          `SELECT substr(created_at,1,7) as m, COUNT(*) n FROM artifacts
+           WHERE created_at IS NOT NULL AND substr(created_at,1,7)>=?
+           GROUP BY m`
+        )
+        .all(`${months[0]}-01`);
+  const artifactsByMonth = {};
+  for (const r of artifactRows) artifactsByMonth[r.m] = r.n;
+  return months.map((m) => {
+    const count = artifactsByMonth[m] || 0;
+    if (!count || !department_id) return 0; // no real artifacts this month — no fabricated ratio
+    const [y, mo] = m.split("-").map(Number);
+    const fromIso = new Date(Date.UTC(y, mo - 1, 1)).toISOString();
+    const toIso = new Date(Date.UTC(y, mo, 1)).toISOString(); // exclusive end (first of next month)
+    const { vnd } = estimateDeptCostForRange(department_id, fromIso, toIso);
+    return Math.round(vnd / count);
+  });
+}
+
+/**
+ * 3 built-in KpiRow entries for the "Đội ngũ ▸ Mục tiêu" computed panel.
+ * current/trend are always real monthly aggregates; target is the
+ * department's real kpi_targets setting (or the documented default).
+ * @param {{department_id?:string, level?:'company'|'department'}} [opts]
+ * @returns {object[]} KpiRow[]
+ */
+function kpis({ department_id, level } = {}) {
+  const catalog = require("./catalog");
+  const dept = department_id ? catalog.getDepartment(department_id) : null;
+  const targets = kpiTargetsFor(dept);
+  const owner_id = ownerForDepartment(department_id);
+  const kpiLevel = level === "company" ? "company" : "department";
+  const months = lastMonths(6);
+
+  const throughputTrend = throughputSeries(department_id, months);
+  const qualityTrend = qualitySeries(department_id, months);
+  const costTrend = costPerArtifactSeries(department_id, months);
+
+  const build = (id, name, metric, unit, direction, cadence, trend, target) => {
+    const current = trend[trend.length - 1];
+    const { health } = healthFor(current, target, direction);
+    return {
+      id,
+      level: kpiLevel,
+      name,
+      metric,
+      current,
+      target,
+      unit: unit ?? null,
+      direction,
+      cadence,
+      owner_id,
+      source: "Tự động · KAD",
+      trend,
+      health,
+    };
+  };
+
+  return [
+    build(
+      "kpi-throughput",
+      "Học liệu hoàn thành / tháng",
+      "Năng suất",
+      null,
+      "up",
+      "monthly",
+      throughputTrend,
+      targets.throughput
+    ),
+    build(
+      "kpi-quality",
+      "Tỷ lệ đạt duyệt lần đầu",
+      "Chất lượng",
+      "%",
+      "up",
+      "monthly",
+      qualityTrend,
+      targets.quality
+    ),
+    build(
+      "kpi-cost",
+      "Chi phí / học liệu",
+      "Chi phí",
+      null,
+      "down",
+      "monthly",
+      costTrend,
+      targets.cost
+    ),
+  ];
+}
+
+module.exports = { listExceptions, listMetrics, agentStats, budgetStatus, kpis };
