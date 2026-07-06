@@ -7,7 +7,12 @@
 const repo = require("./repo");
 
 const DEFAULT_BUDGET = {
-  daily_token_limit: 2000000,
+  // 2M still only covered ~ONE task/day (a normal intake→brief→plan→delegate→
+  // report cycle is 1.3-1.7M — see the note below), so it blocked real
+  // multi-task use. Raised to 50M: this is a runaway-safety CEILING (a genuine
+  // loop burns far more), not a cost quota — tune per department in
+  // Đội ngũ ▸ Kiểm soát / departments.settings.budget.daily_token_limit.
+  daily_token_limit: 50000000,
   // 500k was calibrated before Phase 2's turn-based (no-held-process) architecture
   // shipped: every resume reconnects the MCP server fresh, and that reconnection
   // consistently cache-misses the tool-schema portion of the prompt (~36-45k
@@ -117,6 +122,8 @@ function check(taskId, { isDelegation = false } = {}) {
  */
 function trip(taskId, reason) {
   const task = repo.tasks.getTask(taskId);
+  const alreadyParked = task && task.status === "waiting_human";
+  let parkMsg = null;
   repo.tx(() => {
     repo.tasks.updateTask(taskId, { status: "waiting_human" });
     repo.audit({
@@ -129,6 +136,19 @@ function trip(taskId, reason) {
       target_id: taskId,
       details: { reason },
     });
+    // Surface the pause IN THE CHAT (not only the bell) so the trưởng phòng never
+    // sees a silent "no response" when a guardrail parks the task. Only on the
+    // first trip — check() re-trips on every blocked spawn, so guard against
+    // duplicate bubbles.
+    if (!alreadyParked) {
+      parkMsg = repo.tasks.addMessage({
+        task_id: taskId,
+        sender_type: "agent",
+        sender_id: "system",
+        content: `⚠️ Tạm dừng — ${reason}. Cần trưởng phòng xác nhận, hoặc nâng hạn mức ở Đội ngũ ▸ Kiểm soát, để tiếp tục.`,
+        message_type: "chat",
+      });
+    }
   });
   // Notification/emit are best-effort AFTER the durable park+audit above — a failure
   // here must not throw out of trip() and mask the fact the task was parked.
@@ -142,6 +162,7 @@ function trip(taskId, reason) {
       target_id: taskId,
     });
     const { emitTask } = require("./events");
+    if (parkMsg) emitTask(taskId, "kad.message.created", parkMsg);
     emitTask(taskId, "kad.task.status", { task_id: taskId, status: "waiting_human", reason });
   } catch (e) {
     console.warn(`[kad-guardrails] trip notify failed for ${taskId}:`, e && e.message);

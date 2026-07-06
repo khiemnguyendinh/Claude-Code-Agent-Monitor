@@ -430,7 +430,15 @@ describe("GET /api/kad/reports/agent-stats — real per-agent roster aggregate",
     db.prepare(
       `INSERT INTO departments (id, slug, org_id, name, status, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?)`
-    ).run(emptyDept, "kad-reports-agentstats-empty", "org-kad-reports-extra-test", "Empty Dept", "active", now, now);
+    ).run(
+      emptyDept,
+      "kad-reports-agentstats-empty",
+      "org-kad-reports-extra-test",
+      "Empty Dept",
+      "active",
+      now,
+      now
+    );
 
     const res = await get(`/api/kad/reports/agent-stats?department=${emptyDept}`);
     assert.equal(res.status, 200);
@@ -443,7 +451,15 @@ describe("GET /api/kad/reports/agent-stats — real per-agent roster aggregate",
     db.prepare(
       `INSERT INTO departments (id, slug, org_id, name, status, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?)`
-    ).run(agentDept, "kad-reports-agentstats-1", "org-kad-reports-extra-test", "Agent Stats Dept", "active", now, now);
+    ).run(
+      agentDept,
+      "kad-reports-agentstats-1",
+      "org-kad-reports-extra-test",
+      "Agent Stats Dept",
+      "active",
+      now,
+      now
+    );
 
     // Real agent_profiles row (agent_type/status are live CHECK constraints).
     const agentId = "agent_test_stats_1";
@@ -451,22 +467,48 @@ describe("GET /api/kad/reports/agent-stats — real per-agent roster aggregate",
       `INSERT INTO agent_profiles
        (id, department_id, agent_type, name, display_name, engine, status, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?)`
-    ).run(agentId, agentDept, "sub", "sub-stats-tester", "Stats Tester", "claude", "active", now, now);
+    ).run(
+      agentId,
+      agentDept,
+      "sub",
+      "sub-stats-tester",
+      "Stats Tester",
+      "claude",
+      "active",
+      now,
+      now
+    );
     // An inactive agent in the same department must NOT appear in the result.
     const inactiveAgentId = "agent_test_stats_inactive";
     db.prepare(
       `INSERT INTO agent_profiles
        (id, department_id, agent_type, name, display_name, engine, status, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?)`
-    ).run(inactiveAgentId, agentDept, "sub", "sub-stats-inactive", "Inactive Tester", "claude", "inactive", now, now);
+    ).run(
+      inactiveAgentId,
+      agentDept,
+      "sub",
+      "sub-stats-inactive",
+      "Inactive Tester",
+      "claude",
+      "inactive",
+      now,
+      now
+    );
 
     // A task completed this week, assigned to the agent (tasks.assigned_agent_id/.status/.completed_at).
-    const task = repo.tasks.createTask({ department_id: agentDept, title: "Task hoàn thành tuần này" });
+    const task = repo.tasks.createTask({
+      department_id: agentDept,
+      title: "Task hoàn thành tuần này",
+    });
     db.prepare(
       `UPDATE tasks SET status='done', assigned_agent_id=?, completed_at=? WHERE id=?`
     ).run(agentId, isoHoursAgo(2), task.id);
     // A second task completed 10 days ago must NOT count toward tasks_this_week.
-    const oldTask = repo.tasks.createTask({ department_id: agentDept, title: "Task hoàn thành lâu rồi" });
+    const oldTask = repo.tasks.createTask({
+      department_id: agentDept,
+      title: "Task hoàn thành lâu rồi",
+    });
     db.prepare(
       `UPDATE tasks SET status='done', assigned_agent_id=?, completed_at=? WHERE id=?`
     ).run(agentId, isoDaysAgo(10), oldTask.id);
@@ -500,14 +542,14 @@ describe("GET /api/kad/reports/agent-stats — real per-agent roster aggregate",
 
     // A run for this agent completed this week with real tokens_used JSON.
     const run = repo.runs.createRun({ task_id: task.id, agent_id: agentId, engine: "claude" });
-    db.prepare(`UPDATE task_runs SET status='completed', tokens_used=?, completed_at=? WHERE id=?`).run(
-      JSON.stringify({ input_tokens: 100_000, output_tokens: 50_000 }),
-      isoHoursAgo(1),
-      run.id
-    );
+    db.prepare(
+      `UPDATE task_runs SET status='completed', tokens_used=?, completed_at=? WHERE id=?`
+    ).run(JSON.stringify({ input_tokens: 100_000, output_tokens: 50_000 }), isoHoursAgo(1), run.id);
     // A run completed 10 days ago must NOT count toward cost_7d_vnd.
     const oldRun = repo.runs.createRun({ task_id: task.id, agent_id: agentId, engine: "claude" });
-    db.prepare(`UPDATE task_runs SET status='completed', tokens_used=?, completed_at=? WHERE id=?`).run(
+    db.prepare(
+      `UPDATE task_runs SET status='completed', tokens_used=?, completed_at=? WHERE id=?`
+    ).run(
       JSON.stringify({ input_tokens: 999_999, output_tokens: 999_999 }),
       isoDaysAgo(10),
       oldRun.id
@@ -532,13 +574,31 @@ describe("GET /api/kad/reports/agent-stats — real per-agent roster aggregate",
     db.prepare(
       `INSERT INTO departments (id, slug, org_id, name, status, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?)`
-    ).run(idleDept, "kad-reports-agentstats-idle", "org-kad-reports-extra-test", "Idle Dept", "active", now, now);
+    ).run(
+      idleDept,
+      "kad-reports-agentstats-idle",
+      "org-kad-reports-extra-test",
+      "Idle Dept",
+      "active",
+      now,
+      now
+    );
     const idleAgentId = "agent_test_stats_idle";
     db.prepare(
       `INSERT INTO agent_profiles
        (id, department_id, agent_type, name, display_name, engine, status, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?)`
-    ).run(idleAgentId, idleDept, "sub", "sub-stats-idle", "Idle Tester", "claude", "active", now, now);
+    ).run(
+      idleAgentId,
+      idleDept,
+      "sub",
+      "sub-stats-idle",
+      "Idle Tester",
+      "claude",
+      "active",
+      now,
+      now
+    );
 
     const res = await get(`/api/kad/reports/agent-stats?department=${idleDept}`);
     assert.equal(res.status, 200);
@@ -605,7 +665,9 @@ describe("GET /api/kad/reports/budget — real stored limits + today's real usag
 
     const res = await get(`/api/kad/reports/budget?department=${noSettingsDept}`);
     assert.equal(res.status, 200);
-    assert.equal(res.body.daily_token_limit, 2_000_000);
+    // Default fallback (guardrails.js DEFAULT_BUDGET) — raised from 2M so a dept
+    // isn't blocked after ~one task.
+    assert.equal(res.body.daily_token_limit, 50_000_000);
     assert.equal(res.body.per_task_token_limit, 2_000_000);
     assert.equal(res.body.monthly_cost_limit_usd, 200);
     assert.equal(res.body.tokens_used_today, 0);
@@ -624,11 +686,20 @@ describe("GET /api/kad/reports/budget — real stored limits + today's real usag
       "org-kad-reports-extra-test",
       "Budget Usage Dept",
       "active",
-      JSON.stringify({ budget: { daily_token_limit: 5_000_000, per_task_token_limit: 1_000_000, monthly_cost_limit_usd: 300 } }),
+      JSON.stringify({
+        budget: {
+          daily_token_limit: 5_000_000,
+          per_task_token_limit: 1_000_000,
+          monthly_cost_limit_usd: 300,
+        },
+      }),
       now,
       now
     );
-    const task = repo.tasks.createTask({ department_id: usageDept, title: "Task dùng ngân sách hôm nay" });
+    const task = repo.tasks.createTask({
+      department_id: usageDept,
+      title: "Task dùng ngân sách hôm nay",
+    });
     const run = repo.runs.createRun({ task_id: task.id, engine: "claude" });
     // tokens_used + completed_at set directly; completed_at is the real bucket column.
     db.prepare(`UPDATE task_runs SET tokens_used=?, completed_at=? WHERE id=?`).run(
@@ -637,7 +708,10 @@ describe("GET /api/kad/reports/budget — real stored limits + today's real usag
       run.id
     );
     // A run completed yesterday must NOT count toward today's usage even if tokens_used is set.
-    const yesterdayTask = repo.tasks.createTask({ department_id: usageDept, title: "Task hôm qua" });
+    const yesterdayTask = repo.tasks.createTask({
+      department_id: usageDept,
+      title: "Task hôm qua",
+    });
     const yesterdayRun = repo.runs.createRun({ task_id: yesterdayTask.id, engine: "claude" });
     db.prepare(`UPDATE task_runs SET started_at=?, tokens_used=?, completed_at=? WHERE id=?`).run(
       isoDaysAgo(1),

@@ -12,7 +12,10 @@ const TEMPLATE_TYPES = new Set(["rd", "training", "sales", "marketing", "finance
 
 const DEPT_SETTINGS = {
   budget: {
-    daily_token_limit: 2000000,
+    // 2M covered barely one task/day (a normal cycle is 1.3-1.7M) — raised so a
+    // new department isn't blocked after a single task. Runaway-safety ceiling,
+    // not a cost quota; see guardrails.js DEFAULT_BUDGET.
+    daily_token_limit: 50000000,
     per_task_token_limit: 2000000,
     monthly_cost_limit_usd: 200,
     max_concurrent_runs: 3,
@@ -58,7 +61,12 @@ const DEFAULT_ROSTER = [
     display_name: "Kiến trúc sư chương trình",
     status: "inactive",
     role_description: "Khung chương trình, learning pathway.",
-    permissions: { read_org_context: true, read_templates: true, request_approval: true, write_audit: true },
+    permissions: {
+      read_org_context: true,
+      read_templates: true,
+      request_approval: true,
+      write_audit: true,
+    },
     connector_access: { facebook: "none", wordpress: "none", web_search: "none" },
   },
   {
@@ -83,7 +91,12 @@ const DEFAULT_ROSTER = [
     display_name: "Thiết kế syllabus",
     status: "inactive",
     role_description: "Module, thứ tự, learning outcomes, assessment.",
-    permissions: { read_org_context: true, read_templates: true, request_approval: true, write_audit: true },
+    permissions: {
+      read_org_context: true,
+      read_templates: true,
+      request_approval: true,
+      write_audit: true,
+    },
     connector_access: { facebook: "none", wordpress: "none", web_search: "none" },
   },
   {
@@ -92,7 +105,12 @@ const DEFAULT_ROSTER = [
     display_name: "Lập kế hoạch bài giảng",
     status: "inactive",
     role_description: "Hoạt động, bài tập, ghi chú giảng viên.",
-    permissions: { read_org_context: false, read_templates: true, request_approval: true, write_audit: true },
+    permissions: {
+      read_org_context: false,
+      read_templates: true,
+      request_approval: true,
+      write_audit: true,
+    },
     connector_access: { facebook: "none", wordpress: "none", web_search: "none" },
   },
   {
@@ -101,7 +119,12 @@ const DEFAULT_ROSTER = [
     display_name: "Xây dựng slide",
     status: "inactive",
     role_description: "Slide outline, nội dung, brief hình ảnh theo brand.",
-    permissions: { read_org_context: true, read_templates: true, request_approval: true, write_audit: true },
+    permissions: {
+      read_org_context: true,
+      read_templates: true,
+      request_approval: true,
+      write_audit: true,
+    },
     connector_access: { facebook: "none", wordpress: "none", web_search: "none" },
   },
   {
@@ -110,7 +133,12 @@ const DEFAULT_ROSTER = [
     display_name: "Viết kịch bản video",
     status: "inactive",
     role_description: "Script video, kế hoạch quay.",
-    permissions: { read_org_context: false, read_templates: true, request_approval: true, write_audit: true },
+    permissions: {
+      read_org_context: false,
+      read_templates: true,
+      request_approval: true,
+      write_audit: true,
+    },
     connector_access: { facebook: "none", wordpress: "none", web_search: "none" },
   },
   {
@@ -120,7 +148,12 @@ const DEFAULT_ROSTER = [
     status: "inactive",
     role_description:
       "4 tiêu chí chính (đầy đủ, chính xác, sư phạm, thương hiệu) + hoàn thiện + flag 3 sensitivity dimensions.",
-    permissions: { read_org_context: true, read_templates: true, request_approval: true, write_audit: true },
+    permissions: {
+      read_org_context: true,
+      read_templates: true,
+      request_approval: true,
+      write_audit: true,
+    },
     connector_access: { facebook: "none", wordpress: "none", web_search: "none" },
   },
 ];
@@ -169,11 +202,36 @@ const DEFAULT_TEMPLATE_CONTENT = [
 ];
 
 const WORKFLOW_STEPS = [
-  { id: "plan", name: "Lập kế hoạch", node_type: "agent_step", output_type: "plan", approval: true },
+  {
+    id: "plan",
+    name: "Lập kế hoạch",
+    node_type: "agent_step",
+    output_type: "plan",
+    approval: true,
+  },
   { id: "research", name: "Nghiên cứu", node_type: "agent_step", output_type: "research_report" },
-  { id: "framework", name: "Khung chương trình", node_type: "agent_step", output_type: "program_framework", gates: ["quality"], approval: true },
-  { id: "syllabus", name: "Syllabus", node_type: "agent_step", output_type: "syllabus", gates: ["quality"], approval: true },
-  { id: "materials", name: "Học liệu", node_type: "parallel_group", output_type: "lesson_plan|slide_outline|video_script" },
+  {
+    id: "framework",
+    name: "Khung chương trình",
+    node_type: "agent_step",
+    output_type: "program_framework",
+    gates: ["quality"],
+    approval: true,
+  },
+  {
+    id: "syllabus",
+    name: "Syllabus",
+    node_type: "agent_step",
+    output_type: "syllabus",
+    gates: ["quality"],
+    approval: true,
+  },
+  {
+    id: "materials",
+    name: "Học liệu",
+    node_type: "parallel_group",
+    output_type: "lesson_plan|slide_outline|video_script",
+  },
   { id: "handoff", name: "Bàn giao", node_type: "approval", approval: true },
 ];
 
@@ -185,8 +243,7 @@ function mergeDeep(base, patch) {
   if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch ?? base;
   const out = { ...(base && typeof base === "object" && !Array.isArray(base) ? base : {}) };
   for (const [k, v] of Object.entries(patch)) {
-    out[k] =
-      v && typeof v === "object" && !Array.isArray(v) ? mergeDeep(out[k] || {}, v) : v;
+    out[k] = v && typeof v === "object" && !Array.isArray(v) ? mergeDeep(out[k] || {}, v) : v;
   }
   return out;
 }
@@ -205,7 +262,9 @@ function listVersions({ org_id } = {}) {
 }
 
 function getVersion(id) {
-  return hydrateContext(db.prepare("SELECT * FROM organization_context_versions WHERE id=?").get(id));
+  return hydrateContext(
+    db.prepare("SELECT * FROM organization_context_versions WHERE id=?").get(id)
+  );
 }
 
 function getCurrent() {
@@ -314,7 +373,8 @@ function validateOrgChart(nodes) {
   if (!list.length) throw new Error("org chart is required");
   const idMap = new Map();
   const normalized = list.map((n, i) => normalizeNode(n, i, idMap));
-  for (const n of normalized) if (!NODE_TYPES.has(n.node_type)) throw new Error("invalid node_type");
+  for (const n of normalized)
+    if (!NODE_TYPES.has(n.node_type)) throw new Error("invalid node_type");
   return normalized;
 }
 
@@ -465,7 +525,9 @@ function defaultOrgChart(profile, dept) {
 function completeWizard(input = {}) {
   const draft = getWizardDraft();
   const source = mergeDeep(draft ? draft.data : {}, input.draft || input.data || input);
-  const profile = validateProfile(source._profile || source.profile || input.profile || (draft && draft.profile));
+  const profile = validateProfile(
+    source._profile || source.profile || input.profile || (draft && draft.profile)
+  );
   const context = validateContextData(contextOnly(source));
   const department = source._department || source.department || input.department || {};
   const deptSlug = department.slug || "rd";
@@ -479,9 +541,13 @@ function completeWizard(input = {}) {
     settings: mergeDeep(DEPT_SETTINGS, department.settings || {}),
   };
   const nodes = validateOrgChart(
-    source._org_chart_nodes || source.org_chart_nodes || source.orgChartNodes || defaultOrgChart(profile, deptInput)
+    source._org_chart_nodes ||
+      source.org_chart_nodes ||
+      source.orgChartNodes ||
+      defaultOrgChart(profile, deptInput)
   );
-  const templates = source._templates || source.templates || input.templates || DEFAULT_TEMPLATE_CONTENT;
+  const templates =
+    source._templates || source.templates || input.templates || DEFAULT_TEMPLATE_CONTENT;
   const now = nowIso();
   let ids = {};
 
@@ -583,7 +649,9 @@ function completeWizard(input = {}) {
 }
 
 function seedBlueprintWorkflowAgents(deptId, now) {
-  db.prepare("UPDATE department_blueprints SET status='archived' WHERE department_id=? AND status='approved'").run(deptId);
+  db.prepare(
+    "UPDATE department_blueprints SET status='archived' WHERE department_id=? AND status='approved'"
+  ).run(deptId);
   const blueprintId = newId("bp");
   const agentRows = DEFAULT_ROSTER.map((a) => ({ ...a, id: newId("agent") }));
   const main = agentRows.find((a) => a.agent_type === "main");
@@ -633,14 +701,18 @@ function seedBlueprintWorkflowAgents(deptId, now) {
       permissions: JSON.stringify(a.permissions),
       connector_access: JSON.stringify(a.connector_access),
       escalation: JSON.stringify(ESCALATION),
-      quality_gates: JSON.stringify(a.name === "sub-quality-reviewer" ? { reviews: "all_artifacts" } : {}),
+      quality_gates: JSON.stringify(
+        a.name === "sub-quality-reviewer" ? { reviews: "all_artifacts" } : {}
+      ),
       status: a.status,
       parent: a.agent_type === "sub" ? main.id : null,
       now,
     });
   }
 
-  db.prepare("DELETE FROM workflow_definitions WHERE department_id=? AND name='rd-standard-flow'").run(deptId);
+  db.prepare(
+    "DELETE FROM workflow_definitions WHERE department_id=? AND name='rd-standard-flow'"
+  ).run(deptId);
   db.prepare(
     `INSERT INTO workflow_definitions
      (id,department_id,name,description,example_prompt,trigger_keywords,steps,version,status,created_at)
@@ -658,7 +730,10 @@ function seedBlueprintWorkflowAgents(deptId, now) {
 }
 
 function seedTemplates(deptId, inputTemplates, now) {
-  const rows = Array.isArray(inputTemplates) && inputTemplates.length ? inputTemplates : DEFAULT_TEMPLATE_CONTENT;
+  const rows =
+    Array.isArray(inputTemplates) && inputTemplates.length
+      ? inputTemplates
+      : DEFAULT_TEMPLATE_CONTENT;
   for (const t of rows) {
     const type = t.template_type || t.type || "custom";
     const templateId = newId("tpl");
@@ -688,7 +763,9 @@ function seedTemplates(deptId, inputTemplates, now) {
 }
 
 function createDraftVersion({ org_id, data, change_summary, actor_id = "human" }) {
-  const org = org_id ? db.prepare("SELECT * FROM organization_profiles WHERE id=?").get(org_id) : firstOrg();
+  const org = org_id
+    ? db.prepare("SELECT * FROM organization_profiles WHERE id=?").get(org_id)
+    : firstOrg();
   if (!org) throw new Error("organization not found");
   const max = db
     .prepare("SELECT COALESCE(MAX(version),0) n FROM organization_context_versions WHERE org_id=?")
@@ -735,7 +812,9 @@ function approveVersion(id, { actor_id = "human" } = {}) {
     db.prepare(
       "UPDATE organization_context_versions SET status='approved', approved_by=@actor, approved_at=@now WHERE id=@id"
     ).run({ id, actor: actor_id, now });
-    const dept = db.prepare("SELECT id FROM departments WHERE org_id=? LIMIT 1").get(version.org_id);
+    const dept = db
+      .prepare("SELECT id FROM departments WHERE org_id=? LIMIT 1")
+      .get(version.org_id);
     audit({
       department_id: dept && dept.id,
       action: "org_context_changed",
@@ -800,7 +879,8 @@ function proposeBlueprint(sourceId, { data, change_summary, actor_id = "main-age
 function decideBlueprint(id, { decision, reason, actor_id = "human" } = {}) {
   const bp = getBlueprint(id);
   if (!bp) return null;
-  if (!["approved", "rejected"].includes(decision)) throw new Error("decision must be approved|rejected");
+  if (!["approved", "rejected"].includes(decision))
+    throw new Error("decision must be approved|rejected");
   const now = nowIso();
   db.transaction(() => {
     if (decision === "approved") {
