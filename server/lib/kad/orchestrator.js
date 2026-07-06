@@ -27,6 +27,42 @@ function setApiBase(url) {
 
 const MCP_SERVER = path.join(__dirname, "..", "..", "..", "mcp", "kad-tools-server.mjs");
 
+// Turn-based runs spawn `claude` with the task's working_dir as cwd. That dir MUST
+// exist or spawn fails with `spawn claude ENOENT` before the agent ever starts —
+// which is exactly what the intake defaults ("kstudy-rd/K3", ...) hit: they're
+// relative project folders that don't exist yet. Resolve every working_dir to a
+// real absolute path under a KAD workspace root (override with KAD_WORKSPACE_ROOT;
+// default <dataDir>/kad-workspace) and create it, so a run always has a valid cwd.
+function kadWorkspaceRoot() {
+  return process.env.KAD_WORKSPACE_ROOT || path.join(getDataDir(), "kad-workspace");
+}
+function resolveWorkingDir(workingDir) {
+  const root = kadWorkspaceRoot();
+  let dir;
+  if (workingDir && path.isAbsolute(workingDir)) {
+    dir = workingDir; // honor an explicit absolute path as-is
+  } else {
+    // Relative/empty → under the workspace root; contain against `..` escape so a
+    // task can't chdir the agent outside the workspace.
+    const rel = (workingDir || "default").replace(/^[/\\]+/, "");
+    dir = path.resolve(root, rel);
+    if (dir !== root && !dir.startsWith(root + path.sep)) dir = path.join(root, "default");
+  }
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch {
+    // Chosen dir couldn't be created (e.g. bad absolute path) — fall back to the
+    // always-creatable workspace root rather than let the spawn ENOENT.
+    try {
+      fs.mkdirSync(root, { recursive: true });
+    } catch {
+      /* ignore */
+    }
+    return root;
+  }
+}
+
 // Map an agent's permissions → the KAD MCP tools it may call (mcp__kad__<tool>).
 function mcpToolsFor(agent) {
   const p = agent.permissions || {};
@@ -178,7 +214,7 @@ async function spawnAgentRun({
         mcpTools: mcpToolsFor(agent),
         mcpConfigPath,
         maxTurns: gate.maxTurns,
-        cwd: task.working_dir || undefined,
+        cwd: resolveWorkingDir(task.working_dir),
       },
       (ev) => onRunEvent(run.id, task.id, ev)
     );
@@ -515,4 +551,5 @@ module.exports = {
   reconcileRuns,
   spawnAgentRun,
   mcpToolsFor,
+  resolveWorkingDir,
 };
