@@ -285,7 +285,11 @@ export interface Artifact {
   agentId: string;
   artifactType: ArtifactType;
   title: string;
-  content: string; // markdown
+  content: string; // markdown — empty for uploaded (source: "uploaded") non-markdown files
+  /** Phase 6 — true when a real file backs this row (uploaded or agent-saved); use with fileName/source for the viewer's non-markdown fallback. Optional: absent on mockData.ts's still-mock ARTIFACTS (CommandPalette/DetailPanels/TongQuan), always present on real API rows (toArtifact() in api-client.ts). */
+  hasFile?: boolean;
+  source?: "generated" | "uploaded";
+  fileName?: string | null;
   parentArtifactId: string | null;
   status: ArtifactStatus;
   version: number;
@@ -328,14 +332,6 @@ export interface AgentPermissions {
   modifyOrgContext?: boolean;
 }
 
-export interface AgentSkill {
-  name: string;
-  description: string;
-  version: number;
-  usageCount: number; // from template_usage_log
-  enabled: boolean;
-}
-
 export interface AgentProfile {
   id: string;
   agentType: AgentType;
@@ -346,7 +342,7 @@ export interface AgentProfile {
   model: string; // "Claude Sonnet 5"
   roleDescription: string; // markdown JD
   permissions: AgentPermissions;
-  skills: AgentSkill[];
+  skills: string[]; // free-text tags, agent_profiles.skills JSON column
   status: "active" | "inactive" | "archived";
   parentAgentId: string | null;
   scope?: string; // helper only

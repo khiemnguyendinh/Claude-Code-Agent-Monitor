@@ -1,121 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { kadApi } from "../../api-client";
-import type { OrgContextData, OrgContextVersionRow } from "../../api-client";
+import type { OrgContextVersionRow } from "../../api-client";
 import { useKadToast } from "../../components/Toast";
 import { KadButton, KadErrorBlock, KadSkeleton, KadTextarea } from "../../components/primitives";
 import { MarkdownLite } from "../../components/MarkdownLite";
+import { XlsxImportButton } from "../../components/XlsxImportButton";
 import type { OrgContextSection } from "../../types";
 import { OrgContextWizard } from "./OrgContextWizard";
-
-type SectionKey = OrgContextSection["key"];
-
-function useScrollSpy(keys: string[]): string | null {
-  const [active, setActive] = useState<string | null>(keys[0] ?? null);
-  const keyStr = keys.join("|");
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
-        if (visible[0]) setActive(visible[0].target.id.replace("section-", ""));
-      },
-      { rootMargin: "-88px 0px -60% 0px", threshold: 0 }
-    );
-    keyStr.split("|").forEach((k) => {
-      const el = document.getElementById(`section-${k}`);
-      if (el) observer.observe(el);
-    });
-    return () => observer.disconnect();
-  }, [keyStr]);
-  return active;
-}
-
-function fmtDate(value: string | null): string {
-  if (!value) return "chưa duyệt";
-  return new Date(value).toLocaleDateString("vi-VN");
-}
-
-function strategyText(data: OrgContextData): string {
-  const s = data.strategy || { goals: "", priorities: "", constraints: "", roadmap: "" };
-  return [
-    `## Goals\n${s.goals || ""}`,
-    `## Priorities\n${s.priorities || ""}`,
-    `## Constraints\n${s.constraints || ""}`,
-    `## Roadmap\n${s.roadmap || ""}`,
-  ].join("\n");
-}
-
-function toSections(current: OrgContextVersionRow, pending: boolean): OrgContextSection[] {
-  const data = current.data;
-  return [
-    {
-      key: "su-menh",
-      title: "Sứ mệnh",
-      bodyMarkdown: data.mission || "",
-      version: current.version,
-      approvedAt: fmtDate(current.approved_at),
-      pendingChange: pending,
-    },
-    {
-      key: "tam-nhin",
-      title: "Tầm nhìn",
-      bodyMarkdown: data.vision || "",
-      version: current.version,
-      approvedAt: fmtDate(current.approved_at),
-      pendingChange: pending,
-    },
-    {
-      key: "gia-tri",
-      title: "Giá trị cốt lõi",
-      bodyMarkdown: (data.core_values || []).join("\n"),
-      version: current.version,
-      approvedAt: fmtDate(current.approved_at),
-      pendingChange: pending,
-    },
-    {
-      key: "nguyen-tac",
-      title: "Nguyên tắc làm việc",
-      bodyMarkdown: data.brand?.voice || "",
-      version: current.version,
-      approvedAt: fmtDate(current.approved_at),
-      pendingChange: pending,
-    },
-    {
-      key: "ky-luat",
-      title: "Kỷ luật công việc",
-      bodyMarkdown: data.brand?.guideline || "",
-      version: current.version,
-      approvedAt: fmtDate(current.approved_at),
-      pendingChange: pending,
-    },
-    {
-      key: "chien-luoc",
-      title: "Chiến lược & Ưu tiên quý",
-      bodyMarkdown: strategyText(data),
-      version: current.version,
-      approvedAt: fmtDate(current.approved_at),
-      pendingChange: pending,
-    },
-  ];
-}
-
-function nextData(data: OrgContextData, key: SectionKey, body: string): OrgContextData {
-  if (key === "su-menh") return { ...data, mission: body };
-  if (key === "tam-nhin") return { ...data, vision: body };
-  if (key === "gia-tri")
-    return {
-      ...data,
-      core_values: body
-        .split("\n")
-        .map((s) => s.trim())
-        .filter(Boolean),
-    };
-  if (key === "nguyen-tac") return { ...data, brand: { ...data.brand, voice: body } };
-  if (key === "ky-luat") return { ...data, brand: { ...data.brand, guideline: body } };
-  return { ...data, strategy: { ...data.strategy, priorities: body } };
-}
+import { VanHoaStrategySection } from "./VanHoaStrategySection";
+import { VanHoaCoreValuesSection } from "./VanHoaCoreValuesSection";
+import { type SectionKey, useScrollSpy, nextData, toSections } from "./org-context-helpers";
 
 export function VanHoaTab() {
   const [current, setCurrent] = useState<OrgContextVersionRow | null>(null);
@@ -189,45 +84,68 @@ export function VanHoaTab() {
           <p className="kad-caption text-kad-text-faint">
             Nội dung trang này được nạp vào ngữ cảnh của mọi thành viên AI.
           </p>
-          {pendingDraft && (
-            <KadButton
-              variant="primary"
-              size="row"
-              onClick={() => {
-                kadApi.orgContext
-                  .approve(pendingDraft.id)
-                  .then(() => {
-                    toast({ message: "Đã duyệt bản tri thức mới.", tone: "success" });
-                    refresh();
-                  })
-                  .catch((e) => toast({ message: e instanceof Error ? e.message : "Không duyệt được.", tone: "warning" }));
-              }}
-            >
-              Duyệt bản nháp v{pendingDraft.version}
-            </KadButton>
-          )}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <XlsxImportButton
+              kind="van-hoa"
+              onImport={(file) => kadApi.importXlsx.orgContext(file).then(() => refresh())}
+            />
+            {pendingDraft && (
+              <KadButton
+                variant="primary"
+                size="row"
+                onClick={() => {
+                  kadApi.orgContext
+                    .approve(pendingDraft.id)
+                    .then(() => {
+                      toast({ message: "Đã duyệt bản tri thức mới.", tone: "success" });
+                      refresh();
+                    })
+                    .catch((e) =>
+                      toast({
+                        message: e instanceof Error ? e.message : "Không duyệt được.",
+                        tone: "warning",
+                      })
+                    );
+                }}
+              >
+                Duyệt bản nháp v{pendingDraft.version}
+              </KadButton>
+            )}
+          </div>
         </div>
 
-        {sections.map((section) => (
-          <SectionBlock
-            key={section.key}
-            section={section}
-            current={current}
-            onDraftCreated={refresh}
-          >
-            {section.key === "gia-tri" ? (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {current.data.core_values.map((v) => (
-                  <div key={v} className="border border-kad-border rounded-lg p-3 text-center">
-                    <p className="kad-label text-kad-text-strong">{v}</p>
-                  </div>
-                ))}
-              </div>
-            ) : (
+        {sections.map((section) => {
+          if (section.key === "chien-luoc") {
+            return (
+              <VanHoaStrategySection
+                key={section.key}
+                current={current}
+                pendingChange={section.pendingChange}
+                onDraftCreated={refresh}
+              />
+            );
+          }
+          if (section.key === "gia-tri") {
+            return (
+              <VanHoaCoreValuesSection
+                key={section.key}
+                current={current}
+                pendingChange={section.pendingChange}
+                onDraftCreated={refresh}
+              />
+            );
+          }
+          return (
+            <SectionBlock
+              key={section.key}
+              section={section}
+              current={current}
+              onDraftCreated={refresh}
+            >
               <MarkdownLite content={section.bodyMarkdown} />
-            )}
-          </SectionBlock>
-        ))}
+            </SectionBlock>
+          );
+        })}
       </div>
     </div>
   );
@@ -272,7 +190,11 @@ function SectionBlock({
           </div>
           <div>
             <p className="kad-overline text-kad-text-faint mb-1.5">Bản sửa</p>
-            <KadTextarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[160px]" />
+            <KadTextarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="min-h-[160px]"
+            />
             <div className="flex items-center gap-2 mt-2">
               <KadButton
                 variant="primary"
@@ -280,9 +202,16 @@ function SectionBlock({
                 loading={saving}
                 onClick={() => {
                   setSaving(true);
+                  // Safe: this generic block is only ever mounted for the 4 plain-text
+                  // sections — "gia-tri" and "chien-luoc" render VanHoaCoreValuesSection /
+                  // VanHoaStrategySection instead (see the sections.map branch above).
                   kadApi.orgContext
                     .createDraft({
-                      data: nextData(current.data, section.key, draft),
+                      data: nextData(
+                        current.data,
+                        section.key as Exclude<SectionKey, "gia-tri" | "chien-luoc">,
+                        draft
+                      ),
                       change_summary: `Đề xuất sửa ${section.title}`,
                     })
                     .then(() => {
@@ -290,7 +219,12 @@ function SectionBlock({
                       setEditing(false);
                       onDraftCreated();
                     })
-                    .catch((e) => toast({ message: e instanceof Error ? e.message : "Không tạo được draft.", tone: "warning" }))
+                    .catch((e) =>
+                      toast({
+                        message: e instanceof Error ? e.message : "Không tạo được draft.",
+                        tone: "warning",
+                      })
+                    )
                     .finally(() => setSaving(false));
                 }}
               >

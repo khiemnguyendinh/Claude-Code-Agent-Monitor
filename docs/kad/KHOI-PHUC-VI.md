@@ -1,6 +1,6 @@
 # Hướng dẫn Sao lưu và Khôi phục KAD (Backup & Restore)
 
-Tài liệu này mô tả quy trình an toàn để sao lưu và khôi phục dữ liệu của Kstudy AI Department, kết hợp cùng các script do **Track B** cung cấp.
+Tài liệu này mô tả quy trình an toàn để sao lưu và khôi phục dữ liệu của Kstudy Curriculum R&D, kết hợp cùng các script do **Track B** cung cấp.
 
 ## 1. Cơ chế Lưu trữ
 KAD sử dụng `better-sqlite3` với chế độ WAL (Write-Ahead Logging). Do đó, khi sao lưu, hệ thống cần được thao tác đúng cách để không làm hỏng dữ liệu đang ghi dở.

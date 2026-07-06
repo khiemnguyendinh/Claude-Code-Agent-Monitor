@@ -4,25 +4,12 @@
  * content through catalog.getApprovedTemplateByType().
  */
 const { db, parseJson, audit, newId, nowIso } = require("./db");
-
-const TEMPLATE_TYPES = new Set([
-  "program_framework",
-  "syllabus",
-  "lesson_plan",
-  "slide_outline",
-  "video_script",
-  "quality_rubric",
-  "facebook_post",
-  "wordpress_post",
-  "business_analysis",
-  "custom",
-]);
-
-const MAX_TEMPLATE_BYTES = 256 * 1024;
-
-function bytes(s) {
-  return Buffer.byteLength(String(s || ""), "utf8");
-}
+const {
+  TEMPLATE_TYPES,
+  MAX_TEMPLATE_BYTES,
+  BINARY_FORMATS,
+  validateTemplateInput,
+} = require("./template-validation");
 
 function hydrateTemplate(row) {
   if (!row) return null;
@@ -36,6 +23,9 @@ function hydrateTemplate(row) {
           template_id: row.id,
           version: row.latest_version,
           content: row.latest_content,
+          file_path: row.latest_file_path,
+          mime_type: row.latest_mime_type,
+          original_file_name: row.latest_original_file_name,
           change_summary: row.latest_change_summary,
           status: row.latest_status,
           approved_by: row.latest_approved_by,
@@ -49,6 +39,9 @@ function hydrateTemplate(row) {
           template_id: row.id,
           version: row.approved_version,
           content: row.approved_content,
+          file_path: row.approved_file_path,
+          mime_type: row.approved_mime_type,
+          original_file_name: row.approved_original_file_name,
           change_summary: row.approved_change_summary,
           status: "approved",
           approved_by: row.approved_approved_by,
@@ -75,10 +68,14 @@ function listTemplates({ department_id, type, status = "active", version_status 
     .prepare(
       `SELECT tl.*,
               lv.id latest_version_id, lv.version latest_version, lv.content latest_content,
+              lv.file_path latest_file_path, lv.mime_type latest_mime_type,
+              lv.original_file_name latest_original_file_name,
               lv.change_summary latest_change_summary, lv.status latest_status,
               lv.approved_by latest_approved_by, lv.approved_at latest_approved_at,
               lv.created_at latest_created_at,
               av.id approved_version_id, av.version approved_version, av.content approved_content,
+              av.file_path approved_file_path, av.mime_type approved_mime_type,
+              av.original_file_name approved_original_file_name,
               av.change_summary approved_change_summary, av.approved_by approved_approved_by,
               av.approved_at approved_approved_at, av.created_at approved_created_at,
               (SELECT COUNT(*) FROM template_usage_log u WHERE u.template_id=tl.id) usage_count
@@ -103,10 +100,14 @@ function getTemplate(id) {
       .prepare(
         `SELECT tl.*,
                 lv.id latest_version_id, lv.version latest_version, lv.content latest_content,
+                lv.file_path latest_file_path, lv.mime_type latest_mime_type,
+                lv.original_file_name latest_original_file_name,
                 lv.change_summary latest_change_summary, lv.status latest_status,
                 lv.approved_by latest_approved_by, lv.approved_at latest_approved_at,
                 lv.created_at latest_created_at,
                 av.id approved_version_id, av.version approved_version, av.content approved_content,
+                av.file_path approved_file_path, av.mime_type approved_mime_type,
+                av.original_file_name approved_original_file_name,
                 av.change_summary approved_change_summary, av.approved_by approved_approved_by,
                 av.approved_at approved_approved_at, av.created_at approved_created_at,
                 (SELECT COUNT(*) FROM template_usage_log u WHERE u.template_id=tl.id) usage_count
@@ -131,24 +132,6 @@ function getVersion(id) {
         examples: parseJson(row.examples, []),
       }
     : null;
-}
-
-function validateTemplateInput(input) {
-  const content = String(input.content || "");
-  if (!content.trim()) throw new Error("content is required");
-  if (bytes(content) > MAX_TEMPLATE_BYTES) throw new Error("template .md must be <=256KB");
-  if (input.file_name && !String(input.file_name).toLowerCase().endsWith(".md")) {
-    throw new Error("only .md template uploads are accepted");
-  }
-  const type = input.template_type || "custom";
-  if (!TEMPLATE_TYPES.has(type)) throw new Error("invalid template_type");
-  return {
-    content,
-    type,
-    name: String(input.name || input.file_name || "Template mới").slice(0, 200),
-    purpose: input.purpose ? String(input.purpose).slice(0, 500) : null,
-    change_summary: input.change_summary ? String(input.change_summary).slice(0, 1000) : null,
-  };
 }
 
 function createDraft(input) {
@@ -193,14 +176,19 @@ function createDraft(input) {
       template_id: templateId,
       version: max + 1,
       content: clean.content,
+      file_path: clean.file_path,
+      mime_type: clean.mime_type,
+      original_file_name: clean.original_file_name,
       change_summary: clean.change_summary,
       status: "draft",
       created_at: now,
     };
     db.prepare(
       `INSERT INTO template_versions
-       (id, template_id, version, content, examples, change_summary, status, approved_by, approved_at, created_at)
-       VALUES (@id,@template_id,@version,@content,'[]',@change_summary,'draft',NULL,NULL,@created_at)`
+       (id, template_id, version, content, examples, change_summary, status, approved_by, approved_at, created_at,
+        file_path, mime_type, original_file_name)
+       VALUES (@id,@template_id,@version,@content,'[]',@change_summary,'draft',NULL,NULL,@created_at,
+        @file_path,@mime_type,@original_file_name)`
     ).run(version);
     audit({
       department_id: input.department_id,
@@ -269,6 +257,7 @@ function usage(template_id) {
 module.exports = {
   TEMPLATE_TYPES,
   MAX_TEMPLATE_BYTES,
+  BINARY_FORMATS,
   listTemplates,
   getTemplate,
   getVersion,

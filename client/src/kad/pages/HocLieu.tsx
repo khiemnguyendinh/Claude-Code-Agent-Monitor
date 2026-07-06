@@ -10,43 +10,69 @@
  * agent display names resolve through the store's real `agentsById` map
  * (same pattern as ApprovalPeek), not the mock roster.
  */
-import { useEffect, useMemo, useState } from "react";
-import { FileQuestion } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { FileQuestion, FolderUp, Upload } from "lucide-react";
 import { kadApi } from "../api-client";
 import { ARTIFACT_TYPE_LABEL } from "../labels";
 import { usePeek } from "../components/PeekDrawer";
-import { KadEmptyState } from "../components/primitives";
+import { KadButton, KadEmptyState } from "../components/primitives";
 import { StatusChip, ArtifactStatusChip } from "../components/StatusChip";
 import { AgentAvatar } from "../components/Avatar";
 import { useKadStore } from "../store";
+import { useKadToast } from "../components/Toast";
 import { formatRelativeTime } from "../format";
 import type { Artifact, ArtifactType } from "../types";
+
+// Feature-detect webkitdirectory (Chromium/Firefox/Safari support it; it's
+// non-standard but this is a local-first internal tool, same target as the
+// rest of the dashboard) — hide the folder button rather than show a control
+// that silently does nothing.
+const SUPPORTS_FOLDER_UPLOAD =
+  typeof document !== "undefined" && "webkitdirectory" in document.createElement("input");
 
 export function HocLieu() {
   const { openPeek } = usePeek();
   const { agentsById } = useKadStore();
+  const toast = useKadToast();
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [uploading, setUploading] = useState(false);
   const [typeFilter, setTypeFilter] = useState<ArtifactType | "all">("all");
+  const filesInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+  // Not gated on `loading` — a post-upload refetch must not flash the whole
+  // page back to the loading empty-state and hide the upload buttons.
+  const fetchArtifacts = () =>
     kadApi.artifacts
       .list({})
-      .then((rows) => {
-        if (!cancelled) setArtifacts(rows);
-      })
-      .catch(() => {
-        if (!cancelled) setArtifacts([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .then(setArtifacts)
+      .catch(() => setArtifacts([]));
+
+  useEffect(() => {
+    fetchArtifacts().finally(() => setLoading(false));
   }, []);
+
+  const handleFilesPicked = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    const relativePaths = files.map((f) => (f.webkitRelativePath ? f.webkitRelativePath : f.name));
+    setUploading(true);
+    kadApi.artifacts
+      .upload(files, relativePaths)
+      .then((created) => {
+        toast({ message: `Đã tải lên ${created.length} học liệu.`, tone: "success" });
+        return fetchArtifacts();
+      })
+      .catch((e) =>
+        toast({ message: e instanceof Error ? e.message : "Không tải lên được.", tone: "warning" })
+      )
+      .finally(() => {
+        setUploading(false);
+        if (filesInputRef.current) filesInputRef.current.value = "";
+        if (folderInputRef.current) folderInputRef.current.value = "";
+      });
+  };
 
   const types = useMemo(() => {
     const present = new Set(artifacts.map((a) => a.artifactType));
@@ -71,7 +97,51 @@ export function HocLieu() {
 
   return (
     <div className="pb-10">
-      <h1 className="kad-title text-kad-text-strong mb-1">Học liệu</h1>
+      <div className="flex items-start justify-between gap-4 mb-1">
+        <h1 className="kad-title text-kad-text-strong">Học liệu</h1>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <input
+            ref={filesInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            disabled={uploading}
+            onChange={(e) => handleFilesPicked(e.target.files)}
+          />
+          <KadButton
+            size="row"
+            variant="secondary"
+            icon={Upload}
+            loading={uploading}
+            onClick={() => filesInputRef.current?.click()}
+          >
+            Tải lên học liệu
+          </KadButton>
+          {SUPPORTS_FOLDER_UPLOAD && (
+            <>
+              <input
+                ref={folderInputRef}
+                type="file"
+                // @ts-expect-error -- webkitdirectory isn't in React's DOM typings
+                webkitdirectory=""
+                multiple
+                className="hidden"
+                disabled={uploading}
+                onChange={(e) => handleFilesPicked(e.target.files)}
+              />
+              <KadButton
+                size="row"
+                variant="secondary"
+                icon={FolderUp}
+                loading={uploading}
+                onClick={() => folderInputRef.current?.click()}
+              >
+                Tải lên thư mục
+              </KadButton>
+            </>
+          )}
+        </div>
+      </div>
       <p className="kad-caption text-kad-text-faint mb-4">
         Toàn bộ học liệu đã tạo trong phòng ban. Bộ lọc nâng cao & thư viện theo khoá học sẽ có ở
         spec riêng.
@@ -109,6 +179,9 @@ export function HocLieu() {
                 <div className="flex items-center gap-1.5 flex-wrap mb-1.5">
                   <StatusChip kind="neutral" label={ARTIFACT_TYPE_LABEL[artifact.artifactType]} />
                   <ArtifactStatusChip status={artifact.status} />
+                  {artifact.source === "uploaded" && (
+                    <StatusChip kind="neutral" label="Đã tải lên" />
+                  )}
                 </div>
                 <p className="kad-heading text-kad-text-strong truncate">{artifact.title}</p>
                 <div className="flex items-center justify-between mt-2.5">

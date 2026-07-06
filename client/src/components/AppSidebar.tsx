@@ -378,7 +378,7 @@ export function AppSidebar({ wsConnected, collapsed, onToggle }: AppSidebarProps
           <img src="/kad/kstudy-icon.png" alt="" className="w-6 h-6 rounded-md flex-shrink-0" />
           {!collapsed && (
             <span className="kad-label text-kad-text-strong font-semibold truncate">
-              Kstudy AI Department
+              Kstudy Curriculum R&D
             </span>
           )}
         </div>

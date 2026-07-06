@@ -2089,21 +2089,6 @@ async function runS5() {
   const worker = require(path.join(ROOT, "server/lib/kad/job-queue"));
   const mainAgent = repo.catalog.getMainAgent(repo.catalog.getDepartmentBySlug("rd").id);
 
-  const { getAdapter } = require(path.join(ROOT, "server/lib/kad/runner/adapter"));
-  const claudeAdapter = getAdapter("claude");
-  claudeAdapter.run = async (opts) => {
-    return {
-      output: JSON.stringify({
-        root_cause: "Mocked analysis root cause",
-        correction_category: "brand_mismatch",
-        proposed_rules: ["Rule 1"],
-        patterns: [
-          { pattern: "Mocked pattern detect", confidence: 0.9, context: "S5 verify" }
-        ]
-      })
-    };
-  };
-
   console.log("\n=== KAD verify — Scenario S5 (Learning Loop) ===\n");
 
   const briefTask = await api("POST", "/api/kad/tasks", {
@@ -3227,7 +3212,6 @@ async function runS7Reports() {
   process.exit(fail > 0 ? 1 : 0);
 }
 
-
 async function runS7() {
   // Phase 7 — Hardening: request validation, local rate limiting, secret scan,
   // and SQLite backup/restore round-trip. INFRA-only (no engine spawn needed —
@@ -3313,7 +3297,9 @@ async function runS7() {
     );
 
     // ---------- 2) Local rate limiting (server/lib/kad/rate-limit.js) ----------
-    const burst = await Promise.all(Array.from({ length: 30 }, () => api("GET", "/api/kad/agents")));
+    const burst = await Promise.all(
+      Array.from({ length: 30 }, () => api("GET", "/api/kad/agents"))
+    );
     check(
       "S7.7 burst past limit(20/min) → at least one 429",
       burst.some((r) => r.status === 429),
@@ -3401,7 +3387,9 @@ async function runS7() {
     afterDb.exec(
       `INSERT INTO audit_log (id, action, actor_type, created_at) VALUES ('s7-post-restore-write','s7_probe','system','${new Date().toISOString()}')`
     );
-    const wrote = afterDb.prepare("SELECT COUNT(*) n FROM audit_log WHERE id='s7-post-restore-write'").get();
+    const wrote = afterDb
+      .prepare("SELECT COUNT(*) n FROM audit_log WHERE id='s7-post-restore-write'")
+      .get();
     check("S7.17 write+read on restored DB works", wrote.n === 1);
     afterDb.close();
 
@@ -3427,7 +3415,6 @@ async function runS7() {
   console.log(`\n=== S7: ${pass} passed, ${fail} failed ===`);
   process.exit(fail > 0 ? 1 : 0);
 }
-
 
 if (process.argv.includes("--s2")) {
   runS2().catch((e) => {

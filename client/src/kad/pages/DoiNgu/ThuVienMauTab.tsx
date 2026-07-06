@@ -1,10 +1,18 @@
 import { useEffect, useState } from "react";
-import { Upload } from "lucide-react";
+import { File as FileIcon, Upload } from "lucide-react";
 import { kadApi } from "../../api-client";
 import type { TemplateLibraryRow } from "../../api-client";
 import { useKadToast } from "../../components/Toast";
-import { KadButton, KadCard, KadErrorBlock, KadInput, KadSkeleton } from "../../components/primitives";
+import {
+  KadButton,
+  KadCard,
+  KadErrorBlock,
+  KadInput,
+  KadSkeleton,
+} from "../../components/primitives";
 import { MarkdownLite } from "../../components/MarkdownLite";
+
+const BINARY_EXTENSIONS = [".docx", ".pdf", ".xlsx"];
 
 export function ThuVienMauTab() {
   const [templates, setTemplates] = useState<TemplateLibraryRow[]>([]);
@@ -14,6 +22,7 @@ export function ThuVienMauTab() {
   const [uploadName, setUploadName] = useState("");
   const [uploadPurpose, setUploadPurpose] = useState("");
   const [uploadContent, setUploadContent] = useState("");
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const toast = useKadToast();
 
@@ -38,30 +47,49 @@ export function ThuVienMauTab() {
 
   const onFile = async (file: File | undefined) => {
     if (!file) return;
-    setUploadName(file.name.replace(/\.md$/i, ""));
-    setUploadContent(await file.text());
+    const isBinary = BINARY_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext));
+    setUploadName(file.name.replace(/\.(md|docx|pdf|xlsx)$/i, ""));
+    if (isBinary) {
+      setUploadFile(file);
+      setUploadContent("");
+    } else {
+      setUploadFile(null);
+      setUploadContent(await file.text());
+    }
   };
 
   const createDraft = () => {
-    if (!uploadContent.trim()) return;
+    if (!uploadContent.trim() && !uploadFile) return;
     setSaving(true);
-    kadApi.templates
-      .createDraft({
-        name: uploadName || "Template mới",
-        file_name: uploadName.endsWith(".md") ? uploadName : `${uploadName || "template"}.md`,
-        template_type: "custom",
-        purpose: uploadPurpose || "Custom template",
-        content: uploadContent,
-      })
+    const req = uploadFile
+      ? kadApi.templates.uploadFile(uploadFile, {
+          name: uploadName || "Template mới",
+          template_type: "custom",
+          purpose: uploadPurpose || "Custom template",
+        })
+      : kadApi.templates.createDraft({
+          name: uploadName || "Template mới",
+          file_name: uploadName.endsWith(".md") ? uploadName : `${uploadName || "template"}.md`,
+          template_type: "custom",
+          purpose: uploadPurpose || "Custom template",
+          content: uploadContent,
+        });
+    req
       .then((result) => {
         toast({ message: "Đã tạo template draft.", tone: "success" });
         setUploadContent("");
+        setUploadFile(null);
         setUploadName("");
         setUploadPurpose("");
         setSelectedId(result.template.id);
         refresh();
       })
-      .catch((e) => toast({ message: e instanceof Error ? e.message : "Không tạo được template.", tone: "warning" }))
+      .catch((e) =>
+        toast({
+          message: e instanceof Error ? e.message : "Không tạo được template.",
+          tone: "warning",
+        })
+      )
       .finally(() => setSaving(false));
   };
 
@@ -93,13 +121,15 @@ export function ThuVienMauTab() {
                   type="button"
                   onClick={() => setSelectedId(tpl.id)}
                   className={`w-full text-left rounded-lg px-3 py-2 border ${
-                    active ? "border-kad-primary bg-kad-surface-2" : "border-transparent hover:bg-kad-surface-2"
+                    active
+                      ? "border-kad-primary bg-kad-surface-2"
+                      : "border-transparent hover:bg-kad-surface-2"
                   }`}
                 >
                   <p className="kad-body text-kad-text truncate">{tpl.name}</p>
                   <p className="kad-caption text-kad-text-muted truncate">
-                    {tpl.template_type} · v{version?.version ?? "-"} · {version?.status ?? "no version"} ·{" "}
-                    {tpl.usage_count} lượt dùng
+                    {tpl.template_type} · v{version?.version ?? "-"} ·{" "}
+                    {version?.status ?? "no version"} · {tpl.usage_count} lượt dùng
                   </p>
                 </button>
               );
@@ -108,23 +138,48 @@ export function ThuVienMauTab() {
         </KadCard>
 
         <KadCard>
-          <h3 className="kad-heading text-kad-text-strong mb-3">Upload .md</h3>
+          <h3 className="kad-heading text-kad-text-strong mb-3">
+            Upload .md / .docx / .pdf / .xlsx
+          </h3>
           <div className="space-y-3">
             <label className="inline-flex">
-              <input type="file" accept=".md" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+              <input
+                type="file"
+                accept=".md,.docx,.pdf,.xlsx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                className="hidden"
+                onChange={(e) => onFile(e.target.files?.[0])}
+              />
               <span className="kad-label inline-flex h-9 items-center gap-1.5 rounded-lg border border-kad-border-strong px-3 text-kad-text cursor-pointer">
                 <Upload className="w-4 h-4" aria-hidden />
                 Chọn file
               </span>
             </label>
-            <KadInput value={uploadName} placeholder="Tên template" onChange={(e) => setUploadName(e.target.value)} />
-            <KadInput value={uploadPurpose} placeholder="Mục đích" onChange={(e) => setUploadPurpose(e.target.value)} />
+            <KadInput
+              value={uploadName}
+              placeholder="Tên template"
+              onChange={(e) => setUploadName(e.target.value)}
+            />
+            <KadInput
+              value={uploadPurpose}
+              placeholder="Mục đích"
+              onChange={(e) => setUploadPurpose(e.target.value)}
+            />
             {uploadContent && (
               <p className="kad-caption text-kad-text-faint">
                 {uploadContent.length.toLocaleString("vi-VN")} ký tự
               </p>
             )}
-            <KadButton variant="primary" loading={saving} disabled={!uploadContent.trim()} onClick={createDraft}>
+            {uploadFile && (
+              <p className="kad-caption text-kad-text-faint">
+                {uploadFile.name} · {(uploadFile.size / 1024).toFixed(0)} KB
+              </p>
+            )}
+            <KadButton
+              variant="primary"
+              loading={saving}
+              disabled={!uploadContent.trim() && !uploadFile}
+              onClick={createDraft}
+            >
               Tạo draft
             </KadButton>
           </div>
@@ -152,14 +207,41 @@ export function ThuVienMauTab() {
                         toast({ message: "Đã duyệt template.", tone: "success" });
                         refresh();
                       })
-                      .catch((e) => toast({ message: e instanceof Error ? e.message : "Không duyệt được.", tone: "warning" }));
+                      .catch((e) =>
+                        toast({
+                          message: e instanceof Error ? e.message : "Không duyệt được.",
+                          tone: "warning",
+                        })
+                      );
                   }}
                 >
                   Duyệt v{selected.latest_version.version}
                 </KadButton>
               )}
             </div>
-            <MarkdownLite content={selected.latest_version?.content || selected.approved_version?.content || ""} />
+            {(() => {
+              const displayVersion = selected.latest_version || selected.approved_version;
+              if (displayVersion?.file_path) {
+                return (
+                  <div className="flex items-center gap-3 rounded-lg border border-kad-border px-4 py-3">
+                    <FileIcon className="w-5 h-5 text-kad-text-faint flex-shrink-0" aria-hidden />
+                    <div className="min-w-0 flex-1">
+                      <p className="kad-body text-kad-text truncate">
+                        {displayVersion.original_file_name || "template"}
+                      </p>
+                      <p className="kad-caption text-kad-text-faint">{displayVersion.mime_type}</p>
+                    </div>
+                    <a
+                      href={kadApi.templates.downloadUrl(displayVersion.id)}
+                      className="kad-label text-kad-accent hover:underline flex-shrink-0"
+                    >
+                      Tải xuống
+                    </a>
+                  </div>
+                );
+              }
+              return <MarkdownLite content={displayVersion?.content || ""} />;
+            })()}
           </KadCard>
         ) : (
           <KadCard>

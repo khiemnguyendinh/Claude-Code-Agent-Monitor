@@ -30,4 +30,6 @@ module.exports = {
   orgContext: require("./org-context"),
   templates: require("./templates"),
   reports: require("./reports"),
+  personnel: require("./personnel"),
+  strategicGoals: require("./strategic-goals"),
 };

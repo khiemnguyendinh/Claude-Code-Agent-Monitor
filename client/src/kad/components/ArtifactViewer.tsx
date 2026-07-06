@@ -5,8 +5,9 @@
  * §3), so the two surfaces never drift apart.
  */
 import { useState } from "react";
-import { Download, FileQuestion } from "lucide-react";
+import { Download, File as FileIcon, FileQuestion } from "lucide-react";
 import { ARTIFACTS, findArtifact } from "../mockData";
+import { kadApi } from "../api-client";
 import type { Artifact } from "../types";
 import { useKadToast } from "./Toast";
 import { ArtifactStatusChip, SensitivityBadge } from "./StatusChip";
@@ -45,6 +46,9 @@ export function ArtifactViewer({
     )
   ).sort((a, b) => a.version - b.version);
   const previous = versions.find((v) => v.version === artifact.version - 1);
+  // Phase 6 — /hoc-lieu uploads (loose files or a folder) aren't markdown;
+  // MarkdownLite would just render nothing useful for a binary file.
+  const isUploaded = artifact.source === "uploaded";
   const hasSensitivity =
     artifact.sensitivityFlags.metrics ||
     artifact.sensitivityFlags.people ||
@@ -122,6 +126,19 @@ export function ArtifactViewer({
 
       {showDiff && previous ? (
         <MarkdownDiffView lines={diffLines(previous.content, artifact.content)} />
+      ) : isUploaded ? (
+        <div className="flex items-center gap-3 rounded-lg border border-kad-border px-4 py-3">
+          <FileIcon className="w-5 h-5 text-kad-text-faint flex-shrink-0" aria-hidden />
+          <p className="kad-body text-kad-text truncate flex-1 min-w-0">
+            {artifact.fileName || artifact.title}
+          </p>
+          <a
+            href={kadApi.artifacts.downloadUrl(artifact.id)}
+            className="kad-label text-kad-accent hover:underline flex-shrink-0"
+          >
+            Tải xuống
+          </a>
+        </div>
       ) : (
         <MarkdownLite content={artifact.content} />
       )}
@@ -154,10 +171,20 @@ export function ArtifactViewer({
         <KadButton
           variant="ghost"
           icon={Download}
-          onClick={() => toast({ message: "Bản mockup — chưa xuất file thật." })}
+          onClick={() => {
+            if (isUploaded) {
+              window.open(
+                kadApi.artifacts.downloadUrl(artifact.id),
+                "_blank",
+                "noopener,noreferrer"
+              );
+              return;
+            }
+            toast({ message: "Bản mockup — chưa xuất file thật." });
+          }}
           className="ml-auto"
         >
-          Tải .md
+          {isUploaded ? "Tải xuống" : "Tải .md"}
         </KadButton>
       </div>
     </div>

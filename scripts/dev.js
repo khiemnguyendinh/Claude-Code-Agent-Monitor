@@ -20,7 +20,12 @@ const net = require("node:net");
 const http = require("node:http");
 const { spawn } = require("node:child_process");
 
-const START = parseInt(process.env.DASHBOARD_PORT || "4820", 10);
+// DASHBOARD_PORT is this project's own convention (see client/vite.config.ts,
+// server/index.js); PORT is the generic env var external tooling assigns
+// (e.g. Claude Code's preview harness) — honor it as a fallback so such
+// tooling can hand this script a free port instead of always probing from
+// 4820 regardless of what it asked for.
+const START = parseInt(process.env.DASHBOARD_PORT || process.env.PORT || "4820", 10);
 const RANGE = 40;
 
 /** Resolve true if a healthy dashboard already answers /api/health on `port`. */

@@ -13,13 +13,13 @@
   "icons": [
     {
       "src": "/kad/kstudy-icon.png",
-      "sizes": "any",
+      "sizes": "815x815",
       "type": "image/png",
       "purpose": "any"
     },
     {
       "src": "/kad/kstudy-icon.png",
-      "sizes": "any",
+      "sizes": "815x815",
       "type": "image/png",
       "purpose": "maskable"
     }

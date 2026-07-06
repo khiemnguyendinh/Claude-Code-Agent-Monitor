@@ -10,12 +10,20 @@
  * "Sửa tri thức tổ chức — Anh Khiêm qua UI" (ma trận duyệt), nên ghi thẳng,
  * không qua bước Gửi duyệt.
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Target, Trash2 } from "lucide-react";
 import { useKadStore } from "../store";
 import { useKadToast } from "../components/Toast";
-import { KadButton, KadInput, KadTextarea, KadFieldLabel } from "../components/primitives";
+import { XlsxImportButton } from "../components/XlsxImportButton";
+import { kadApi } from "../api-client";
+import {
+  KadButton,
+  KadInput,
+  KadTextarea,
+  KadFieldLabel,
+  KadSkeleton,
+} from "../components/primitives";
 import type { Goal } from "../types";
 
 interface GoalDraft {
@@ -37,6 +45,15 @@ const newDraft = (): GoalDraft => ({
   due: "",
 });
 
+const draftFromGoal = (g: Goal): GoalDraft => ({
+  id: g.id,
+  title: g.title,
+  metric: g.metric,
+  current: String(g.current),
+  target: String(g.target),
+  due: g.due,
+});
+
 function deriveStatus(current: number, target: number): Goal["status"] {
   if (target <= 0) return "on_track";
   const ratio = current / target;
@@ -46,23 +63,33 @@ function deriveStatus(current: number, target: number): Goal["status"] {
 }
 
 export function MucTieuChienLuoc() {
-  const { goals, strategy, saveGoalsAndStrategy } = useKadStore();
+  const { saveGoalsAndStrategy } = useKadStore();
   const toast = useKadToast();
   const navigate = useNavigate();
 
-  const [strategyText, setStrategyText] = useState(strategy.bodyMarkdown);
-  const [drafts, setDrafts] = useState<GoalDraft[]>(() =>
-    goals.length > 0
-      ? goals.map((g) => ({
-          id: g.id,
-          title: g.title,
-          metric: g.metric,
-          current: String(g.current),
-          target: String(g.target),
-          due: g.due,
-        }))
-      : [newDraft()]
-  );
+  // Own fetch (loading state) rather than reading useKadStore()'s goals/strategy
+  // directly: those are populated asynchronously on the store's own mount, and a
+  // one-shot useState initializer here would race it and freeze on the empty
+  // placeholder. Matches the fetch+loading pattern already used by the other
+  // Đội ngũ tabs (JDKyNangTab, VanHoaTab). saveGoalsAndStrategy still goes through
+  // the store so Tổng quan / tab Mục tiêu refresh without a full reload.
+  const [loading, setLoading] = useState(true);
+  const [strategyText, setStrategyText] = useState("");
+  const [drafts, setDrafts] = useState<GoalDraft[]>([newDraft()]);
+
+  useEffect(() => {
+    kadApi.goals
+      .get()
+      .then((r) => {
+        setStrategyText(r.strategyMarkdown);
+        setDrafts(r.goals.length > 0 ? r.goals.map(draftFromGoal) : [newDraft()]);
+      })
+      .catch(() =>
+        toast({ message: "Không tải được mục tiêu & chiến lược hiện có.", tone: "warning" })
+      )
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const updateDraft = (id: string, patch: Partial<GoalDraft>) =>
     setDrafts((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
@@ -86,10 +113,31 @@ export function MucTieuChienLuoc() {
         };
       });
 
-    saveGoalsAndStrategy({ goals: nextGoals, strategyMarkdown: strategyText.trim() });
-    toast({ message: "Đã cập nhật mục tiêu & chiến lược.", tone: "success" });
-    navigate("/");
+    saveGoalsAndStrategy({ goals: nextGoals, strategyMarkdown: strategyText.trim() })
+      .then(() => {
+        toast({ message: "Đã cập nhật mục tiêu & chiến lược.", tone: "success" });
+        navigate("/");
+      })
+      .catch((e) =>
+        toast({ message: e instanceof Error ? e.message : "Không lưu được.", tone: "warning" })
+      );
   };
+
+  const importGoals = (file: File) =>
+    kadApi.importXlsx.goals(file).then((r) => {
+      setStrategyText(r.strategyMarkdown);
+      setDrafts(r.goals.length > 0 ? r.goals.map(draftFromGoal) : [newDraft()]);
+    });
+
+  if (loading) {
+    return (
+      <div className="max-w-[820px] pb-16 space-y-4">
+        <KadSkeleton className="h-4 w-2/3" />
+        <KadSkeleton className="h-32 w-full" />
+        <KadSkeleton className="h-32 w-full" />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-[820px] pb-16">
@@ -101,11 +149,16 @@ export function MucTieuChienLuoc() {
         <ArrowLeft className="w-4 h-4" /> Quay lại
       </button>
 
-      <h1 className="kad-title text-kad-text-strong">Mục tiêu &amp; chiến lược</h1>
-      <p className="kad-body text-kad-text-muted mt-1.5 max-w-[640px]">
-        Nhập mục tiêu lớn và định hướng chiến lược của phòng. Trợ lý vận hành đọc bản này để tự điều
-        chỉnh ưu tiên công việc — không còn cố định theo quý.
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="kad-title text-kad-text-strong">Mục tiêu &amp; chiến lược</h1>
+          <p className="kad-body text-kad-text-muted mt-1.5 max-w-[640px]">
+            Nhập mục tiêu lớn và định hướng chiến lược của phòng. Trợ lý vận hành đọc bản này để tự
+            điều chỉnh ưu tiên công việc — không còn cố định theo quý.
+          </p>
+        </div>
+        <XlsxImportButton kind="muc-tieu" onImport={importGoals} />
+      </div>
 
       {/* ── Chiến lược & định hướng ─────────────────────────────────────── */}
       <section className="mt-8">
@@ -139,7 +192,9 @@ export function MucTieuChienLuoc() {
           {drafts.length === 0 ? (
             <div className="border border-dashed border-kad-border rounded-xl px-4 py-8 text-center">
               <Target className="w-5 h-5 text-kad-text-faint mx-auto mb-2" aria-hidden />
-              <p className="kad-body text-kad-text-muted">Chưa có mục tiêu nào. Thêm mục tiêu đầu tiên.</p>
+              <p className="kad-body text-kad-text-muted">
+                Chưa có mục tiêu nào. Thêm mục tiêu đầu tiên.
+              </p>
             </div>
           ) : (
             drafts.map((d, i) => (
