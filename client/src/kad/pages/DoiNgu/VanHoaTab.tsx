@@ -7,6 +7,7 @@ import { KadButton, KadErrorBlock, KadSkeleton, KadTextarea } from "../../compon
 import { MarkdownLite } from "../../components/MarkdownLite";
 import type { OrgContextSection } from "../../types";
 import { OrgContextWizard } from "./OrgContextWizard";
+import { OrgContextImportModal } from "../../components/OrgContextImportModal";
 
 type SectionKey = OrgContextSection["key"];
 
@@ -123,6 +124,7 @@ export function VanHoaTab() {
   const [loading, setLoading] = useState(true);
   const [needsWizard, setNeedsWizard] = useState(false);
   const [error, setError] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const refresh = () => {
     setLoading(true);
@@ -186,9 +188,14 @@ export function VanHoaTab() {
 
       <div className="max-w-[720px] space-y-8">
         <div className="flex items-center justify-between gap-3 border-b border-kad-border pb-4">
-          <p className="kad-caption text-kad-text-faint">
-            Nội dung trang này được nạp vào ngữ cảnh của mọi thành viên AI.
-          </p>
+          <div className="flex gap-2 items-center">
+            <p className="kad-caption text-kad-text-faint">
+              Nội dung trang này được nạp vào ngữ cảnh của mọi thành viên AI.
+            </p>
+            <KadButton variant="secondary" size="row" onClick={() => setIsImportModalOpen(true)}>
+              📥 Import
+            </KadButton>
+          </div>
           {pendingDraft && (
             <KadButton
               variant="primary"
@@ -200,7 +207,12 @@ export function VanHoaTab() {
                     toast({ message: "Đã duyệt bản tri thức mới.", tone: "success" });
                     refresh();
                   })
-                  .catch((e) => toast({ message: e instanceof Error ? e.message : "Không duyệt được.", tone: "warning" }));
+                  .catch((e) =>
+                    toast({
+                      message: e instanceof Error ? e.message : "Không duyệt được.",
+                      tone: "warning",
+                    })
+                  );
               }}
             >
               Duyệt bản nháp v{pendingDraft.version}
@@ -229,6 +241,12 @@ export function VanHoaTab() {
           </SectionBlock>
         ))}
       </div>
+
+      <OrgContextImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        onSuccess={refresh}
+      />
     </div>
   );
 }
@@ -272,7 +290,11 @@ function SectionBlock({
           </div>
           <div>
             <p className="kad-overline text-kad-text-faint mb-1.5">Bản sửa</p>
-            <KadTextarea value={draft} onChange={(e) => setDraft(e.target.value)} className="min-h-[160px]" />
+            <KadTextarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="min-h-[160px]"
+            />
             <div className="flex items-center gap-2 mt-2">
               <KadButton
                 variant="primary"
@@ -290,7 +312,12 @@ function SectionBlock({
                       setEditing(false);
                       onDraftCreated();
                     })
-                    .catch((e) => toast({ message: e instanceof Error ? e.message : "Không tạo được draft.", tone: "warning" }))
+                    .catch((e) =>
+                      toast({
+                        message: e instanceof Error ? e.message : "Không tạo được draft.",
+                        tone: "warning",
+                      })
+                    )
                     .finally(() => setSaving(false));
                 }}
               >

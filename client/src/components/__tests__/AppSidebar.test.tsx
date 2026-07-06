@@ -23,7 +23,7 @@ function renderSidebar(wsConnected: boolean, collapsed = false) {
 describe("AppSidebar", () => {
   it("should render the brand name", () => {
     renderSidebar(true);
-    expect(screen.getByText("Kstudy AI Department")).toBeInTheDocument();
+    expect(screen.getByText("Kstudy Curriculum R&D")).toBeInTheDocument();
   });
 
   it("should render the Giao việc quick-create action", () => {

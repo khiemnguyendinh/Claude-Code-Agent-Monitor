@@ -19,10 +19,10 @@ const PROMPT_PREVIEW_LIMIT = 500;
 
 const insertStmt = db.prepare(`
   INSERT OR REPLACE INTO dashboard_runs (
-    id, session_id, mode, cwd, model, permission_mode, effort,
+    id, session_id, source, task_id, mode, cwd, model, permission_mode, effort,
     resume_session_id, prompt_preview, status, exit_code, started_at, ended_at
   ) VALUES (
-    @id, @session_id, @mode, @cwd, @model, @permission_mode, @effort,
+    @id, @session_id, @source, @task_id, @mode, @cwd, @model, @permission_mode, @effort,
     @resume_session_id, @prompt_preview, @status, @exit_code, @started_at, @ended_at
   )
 `);
@@ -38,7 +38,7 @@ const updateStmt = db.prepare(`
 
 const listStmt = db.prepare(`
   SELECT id, session_id, mode, cwd, model, permission_mode, effort,
-         resume_session_id, prompt_preview, status, exit_code,
+         resume_session_id, prompt_preview, status, exit_code, source, task_id,
          started_at, ended_at
   FROM dashboard_runs
   ORDER BY started_at DESC
@@ -47,9 +47,19 @@ const listStmt = db.prepare(`
 
 const getStmt = db.prepare(`
   SELECT id, session_id, mode, cwd, model, permission_mode, effort,
-         resume_session_id, prompt_preview, status, exit_code,
+         resume_session_id, prompt_preview, status, exit_code, source, task_id,
          started_at, ended_at
   FROM dashboard_runs WHERE id = @id
+`);
+
+const listByTaskStmt = db.prepare(`
+  SELECT id, session_id, mode, cwd, model, permission_mode, effort,
+         resume_session_id, prompt_preview, status, exit_code, source, task_id,
+         started_at, ended_at
+  FROM dashboard_runs
+  WHERE task_id = @task_id
+  ORDER BY started_at DESC
+  LIMIT @limit
 `);
 
 /**
@@ -63,6 +73,8 @@ function recordRun(handle) {
     insertStmt.run({
       id: handle.id,
       session_id: handle.sessionId || null,
+      source: handle.source || "run",
+      task_id: handle.taskId || null,
       mode: handle.mode,
       cwd: handle.cwd || "",
       model: handle.model || null,
@@ -77,6 +89,15 @@ function recordRun(handle) {
     });
   } catch {
     /* persistence is best-effort */
+  }
+}
+
+function listRunsByTask(taskId, { limit = 10 } = {}) {
+  try {
+    const safeLimit = Math.max(1, Math.min(100, Math.floor(Number(limit) || 10)));
+    return listByTaskStmt.all({ task_id: taskId, limit: safeLimit });
+  } catch {
+    return [];
   }
 }
 
@@ -140,4 +161,4 @@ function reconcileOrphans() {
   }
 }
 
-module.exports = { recordRun, patchRun, listRuns, getRun, reconcileOrphans };
+module.exports = { recordRun, patchRun, listRuns, listRunsByTask, getRun, reconcileOrphans };

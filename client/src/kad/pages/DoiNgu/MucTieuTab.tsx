@@ -17,6 +17,7 @@ import { KadButton, KadCard } from "../../components/primitives";
 import { MarkdownLite } from "../../components/MarkdownLite";
 import { Sparkline } from "../../components/Sparkline";
 import { AgentAvatar, HumanAvatar } from "../../components/Avatar";
+import { OrgContextImportModal } from "../../components/OrgContextImportModal";
 import type { GoalHealth, GoalLevel, KeyResult, Kpi, Objective } from "../../types";
 
 const HUMAN_NAME = "Anh Khiêm";
@@ -39,7 +40,7 @@ function pctToward(current: number, target: number, direction?: "up" | "down"): 
 }
 
 function ownerName(id: string): string {
-  return id === "human" ? HUMAN_NAME : findAgent(id)?.displayName ?? id;
+  return id === "human" ? HUMAN_NAME : (findAgent(id)?.displayName ?? id);
 }
 
 // ── Atoms ─────────────────────────────────────────────────────────────────
@@ -51,7 +52,10 @@ function HealthPill({ health }: { health: GoalHealth }) {
       className="kad-label inline-flex items-center gap-1.5 rounded-full px-2 h-[22px] whitespace-nowrap"
       style={{ backgroundColor: `${h.color}14`, color: h.color }}
     >
-      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ backgroundColor: h.color }} />
+      <span
+        className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+        style={{ backgroundColor: h.color }}
+      />
       {h.label}
     </span>
   );
@@ -65,7 +69,9 @@ function OwnerChip({ ownerId, showName = false }: { ownerId: string; showName?: 
       ) : (
         <AgentAvatar agentId={ownerId} size={20} />
       )}
-      {showName && <span className="kad-caption text-kad-text-muted truncate">{ownerName(ownerId)}</span>}
+      {showName && (
+        <span className="kad-caption text-kad-text-muted truncate">{ownerName(ownerId)}</span>
+      )}
     </span>
   );
 }
@@ -101,7 +107,10 @@ function KrRow({ kr }: { kr: KeyResult }) {
       </div>
       <div className="flex items-center gap-2 mt-1.5">
         <HealthBar percent={percent} health={kr.health} />
-        <span className="kad-caption tabular-nums w-9 text-right" style={{ color: HEALTH[kr.health].color }}>
+        <span
+          className="kad-caption tabular-nums w-9 text-right"
+          style={{ color: HEALTH[kr.health].color }}
+        >
           {Math.round(percent)}%
         </span>
       </div>
@@ -175,7 +184,11 @@ function KpiTile({ kpi }: { kpi: Kpi }) {
             / mục tiêu {kpi.target}
             {unit}
           </span>
-          <span className="ml-auto w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: h.color }} title={h.label} />
+          <span
+            className="ml-auto w-2 h-2 rounded-full flex-shrink-0"
+            style={{ backgroundColor: h.color }}
+            title={h.label}
+          />
         </div>
       </div>
       <div className="mt-2">
@@ -213,7 +226,8 @@ function Rollup({ objectives }: { objectives: Objective[] }) {
         <div>
           <p className="kad-overline text-kad-text-faint">Sức khoẻ mục tiêu</p>
           <p className="kad-display text-kad-text-strong">
-            {pct}% <span className="kad-caption text-kad-text-muted font-normal">KR đúng hướng</span>
+            {pct}%{" "}
+            <span className="kad-caption text-kad-text-muted font-normal">KR đúng hướng</span>
           </p>
         </div>
         <div className="flex items-center gap-5">
@@ -232,6 +246,7 @@ export function MucTieuTab() {
   const { strategy } = useKadStore();
   const navigate = useNavigate();
   const [level, setLevel] = useState<GoalLevel>("department");
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
 
   const objectives = OBJECTIVES.filter((o) => o.level === level);
   const kpis = KPIS.filter((k) => k.level === level);
@@ -240,17 +255,27 @@ export function MucTieuTab() {
   return (
     <div className="pb-10 space-y-8 max-w-[980px]">
       <p className="kad-caption text-kad-text-faint">
-        Mục tiêu phòng gắn với mục tiêu công ty — Chiến lược theo năm, OKR theo quý, KPI vận hành theo
-        tháng. Trợ lý vận hành đọc bản này để tự điều chỉnh ưu tiên công việc.
+        Mục tiêu phòng gắn với mục tiêu công ty — Chiến lược theo năm, OKR theo quý, KPI vận hành
+        theo tháng. Trợ lý vận hành đọc bản này để tự điều chỉnh ưu tiên công việc.
       </p>
 
       {/* 1. Chiến lược & định hướng (chuyển từ tab Văn hóa) */}
       <section>
         <div className="flex items-center justify-between mb-2">
           <h2 className="kad-title text-kad-text-strong">Chiến lược &amp; định hướng</h2>
-          <KadButton variant="ghost" size="row" icon={Pencil} onClick={() => navigate("/muc-tieu-chien-luoc")}>
-            Chỉnh mục tiêu &amp; chiến lược
-          </KadButton>
+          <div className="flex gap-2">
+            <KadButton variant="secondary" size="row" onClick={() => setIsImportModalOpen(true)}>
+              📥 Import
+            </KadButton>
+            <KadButton
+              variant="ghost"
+              size="row"
+              icon={Pencil}
+              onClick={() => navigate("/muc-tieu-chien-luoc")}
+            >
+              Chỉnh mục tiêu &amp; chiến lược
+            </KadButton>
+          </div>
         </div>
         <KadCard>
           {strategy.bodyMarkdown ? (
@@ -298,7 +323,9 @@ export function MucTieuTab() {
       <section>
         <div className="flex items-baseline justify-between mb-3">
           <h2 className="kad-title text-kad-text-strong">OKR theo quý</h2>
-          <span className="kad-caption text-kad-text-faint">Objective + Key Results · nhịp Quý</span>
+          <span className="kad-caption text-kad-text-faint">
+            Objective + Key Results · nhịp Quý
+          </span>
         </div>
         {objectives.length === 0 ? (
           <KadCard>
@@ -320,7 +347,9 @@ export function MucTieuTab() {
       <section>
         <div className="flex items-baseline justify-between mb-3">
           <h2 className="kad-title text-kad-text-strong">KPI vận hành</h2>
-          <span className="kad-caption text-kad-text-faint">Cập nhật tự động từ nguồn · nhịp Tuần/Tháng</span>
+          <span className="kad-caption text-kad-text-faint">
+            Cập nhật tự động từ nguồn · nhịp Tuần/Tháng
+          </span>
         </div>
         {kpis.length === 0 ? (
           <KadCard>
@@ -337,6 +366,11 @@ export function MucTieuTab() {
           </div>
         )}
       </section>
+
+      <OrgContextImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+      />
     </div>
   );
 }

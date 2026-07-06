@@ -17,6 +17,7 @@ const knowledgeRouter = require("./knowledge");
 const learningRouter = require("./learning");
 const connectorsRouter = require("./connectors");
 const larkRouter = require("./lark");
+const runTaskRouter = require("./run-task");
 
 const router = express.Router();
 router.use("/tasks", tasksRouter);
@@ -25,6 +26,7 @@ router.use("/internal", internalRouter);
 router.use("/", artifactsRouter); // /artifacts, /runs
 router.use("/", knowledgeRouter); // /org-context, /templates, /wizard, /blueprints, /org-chart
 router.use("/", connectorsRouter); // /connectors, /connector-actions
+router.use("/", runTaskRouter); // /run-task, /run-task/by-task/:taskId
 router.use("/", miscRouter); // /agents, /reports, /notifications, /audit
 router.use("/", dependenciesRouter); // /dependencies/:depId
 router.use("/", automationRulesRouter); // /automation-rules, /automation/*

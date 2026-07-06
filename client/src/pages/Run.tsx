@@ -73,6 +73,7 @@ import type {
   RunHandle,
   RunListResponse,
   RunMode,
+  RunStartArgs,
   RunStatus,
 } from "../lib/api";
 import type { Session, TranscriptMessage, TranscriptContent } from "../lib/types";
@@ -532,16 +533,40 @@ function useTypewriterEnvelopes(envelopes: Envelope[]): Envelope[] {
 
 // ── Page ──────────────────────────────────────────────────────────────
 
-export function Run() {
+export interface RunWorkbenchProps {
+  defaultMode?: RunMode;
+  defaultPermissionMode?: PermissionMode;
+  defaultPrompt?: string;
+  defaultCwd?: string;
+  title?: string;
+  subtitle?: string;
+  showHeader?: boolean;
+  showLimitations?: boolean;
+  startRun?: (args: RunStartArgs) => Promise<RunHandle>;
+  onRunStarted?: (handle: RunHandle) => void;
+}
+
+export function RunWorkbench({
+  defaultMode = "conversation",
+  defaultPermissionMode = "acceptEdits",
+  defaultPrompt = "",
+  defaultCwd = "",
+  title,
+  subtitle,
+  showHeader = true,
+  showLimitations = true,
+  startRun = api.run.start,
+  onRunStarted,
+}: RunWorkbenchProps = {}) {
   const { t } = useTranslation("run");
   const [searchParams, setSearchParams] = useSearchParams();
   const wsConnected = useSyncExternalStore(eventBus.onConnection, () => eventBus.connected);
-  const [mode, setMode] = useState<RunMode>("conversation");
-  const [prompt, setPrompt] = useState("");
+  const [mode, setMode] = useState<RunMode>(defaultMode);
+  const [prompt, setPrompt] = useState(defaultPrompt);
   const [model, setModel] = useState("");
-  const [permissionMode, setPermissionMode] = useState<PermissionMode>("acceptEdits");
+  const [permissionMode, setPermissionMode] = useState<PermissionMode>(defaultPermissionMode);
   const [effort, setEffort] = useState<EffortLevel>("");
-  const [cwd, setCwd] = useState("");
+  const [cwd, setCwd] = useState(defaultCwd);
   const [resumeSession, setResumeSession] = useState<Session | null>(null);
   const [handle, setHandle] = useState<RunHandle | null>(null);
   const [envelopes, setEnvelopes] = useState<Envelope[]>([]);
@@ -580,7 +605,7 @@ export function Run() {
         // an invisible default.
         const dashboard = r.items.find((s) => s.kind === "dashboard");
         if (dashboard) {
-          setCwd((current) => current || dashboard.path);
+          setCwd((current) => current || defaultCwd || dashboard.path);
         }
       })
       .catch(() => undefined);
@@ -607,7 +632,7 @@ export function Run() {
         setSlashCommands([...userProject, ...pluginCmds, ...BUILTIN_SLASH_COMMANDS]);
       })
       .catch(() => undefined);
-  }, []);
+  }, [defaultCwd]);
 
   const refreshList = useCallback(() => {
     api.run
@@ -809,7 +834,7 @@ export function Run() {
       // Expand /user-or-project slash commands client-side so the model
       // receives the rendered template, matching what the CLI does.
       const expandedPrompt = await maybeExpandSlashCommand(prompt, slashCommands);
-      const result = await api.run.start({
+      const result = await startRun({
         prompt: expandedPrompt,
         mode: effectiveMode,
         cwd: effectiveCwd,
@@ -819,6 +844,7 @@ export function Run() {
         effort: effort || undefined,
       });
       setHandle(result);
+      onRunStarted?.(result);
       // Optimistic user-turn injection so the chat shows your prompt right away.
       setEnvelopes([{ type: "user", message: { content: prompt } } as UserMessage]);
       refreshList();
@@ -828,7 +854,20 @@ export function Run() {
     } finally {
       setBusy(null);
     }
-  }, [prompt, mode, cwd, model, permissionMode, busy, refreshList, t, resumeSession]);
+  }, [
+    prompt,
+    mode,
+    cwd,
+    model,
+    permissionMode,
+    busy,
+    refreshList,
+    t,
+    resumeSession,
+    slashCommands,
+    startRun,
+    onRunStarted,
+  ]);
 
   const attachToRun = useCallback(
     async (id: string) => {
@@ -921,6 +960,25 @@ export function Run() {
         setSearchParams(next, { replace: true });
       });
   }, [searchParams, setSearchParams, handle, attachToRun, t]);
+
+  // Honor `?run=<dashboard_run_id>` deep-links from KAD task detail. This only
+  // attaches live/in-memory handles; completed historical runs should deep-link
+  // by `?session=` once Claude has emitted a session id.
+  useEffect(() => {
+    const runId = searchParams.get("run");
+    if (!runId) return;
+    if (handle && handle.id === runId) {
+      const next = new URLSearchParams(searchParams);
+      next.delete("run");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+    void attachToRun(runId).finally(() => {
+      const next = new URLSearchParams(searchParams);
+      next.delete("run");
+      setSearchParams(next, { replace: true });
+    });
+  }, [searchParams, setSearchParams, handle, attachToRun]);
 
   // Prefill the prompt box from `?prompt=<text>` (e.g. Tabby's Ask handoff).
   // Apply once, then strip the param so a later refresh doesn't overwrite edits
@@ -1022,16 +1080,20 @@ export function Run() {
           : "space-y-5"
       }
     >
-      <Header
-        activeRuns={activeRuns}
-        currentHandleId={handle?.id || null}
-        onAttach={attachToRun}
-        wsConnected={wsConnected}
-        runHistory={runHistory}
-        onResumeFromHistory={onResumeFromHistory}
-        onViewFromHistory={onViewFromHistory}
-        onRefresh={refreshList}
-      />
+      {showHeader && (
+        <Header
+          activeRuns={activeRuns}
+          currentHandleId={handle?.id || null}
+          onAttach={attachToRun}
+          wsConnected={wsConnected}
+          runHistory={runHistory}
+          onResumeFromHistory={onResumeFromHistory}
+          onViewFromHistory={onViewFromHistory}
+          onRefresh={refreshList}
+          title={title}
+          subtitle={subtitle}
+        />
+      )}
 
       {binaryStatus && !binaryStatus.found && (
         <div className="rounded-lg border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200 flex items-center gap-2">
@@ -1053,7 +1115,7 @@ export function Run() {
         </div>
       )}
 
-      {!handle && <LimitationsBanner />}
+      {!handle && showLimitations && <LimitationsBanner />}
 
       {!handle ? (
         // Config card uses normal page flow - page scrolls if needed.
@@ -1108,6 +1170,10 @@ export function Run() {
       )}
     </div>
   );
+}
+
+export function Run() {
+  return <RunWorkbench />;
 }
 
 // ── Limitations banner (above the config card) ────────────────────────
@@ -1253,7 +1319,9 @@ function LimitationsBanner() {
       </div>
       {expanded && (
         <div className="mt-3 pl-12 pr-1 space-y-2 border-t border-border/40 pt-3">
-          <p className="text-[11.5px] text-kad-text-muted leading-relaxed">{t("limitations.intro")}</p>
+          <p className="text-[11.5px] text-kad-text-muted leading-relaxed">
+            {t("limitations.intro")}
+          </p>
           <p className="text-[11px] text-kad-text-muted leading-relaxed">{t("limitations.tldr")}</p>
         </div>
       )}
@@ -1468,11 +1536,7 @@ function TokenMeter({ stats }: { stats: TokenStats }) {
   const pct = Math.min(100, Math.round((total / cap) * 100));
   const tone = pct >= 95 ? "red" : pct >= 80 ? "amber" : "indigo";
   const barColor =
-    tone === "red"
-      ? "bg-red-500"
-      : tone === "amber"
-        ? "bg-amber-500"
-        : "bg-indigo-500";
+    tone === "red" ? "bg-red-500" : tone === "amber" ? "bg-amber-500" : "bg-indigo-500";
   return (
     <div className="border-t border-border px-4 py-2 flex items-center gap-3 text-[11px] text-kad-text-muted flex-wrap">
       <span className="inline-flex items-center gap-1.5">
@@ -1858,7 +1922,9 @@ function PromptEditor({
             )}
           </div>
           {items.length === 0 ? (
-            <div className="px-3 py-2 text-[11px] text-kad-text-muted">{t("autocomplete.noMatches")}</div>
+            <div className="px-3 py-2 text-[11px] text-kad-text-muted">
+              {t("autocomplete.noMatches")}
+            </div>
           ) : state.kind === "slash" ? (
             (items as SlashCommand[]).map((c, idx) => (
               <button
@@ -1880,7 +1946,9 @@ function PromptEditor({
                   </span>
                 </div>
                 {c.description && (
-                  <div className="text-[10.5px] text-kad-text-muted truncate mt-0.5">{c.description}</div>
+                  <div className="text-[10.5px] text-kad-text-muted truncate mt-0.5">
+                    {c.description}
+                  </div>
                 )}
               </button>
             ))
@@ -1918,6 +1986,8 @@ function Header({
   onResumeFromHistory,
   onViewFromHistory,
   onRefresh,
+  title,
+  subtitle,
 }: {
   activeRuns: RunListResponse | null;
   currentHandleId: string | null;
@@ -1927,6 +1997,8 @@ function Header({
   onResumeFromHistory: (item: DashboardRunHistoryItem) => void;
   onViewFromHistory: (item: DashboardRunHistoryItem) => void;
   onRefresh: () => void;
+  title?: string;
+  subtitle?: string;
 }) {
   const { t } = useTranslation("run");
   const { t: tCommon } = useTranslation("common");
@@ -1937,7 +2009,7 @@ function Header({
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <h1 className="text-lg font-semibold text-kad-text-strong">{t("title")}</h1>
+          <h1 className="text-lg font-semibold text-kad-text-strong">{title ?? t("title")}</h1>
           {wsConnected ? (
             <span className="flex items-center gap-1.5 text-[11px] text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded-full">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse-dot" />
@@ -1950,7 +2022,7 @@ function Header({
             </span>
           )}
         </div>
-        <p className="text-xs text-kad-text-muted max-w-3xl">{t("subtitle")}</p>
+        <p className="text-xs text-kad-text-muted max-w-3xl">{subtitle ?? t("subtitle")}</p>
       </div>
       <ActiveRunsSwitcher
         activeRuns={activeRuns}
@@ -2851,7 +2923,9 @@ function CwdAutocomplete({
           style={{ boxShadow: "var(--kad-shadow-1)" }}
         >
           {groups.length === 0 ? (
-            <div className="px-3 py-2 text-[11px] text-kad-text-muted">{t("fields.cwdNoMatches")}</div>
+            <div className="px-3 py-2 text-[11px] text-kad-text-muted">
+              {t("fields.cwdNoMatches")}
+            </div>
           ) : (
             groups.map((g) => (
               <div key={g.kind}>
@@ -2880,7 +2954,9 @@ function CwdAutocomplete({
                       }`}
                     >
                       <div className="text-[11px] text-kad-text truncate">{s.label}</div>
-                      <div className="font-mono text-[10px] text-kad-text-muted truncate">{s.path}</div>
+                      <div className="font-mono text-[10px] text-kad-text-muted truncate">
+                        {s.path}
+                      </div>
                     </button>
                   );
                 })}
@@ -2952,7 +3028,9 @@ function SessionPicker({
             </span>
             <span className="font-mono text-[11px] text-kad-text truncate">{selected.id}</span>
           </div>
-          <div className="font-mono text-[10px] text-kad-text-muted truncate mt-0.5">{selected.cwd}</div>
+          <div className="font-mono text-[10px] text-kad-text-muted truncate mt-0.5">
+            {selected.cwd}
+          </div>
         </div>
         <button
           onClick={() => onSelect(null)}
@@ -2994,7 +3072,9 @@ function SessionPicker({
             {sessions === null ? (
               <div className="px-3 py-2 text-[11px] text-kad-text-muted">…</div>
             ) : filtered.length === 0 ? (
-              <div className="px-3 py-2 text-[11px] text-kad-text-muted">{t("resume.noSessions")}</div>
+              <div className="px-3 py-2 text-[11px] text-kad-text-muted">
+                {t("resume.noSessions")}
+              </div>
             ) : (
               filtered.map((s) => (
                 <button
@@ -3266,7 +3346,10 @@ function EmptyStream({ isLive }: { isLive: boolean }) {
 
 function StatusPill({ status }: { status: string }) {
   const { t } = useTranslation("run");
-  const idle = { color: "bg-surface-3 text-kad-text-muted border-border", icon: Clock as typeof Play };
+  const idle = {
+    color: "bg-surface-3 text-kad-text-muted border-border",
+    icon: Clock as typeof Play,
+  };
   const config: Record<string, { color: string; icon: typeof Play }> = {
     spawning: { color: "bg-amber-500/15 text-amber-300 border-amber-500/30", icon: RefreshCw },
     running: { color: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30", icon: Sparkles },

@@ -1,7 +1,7 @@
-# Quy trình Vận hành Kstudy AI Department (Dành cho Trưởng phòng)
+# Quy trình Vận hành Kstudy Curriculum R&D (Dành cho Trưởng phòng)
 
 ## 1. Tổng quan
-KAD (Kstudy AI Department) vận hành theo cơ chế **turn-based** (theo lượt) và **guardrails** chặt chẽ để đảm bảo chi phí và hiệu quả. Các Agent AI hoạt động như nhân sự thật, có mô tả công việc (JD), quyền hạn và tiêu chuẩn đầu ra rõ ràng.
+KAD (Kstudy Curriculum R&D) vận hành theo cơ chế **turn-based** (theo lượt) và **guardrails** chặt chẽ để đảm bảo chi phí và hiệu quả. Các Agent AI hoạt động như nhân sự thật, có mô tả công việc (JD), quyền hạn và tiêu chuẩn đầu ra rõ ràng.
 
 ## 2. Quy trình Giao việc
 - **Bước 1 (Intake):** Trưởng phòng tạo yêu cầu tại `/cong-viec/moi`.

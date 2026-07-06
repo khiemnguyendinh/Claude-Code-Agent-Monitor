@@ -2,48 +2,21 @@
  * Màn Tổng quan (`/`) — plans/260703-2330-kad-v2-build/spec/ui/02-man-tong-quan.md
  * "Sáng nay phòng đang ở đâu so với mục tiêu, và tôi cần chạm vào đúng những gì?"
  */
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  AlertTriangle,
-  ArrowRight,
-  ChevronDown,
-  ChevronRight,
-  Inbox,
-  RefreshCw,
-  ShieldCheck,
-  Target,
-} from "lucide-react";
-import {
-  ARTIFACTS,
-  EXCEPTIONS,
-  OPS_METRICS,
-  PROJECTS,
-  RECENT_ARTIFACTS,
-  findAgent,
-} from "../mockData";
+import { AlertTriangle, ArrowRight, Inbox, RefreshCw, ShieldCheck, Target } from "lucide-react";
+import { EXCEPTIONS, OPS_METRICS, RECENT_ARTIFACTS, findAgent } from "../mockData";
+import { kadApi, type KadTask } from "../api-client";
 import { useKadStore } from "../store";
 import { useKadToast } from "../components/Toast";
 import { usePeek } from "../components/PeekDrawer";
 import { KadButton, KadCard, KadEmptyState, KadIconButton } from "../components/primitives";
-import { StatusChip } from "../components/StatusChip";
+import { StatusChip, TaskStatusChip } from "../components/StatusChip";
 import { KpiCard } from "../components/KpiCard";
-import { SegmentedProgress } from "../components/Progress";
-import { AgentAvatar, AgentAvatarStack } from "../components/Avatar";
-import {
-  ARTIFACT_TYPE_LABEL,
-  STEP_ARTIFACT_TYPE,
-  STEP_STATE_CHIP_KIND,
-  approvalCategoryLabel,
-} from "../labels";
-import {
-  formatDueDate,
-  formatRelativeTime,
-  formatSlaCountdown,
-  formatTokens,
-  formatVnd,
-} from "../format";
-import type { Approval, ExceptionKind, Project, StepState } from "../types";
+import { AgentAvatar } from "../components/Avatar";
+import { ARTIFACT_TYPE_LABEL, approvalCategoryLabel } from "../labels";
+import { formatRelativeTime, formatSlaCountdown, formatTokens, formatVnd } from "../format";
+import type { Approval, ExceptionKind } from "../types";
 
 function slaDeadlineMs(a: Approval): number {
   if (!a.slaReminderHours) return Infinity;
@@ -142,27 +115,33 @@ function BlockGoals() {
 
 // ── B. Dự án & hạng mục ───────────────────────────────────────────────────
 
-function projectSortKey(p: Project): [number, number] {
-  const due = p.dueDate ? new Date(p.dueDate).getTime() : Number.POSITIVE_INFINITY;
-  return [p.hasBlocker ? 0 : 1, due];
-}
-
 function BlockProjects() {
   const navigate = useNavigate();
-  const { openPeek } = usePeek();
-  const [expanded, setExpanded] = useState<string | null>(null);
-  const projects = [...PROJECTS]
-    .sort((a, b) => {
-      const [ab, ad] = projectSortKey(a);
-      const [bb, bd] = projectSortKey(b);
-      return ab !== bb ? ab - bb : ad - bd;
-    })
-    .slice(0, 5);
+  const [tasks, setTasks] = useState<KadTask[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    kadApi.tasks
+      .list({ limit: 5 })
+      .then((rows) => {
+        if (mounted) setTasks(rows);
+      })
+      .catch(() => {
+        if (mounted) setTasks([]);
+      })
+      .finally(() => {
+        if (mounted) setLoading(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <KadCard>
       <div className="flex items-center justify-between mb-3">
-        <h3 className="kad-heading text-kad-text-strong">Dự án & hạng mục</h3>
+        <h3 className="kad-heading text-kad-text-strong">Công việc đang chạy</h3>
         <button
           type="button"
           onClick={() => navigate("/he-thong/kanban")}
@@ -171,96 +150,41 @@ function BlockProjects() {
           Xem tất cả <ArrowRight className="w-3 h-3" />
         </button>
       </div>
-      <div className="divide-y divide-kad-border">
-        {projects.map((project) => {
-          const isOpen = expanded === project.id;
-          return (
-            <div key={project.id}>
-              <div className="h-11 flex items-center gap-3">
-                <button
-                  type="button"
-                  onClick={() => setExpanded(isOpen ? null : project.id)}
-                  aria-label={isOpen ? "Thu gọn" : "Mở rộng"}
-                  className="text-kad-text-faint hover:text-kad-text-muted flex-shrink-0"
-                >
-                  {isOpen ? (
-                    <ChevronDown className="w-4 h-4" />
-                  ) : (
-                    <ChevronRight className="w-4 h-4" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => openPeek({ type: "project", id: project.id })}
-                  className="flex-1 min-w-0 flex items-center gap-3 text-left"
-                >
-                  <span className="kad-body text-kad-text truncate max-w-[200px]">
-                    {project.title}
-                  </span>
-                  <span className="flex-1 min-w-[80px] max-w-[220px] hidden sm:block">
-                    <SegmentedProgress steps={project.steps} height={4} />
-                  </span>
-                  <span className="kad-caption text-kad-text-muted flex-shrink-0 hidden md:inline">
-                    {project.itemsDone}/{project.itemsTotal} hạng mục
-                  </span>
-                </button>
-                <AgentAvatarStack agentIds={project.agentIdsInvolved} />
-                <span
-                  className={`kad-caption flex-shrink-0 w-16 text-right ${
-                    project.dueDate && new Date(project.dueDate).getTime() < Date.now()
-                      ? "text-kad-danger"
-                      : "text-kad-text-muted"
-                  }`}
-                >
-                  {formatDueDate(project.dueDate) ?? "—"}
+      {loading ? (
+        <KadEmptyState icon={RefreshCw} message="Đang tải công việc thật…" />
+      ) : tasks.length === 0 ? (
+        <KadEmptyState
+          icon={Inbox}
+          message="Chưa có công việc thật."
+          action={
+            <KadButton variant="secondary" onClick={() => navigate("/cong-viec/moi")}>
+              Giao việc mới
+            </KadButton>
+          }
+        />
+      ) : (
+        <div className="divide-y divide-kad-border">
+          {tasks.map((task) => (
+            <button
+              key={task.id}
+              type="button"
+              onClick={() => navigate(`/cong-viec/${task.id}`)}
+              className="w-full h-12 flex items-center gap-3 text-left hover:bg-kad-surface-2 rounded-md px-2 -mx-2"
+            >
+              <span className="flex-1 min-w-0">
+                <span className="kad-body text-kad-text truncate block">{task.title}</span>
+                <span className="kad-caption text-kad-text-muted truncate block">
+                  {task.workingDir || "Chưa chọn thư mục"} · {formatRelativeTime(task.updatedAt)}
                 </span>
-              </div>
-              {isOpen && (
-                <div className="pl-7 pb-2 space-y-0.5">
-                  {project.steps.map((step) => {
-                    const artifact = ARTIFACTS.find(
-                      (a) =>
-                        a.taskId === project.id && a.artifactType === STEP_ARTIFACT_TYPE[step.key]
-                    );
-                    return (
-                      <div key={step.key} className="h-9 flex items-center gap-3">
-                        <span className="kad-body text-kad-text-muted w-28 flex-shrink-0 truncate">
-                          {step.label}
-                        </span>
-                        <StatusChip
-                          kind={STEP_STATE_CHIP_KIND[step.state]}
-                          label={STEP_LABEL_VI[step.state]}
-                        />
-                        {step.agentId && <AgentAvatar agentId={step.agentId} size={20} />}
-                        {artifact && (
-                          <button
-                            type="button"
-                            onClick={() => openPeek({ type: "artifact", id: artifact.id })}
-                            className="kad-caption text-kad-accent hover:underline ml-auto"
-                          >
-                            Xem học liệu
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </span>
+              <TaskStatusChip status={task.status} />
+            </button>
+          ))}
+        </div>
+      )}
     </KadCard>
   );
 }
-
-const STEP_LABEL_VI: Record<StepState, string> = {
-  done: "Xong",
-  doing: "Đang chạy",
-  waiting_human: "Chờ duyệt",
-  failed: "Lỗi",
-  todo: "Chưa tới",
-};
 
 // ── C. 3 chỉ số vận hành ────────────────────────────────────────────────
 

@@ -442,18 +442,33 @@ const TEMPLATES = [
 function seed() {
   runKadMigrations(db);
 
-  const exists = db.prepare("SELECT id FROM organization_profiles WHERE id=?").get(ID.org);
-  if (exists) {
-    console.log("[kad-seed] org already present — skipping (idempotent).");
-    return;
-  }
+  const existingDept = db.prepare("SELECT id, org_id FROM departments WHERE slug='rd'").get();
+  const resolved = {
+    org: existingDept?.org_id || ID.org,
+    dept: existingDept?.id || ID.dept,
+    orgctx:
+      existingDept?.org_id && existingDept.org_id !== ID.org
+        ? `orgctx-kstudy-v1-${String(existingDept.org_id).replace(/[^a-zA-Z0-9_-]/g, "")}`
+        : ID.orgctx,
+  };
 
   const tx = db.transaction(() => {
     db.prepare(
-      `INSERT INTO organization_profiles (id,name,industry,size,created_at,updated_at)
+      `INSERT OR IGNORE INTO organization_profiles (id,name,industry,size,created_at,updated_at)
        VALUES (@id,@name,@industry,@size,@now,@now)`
     ).run({
-      id: ID.org,
+      id: resolved.org,
+      name: "Học viện Kstudy",
+      industry: "Đào tạo Digital Marketing, AI & Automation",
+      size: "11-50",
+      now: NOW,
+    });
+    db.prepare(
+      `UPDATE organization_profiles
+       SET name=@name, industry=@industry, size=COALESCE(size,@size), updated_at=@now
+       WHERE id=@id`
+    ).run({
+      id: resolved.org,
       name: "Học viện Kstudy",
       industry: "Đào tạo Digital Marketing, AI & Automation",
       size: "11-50",
@@ -461,16 +476,28 @@ function seed() {
     });
 
     db.prepare(
-      `INSERT INTO organization_context_versions (id,org_id,version,status,data,change_summary,approved_by,approved_at,created_at)
+      `INSERT OR IGNORE INTO organization_context_versions (id,org_id,version,status,data,change_summary,approved_by,approved_at,created_at)
        VALUES (@id,@org,1,'approved',@data,NULL,'anh Khiêm',@now,@now)`
-    ).run({ id: ID.orgctx, org: ID.org, data: JSON.stringify(ORG_CONTEXT), now: NOW });
+    ).run({ id: resolved.orgctx, org: resolved.org, data: JSON.stringify(ORG_CONTEXT), now: NOW });
 
     db.prepare(
-      `INSERT INTO departments (id,slug,org_id,name,template_type,mission,settings,status,created_at,updated_at)
+      `INSERT OR IGNORE INTO departments (id,slug,org_id,name,template_type,mission,settings,status,created_at,updated_at)
        VALUES (@id,'rd',@org,'Phòng R&D','rd',@mission,@settings,'active',@now,@now)`
     ).run({
-      id: ID.dept,
-      org: ID.org,
+      id: resolved.dept,
+      org: resolved.org,
+      mission: ORG_CONTEXT.department_role,
+      settings: JSON.stringify(DEPT_SETTINGS),
+      now: NOW,
+    });
+    db.prepare(
+      `UPDATE departments
+       SET org_id=COALESCE(org_id,@org), name='Phòng R&D', template_type='rd',
+           mission=@mission, settings=@settings, status='active', updated_at=@now
+       WHERE id=@id`
+    ).run({
+      id: resolved.dept,
+      org: resolved.org,
       mission: ORG_CONTEXT.department_role,
       settings: JSON.stringify(DEPT_SETTINGS),
       now: NOW,
@@ -492,19 +519,19 @@ function seed() {
       approval_matrix_ref: "kstudy-rd/_policy/approval-matrix.md",
     };
     db.prepare(
-      `INSERT INTO department_blueprints (id,department_id,version,status,data,proposed_by,approved_by,approved_at,created_at)
+      `INSERT OR REPLACE INTO department_blueprints (id,department_id,version,status,data,proposed_by,approved_by,approved_at,created_at)
        VALUES (@id,@dept,1,'approved',@data,'anh Khiêm','anh Khiêm',@now,@now)`
-    ).run({ id: ID.blueprint, dept: ID.dept, data: JSON.stringify(blueprintData), now: NOW });
+    ).run({ id: ID.blueprint, dept: resolved.dept, data: JSON.stringify(blueprintData), now: NOW });
 
     const insAgent = db.prepare(
-      `INSERT INTO agent_profiles
+      `INSERT OR REPLACE INTO agent_profiles
        (id,department_id,blueprint_version_id,agent_type,name,display_name,engine,role_description,permissions,skills,connector_access,escalation_rules,quality_gates,status,parent_agent_id,created_at,updated_at)
        VALUES (@id,@dept,@bp,@agent_type,@name,@display,'claude',@role,@perms,@skills,@conn,@esc,@gates,@status,@parent,@now,@now)`
     );
     for (const a of ROSTER) {
       insAgent.run({
         id: a.id,
-        dept: ID.dept,
+        dept: resolved.dept,
         bp: ID.blueprint,
         agent_type: a.agent_type,
         name: a.name,
@@ -526,11 +553,11 @@ function seed() {
     }
 
     db.prepare(
-      `INSERT INTO workflow_definitions (id,department_id,name,description,example_prompt,trigger_keywords,steps,version,status,created_at)
+      `INSERT OR REPLACE INTO workflow_definitions (id,department_id,name,description,example_prompt,trigger_keywords,steps,version,status,created_at)
        VALUES (@id,@dept,'rd-standard-flow',@desc,@ex,@kw,@steps,1,'active',@now)`
     ).run({
       id: ID.workflow,
-      dept: ID.dept,
+      dept: resolved.dept,
       desc: "Quy trình chuẩn R&D: mục tiêu → plan → research → framework → syllabus → học liệu song song → bàn giao.",
       ex: "Soạn khung chương trình khóa Facebook Ads cơ bản 8 buổi cho người mới.",
       kw: JSON.stringify(["khung chương trình", "syllabus", "khóa", "học liệu", "nghiên cứu"]),
@@ -539,17 +566,17 @@ function seed() {
     });
 
     const insTpl = db.prepare(
-      `INSERT INTO template_library (id,department_id,name,template_type,purpose,required_inputs,output_structure,owner,status,created_at,updated_at)
+      `INSERT OR REPLACE INTO template_library (id,department_id,name,template_type,purpose,required_inputs,output_structure,owner,status,created_at,updated_at)
        VALUES (@id,@dept,@name,@type,@purpose,@ri,@os,'anh Khiêm','active',@now,@now)`
     );
     const insTplV = db.prepare(
-      `INSERT INTO template_versions (id,template_id,version,content,examples,change_summary,status,approved_by,approved_at,created_at)
+      `INSERT OR REPLACE INTO template_versions (id,template_id,version,content,examples,change_summary,status,approved_by,approved_at,created_at)
        VALUES (@id,@tpl,1,@content,@ex,NULL,'approved','anh Khiêm',@now,@now)`
     );
     for (const t of TEMPLATES) {
       insTpl.run({
         id: t.id,
-        dept: ID.dept,
+        dept: resolved.dept,
         name: t.name,
         type: t.type,
         purpose: t.purpose,
@@ -571,13 +598,13 @@ function seed() {
     // no tokens → approval_required=0 (auto-runs at the scheduled time). created_at
     // gates the first fire so a fresh install never back-fires today's occurrence.
     db.prepare(
-      `INSERT INTO automation_rules
+      `INSERT OR IGNORE INTO automation_rules
          (id, department_id, name, trigger_type, trigger_config, action_type, action_config,
           approval_required, enabled, fire_count, created_by, status, created_at)
        VALUES (@id,@dept,@name,'schedule',@trig,'run_briefing',@act,0,1,0,'seed','active',@now)`
     ).run({
       id: ID.briefingRule,
-      dept: ID.dept,
+      dept: resolved.dept,
       name: "Giao ban buổi sáng",
       trig: JSON.stringify({ freq: "daily", time: "07:00", label: "Hằng ngày 07:00" }),
       act: JSON.stringify({}),
@@ -585,12 +612,12 @@ function seed() {
     });
 
     db.prepare(
-      `INSERT INTO audit_log (id,department_id,action,actor_type,actor_id,target_type,target_id,details,created_at)
+      `INSERT OR IGNORE INTO audit_log (id,department_id,action,actor_type,actor_id,target_type,target_id,details,created_at)
        VALUES (@id,@dept,'org_context_changed','system','seed','org_context',@ctx,@details,@now)`
     ).run({
-      id: `audit-seed-${Date.now()}`,
-      dept: ID.dept,
-      ctx: ID.orgctx,
+      id: "audit-seed-kstudy-v1",
+      dept: resolved.dept,
+      ctx: resolved.orgctx,
       details: JSON.stringify({ note: "Phase 1 seed from kstudy-rd" }),
       now: NOW,
     });

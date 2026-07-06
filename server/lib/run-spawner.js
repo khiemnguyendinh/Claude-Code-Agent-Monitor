@@ -84,6 +84,18 @@ function liveCount() {
   return n;
 }
 
+function notifyStatus(handle, status, extra = {}) {
+  if (typeof handle.onStatusChange !== "function") return;
+  try {
+    handle.onStatusChange({ handle, status, ...extra });
+  } catch (err) {
+    handle.stderrBuffer = tail(
+      `${handle.stderrBuffer || ""}[status-callback-error] ${err && err.message}\n`,
+      STDERR_TAIL_BYTES
+    );
+  }
+}
+
 function tail(s, n) {
   if (typeof s !== "string") return "";
   if (s.length <= n) return s;
@@ -167,6 +179,7 @@ function attachStreamHandlers(handle) {
         handle.status = "running";
         broadcast("run_status", { id: handle.id, status: "running", at: Date.now() });
         patchRun({ id: handle.id, status: "running" });
+        notifyStatus(handle, "running");
       }
       // Capture session_id off the system/init envelope — once we have it the
       // dashboard can deep-link to /sessions/<id> on completion.
@@ -179,6 +192,7 @@ function attachStreamHandlers(handle) {
         const wasNull = !handle.sessionId;
         handle.sessionId = envelope.session_id;
         if (wasNull) patchRun({ id: handle.id, sessionId: envelope.session_id });
+        if (wasNull) notifyStatus(handle, handle.status, { sessionId: envelope.session_id });
       }
       handle.envelopeCount += 1;
       handle.envelopes.push(envelope);
@@ -214,6 +228,7 @@ function attachStreamHandlers(handle) {
       at: handle.endedAt,
     });
     patchRun({ id: handle.id, status: "error", endedAt: handle.endedAt });
+    notifyStatus(handle, "error", { error: err.message });
     scheduleReap(handle.id);
   });
   handle.child.on("exit", (code, signal) => {
@@ -239,6 +254,7 @@ function attachStreamHandlers(handle) {
         sessionId: handle.sessionId || null,
         endedAt: handle.endedAt,
       });
+      notifyStatus(handle, handle.status, { exitCode: code, signal });
     }
     scheduleReap(handle.id);
   });
@@ -266,7 +282,18 @@ function scheduleReap(id) {
  * @returns handle
  */
 function spawnRun(args) {
-  const { prompt, mode, cwd, model, permissionMode, resumeSessionId, effort } = args || {};
+  const {
+    prompt,
+    mode,
+    cwd,
+    model,
+    permissionMode,
+    resumeSessionId,
+    effort,
+    source,
+    taskId,
+    onStatusChange,
+  } = args || {};
   if (typeof prompt !== "string") {
     throw makeErr("EBADPROMPT", "prompt is required");
   }
@@ -327,11 +354,14 @@ function spawnRun(args) {
     signal: null,
     error: null,
     sessionId: resumeSessionId || null, // optimistic; will be confirmed by system/init envelope
+    source: source || "run",
+    taskId: taskId || null,
     envelopeCount: 0,
     envelopes: [],
     stdoutBuffer: "",
     stderrBuffer: "",
     child,
+    onStatusChange,
   };
   handles.set(id, handle);
   recordRun(handle);
@@ -361,6 +391,7 @@ function spawnRun(args) {
   // follow-up via POST /:id/message.
 
   broadcast("run_status", { id, status: "spawning", at: handle.startedAt });
+  notifyStatus(handle, "spawning");
   return handle;
 }
 
@@ -416,6 +447,7 @@ function killRun(id) {
   handle.endedAt = Date.now();
   broadcast("run_status", { id, status: "killed", at: handle.endedAt });
   patchRun({ id, status: "killed", endedAt: handle.endedAt });
+  notifyStatus(handle, "killed");
   scheduleReap(id);
   return true;
 }
@@ -440,6 +472,8 @@ function publicHandle(handle, opts = {}) {
     signal: handle.signal,
     error: handle.error,
     sessionId: handle.sessionId,
+    source: handle.source || "run",
+    taskId: handle.taskId || null,
     envelopeCount: handle.envelopeCount,
     stdoutTail: handle.stdoutBuffer,
     stderrTail: handle.stderrBuffer,
@@ -468,7 +502,14 @@ function makeErr(code, message) {
 
 // Test seam: inject a fake child (e.g. PassThrough streams) without invoking
 // the real `claude` binary. Returns the handle.
-function __injectChildForTest({ child, mode = "conversation", prompt = "test" }) {
+function __injectChildForTest({
+  child,
+  mode = "conversation",
+  prompt = "test",
+  source = "run",
+  taskId = null,
+  onStatusChange,
+}) {
   const id = randomUUID();
   const handle = {
     id,
@@ -488,11 +529,14 @@ function __injectChildForTest({ child, mode = "conversation", prompt = "test" })
     signal: null,
     error: null,
     sessionId: null,
+    source,
+    taskId,
     envelopeCount: 0,
     envelopes: [],
     stdoutBuffer: "",
     stderrBuffer: "",
     child,
+    onStatusChange,
   };
   handles.set(id, handle);
   attachStreamHandlers(handle);

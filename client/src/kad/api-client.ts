@@ -12,6 +12,13 @@
  * those pass through unchanged.
  */
 import { dashboardToken } from "../lib/api";
+import type {
+  DashboardRunHistoryItem,
+  EffortLevel,
+  PermissionMode,
+  RunHandle,
+  RunMode,
+} from "../lib/api";
 import { formatDurationSeconds, formatRelativeTime, formatTokens, formatVnd } from "./format";
 import type {
   Approval,
@@ -359,6 +366,8 @@ export interface KadRun {
   startedAt: string;
   completedAt: string | null;
 }
+
+export type KadDashboardRun = DashboardRunHistoryItem;
 
 // ── Real workflow_definitions row — deliberately NOT forced into the mock's
 // WorkflowDefinition/WorkflowStepDef shape (types.ts), which was modeled after
@@ -812,6 +821,32 @@ export const kadApi = {
       ),
   },
 
+  runTask: {
+    start: (input: {
+      prompt: string;
+      cwd?: string | null;
+      model?: string;
+      effort?: EffortLevel;
+      permissionMode?: PermissionMode;
+      workflowId?: string | null;
+      mode?: RunMode;
+    }) =>
+      request<{ task: TaskRow; run: RunHandle }>("/run-task", {
+        method: "POST",
+        body: JSON.stringify({
+          prompt: input.prompt,
+          cwd: input.cwd ?? undefined,
+          model: input.model || undefined,
+          effort: input.effort || undefined,
+          permissionMode: input.permissionMode || "plan",
+          workflowId: input.workflowId ?? undefined,
+          mode: input.mode || "conversation",
+        }),
+      }).then((r) => ({ task: toTask(r.task), run: r.run })),
+    listByTask: (taskId: string) =>
+      request<{ items: KadDashboardRun[] }>(`/run-task/by-task/${encodeURIComponent(taskId)}`),
+  },
+
   approvals: {
     // Only 'pending' is a first-class list server-side (Phase 1) — matches the
     // Tổng quan inbox (spec/ui/02 §6), which only ever wants pending anyway.
@@ -903,7 +938,11 @@ export const kadApi = {
         method: "POST",
       }),
     wizardDraft: () => request<WizardDraftRow | null>("/wizard/draft"),
-    saveWizardDraft: (input: { step: number; data?: Record<string, unknown>; draft?: Record<string, unknown> }) =>
+    saveWizardDraft: (input: {
+      step: number;
+      data?: Record<string, unknown>;
+      draft?: Record<string, unknown>;
+    }) =>
       request<WizardDraftRow>("/wizard/draft", {
         method: "POST",
         body: JSON.stringify(input),
@@ -926,7 +965,10 @@ export const kadApi = {
       const qs = department ? `?department=${encodeURIComponent(department)}` : "";
       return request<BlueprintRow[]>(`/blueprints${qs}`);
     },
-    proposeBlueprint: (id: string, input: { data?: Record<string, unknown>; change_summary?: string }) =>
+    proposeBlueprint: (
+      id: string,
+      input: { data?: Record<string, unknown>; change_summary?: string }
+    ) =>
       request<BlueprintRow>(`/blueprints/${encodeURIComponent(id)}/propose`, {
         method: "POST",
         body: JSON.stringify(input),
@@ -965,7 +1007,8 @@ export const kadApi = {
         `/templates/${encodeURIComponent(id)}/approve`,
         { method: "POST" }
       ),
-    usage: (id: string) => request<TemplateUsageRow[]>(`/templates/${encodeURIComponent(id)}/usage`),
+    usage: (id: string) =>
+      request<TemplateUsageRow[]>(`/templates/${encodeURIComponent(id)}/usage`),
   },
 
   workflows: {

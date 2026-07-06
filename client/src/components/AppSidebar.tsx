@@ -369,11 +369,13 @@ export function AppSidebar({ wsConnected, collapsed, onToggle }: AppSidebarProps
     >
       {/* Brand — one logo, one name, everywhere. */}
       <div className="h-16 px-3 border-b border-border flex-shrink-0 flex items-center">
-        <div className={`flex items-center min-w-0 ${collapsed ? "justify-center w-full" : "gap-2.5 px-1"}`}>
+        <div
+          className={`flex items-center min-w-0 ${collapsed ? "justify-center w-full" : "gap-2.5 px-1"}`}
+        >
           <img src="/kad/kstudy-icon.png" alt="" className="w-6 h-6 rounded-md flex-shrink-0" />
           {!collapsed && (
             <span className="kad-label text-kad-text-strong font-semibold truncate">
-              Kstudy AI Department
+              Kstudy Curriculum R&D
             </span>
           )}
         </div>
@@ -575,7 +577,9 @@ export function AppSidebar({ wsConnected, collapsed, onToggle }: AppSidebarProps
                 </span>
               )}
             </span>
-            {!collapsed && <span className="text-[11px] font-medium text-kad-text-muted">v2.0</span>}
+            {!collapsed && (
+              <span className="text-[11px] font-medium text-kad-text-muted">v2.0</span>
+            )}
           </div>
         </button>
         {collapsed ? (
@@ -868,7 +872,9 @@ function ConnectionStatusModal({
                     className="flex items-center justify-between gap-3 text-[11px] font-mono px-2 py-1 rounded bg-surface-2/50"
                   >
                     <span className="text-kad-text truncate">{evt.type}</span>
-                    <span className="text-kad-text-muted flex-shrink-0">{formatRelative(evt.at, t)}</span>
+                    <span className="text-kad-text-muted flex-shrink-0">
+                      {formatRelative(evt.at, t)}
+                    </span>
                   </li>
                 ))}
               </ul>

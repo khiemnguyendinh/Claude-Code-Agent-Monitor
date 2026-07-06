@@ -242,6 +242,8 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS dashboard_runs (
     id TEXT PRIMARY KEY,
     session_id TEXT,
+    source TEXT NOT NULL DEFAULT 'run',
+    task_id TEXT,
     mode TEXT NOT NULL,
     cwd TEXT NOT NULL,
     model TEXT,
@@ -556,6 +558,18 @@ function applyIntroPricing(dbHandle = db) {
   }
 }
 applyIntroPricing();
+
+try {
+  db.prepare("SELECT source FROM dashboard_runs LIMIT 1").get();
+} catch {
+  db.prepare("ALTER TABLE dashboard_runs ADD COLUMN source TEXT NOT NULL DEFAULT 'run'").run();
+}
+try {
+  db.prepare("SELECT task_id FROM dashboard_runs LIMIT 1").get();
+} catch {
+  db.prepare("ALTER TABLE dashboard_runs ADD COLUMN task_id TEXT").run();
+}
+db.prepare("CREATE INDEX IF NOT EXISTS idx_dashboard_runs_task ON dashboard_runs(task_id)").run();
 
 // Migrate: if token_usage has rows without model column (old schema), add it
 try {

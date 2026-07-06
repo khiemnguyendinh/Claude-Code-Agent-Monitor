@@ -747,6 +747,8 @@ export interface RunHandle {
   id: string;
   pid: number | null;
   mode: RunMode;
+  source?: string;
+  taskId?: string | null;
   cwd: string;
   model: string | null;
   permissionMode: PermissionMode;
@@ -780,6 +782,8 @@ export interface RunListResponse {
  */
 export interface DashboardRunHistoryItem {
   id: string;
+  source?: string | null;
+  task_id?: string | null;
   session_id: string | null;
   mode: RunMode;
   cwd: string;

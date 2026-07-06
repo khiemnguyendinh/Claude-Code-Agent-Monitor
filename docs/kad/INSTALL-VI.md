@@ -1,4 +1,4 @@
-# Hướng dẫn Cài đặt Kstudy AI Department (KAD)
+# Hướng dẫn Cài đặt Kstudy Curriculum R&D (KAD)
 
 ## 1. Yêu cầu hệ thống
 - Node.js (v18+)

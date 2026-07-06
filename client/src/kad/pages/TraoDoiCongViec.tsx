@@ -33,6 +33,7 @@ import {
   toMessage,
   type ApprovalRow,
   type DelegationRow,
+  type KadDashboardRun,
   type KadTask,
   type KadTimelineItem,
   type KadWorkflow,
@@ -170,6 +171,7 @@ function TraoDoiCongViecInner({
   const [taskId, setTaskId] = useState<string | null>(fresh ? null : routeId);
   const [task, setTask] = useState<KadTask | null>(null);
   const [timeline, setTimeline] = useState<KadTimelineItem[]>([]);
+  const [dashboardRuns, setDashboardRuns] = useState<KadDashboardRun[]>([]);
   const [agentsById, setAgentsById] = useState<Map<string, AgentProfile>>(new Map());
   const [workflow, setWorkflow] = useState<KadWorkflow | null>(null);
   const [isRunning, setIsRunning] = useState(false);
@@ -235,6 +237,10 @@ function TraoDoiCongViecInner({
           setIsRunning(!!lastRun && lastRun.kind === "run" && lastRun.data.status === "running");
         })
         .catch(() => {});
+      kadApi.runTask
+        .listByTask(id)
+        .then((r) => setDashboardRuns(r.items))
+        .catch(() => {});
     });
 
     (async () => {
@@ -289,14 +295,16 @@ function TraoDoiCongViecInner({
           unsubscribe = subscribeKadScope(taskScope(realId), (ev) => handleWsEvent(ev));
         }
 
-        const [taskRow, timelineRows, agentRows] = await Promise.all([
+        const [taskRow, timelineRows, agentRows, dashboardRunRows] = await Promise.all([
           kadApi.tasks.get(realId),
           kadApi.tasks.timeline(realId),
           kadApi.agents.list(),
+          kadApi.runTask.listByTask(realId).catch(() => ({ items: [] as KadDashboardRun[] })),
         ]);
         setTask(taskRow);
         setTimeline(timelineRows);
         setAgentsById(new Map(agentRows.map((a) => [a.id, a])));
+        setDashboardRuns(dashboardRunRows.items);
         const lastRun = [...timelineRows].reverse().find((t) => t.kind === "run");
         setIsRunning(!!lastRun && lastRun.kind === "run" && lastRun.data.status === "running");
         if (taskRow.workflowId) {
@@ -455,6 +463,7 @@ function TraoDoiCongViecInner({
           .map((t) => t.data)
       )
     : genericLifecycleSteps(task, briefMessages.length > 0);
+  const latestDashboardRun = dashboardRuns[0] ?? null;
 
   const agentLabel = (id: string) => agentsById.get(id)?.displayName ?? id;
   const avatarProps = (id: string) => ({
@@ -701,6 +710,7 @@ function TraoDoiCongViecInner({
       {/* Pane B */}
       <main className="flex-1 min-w-[280px] flex flex-col">
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3">
+          {latestDashboardRun && <DashboardRunAttachment run={latestDashboardRun} />}
           {timeline.map((item) => (
             <TimelineItemRenderer
               key={`${item.kind}-${item.kind === "run" ? item.data.id : (item.data as { id: string }).id}`}
@@ -819,6 +829,32 @@ function TraoDoiCongViecInner({
           <PanelRightOpen className="w-4 h-4" />
         </button>
       )}
+    </div>
+  );
+}
+
+function DashboardRunAttachment({ run }: { run: KadDashboardRun }) {
+  const href = run.session_id
+    ? `/he-thong/run?session=${encodeURIComponent(run.session_id)}`
+    : `/he-thong/run?run=${encodeURIComponent(run.id)}`;
+  return (
+    <div className="rounded-xl border border-emerald-500/25 bg-emerald-500/[0.06] px-4 py-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <p className="kad-label text-kad-text-strong">Claude Code run thật</p>
+          <p className="kad-caption text-kad-text-muted truncate">
+            {run.status} · {run.permission_mode ?? "permission mặc định"} ·{" "}
+            {run.session_id ? `session ${run.session_id}` : `run ${run.id}`}
+          </p>
+        </div>
+        <a
+          href={href}
+          className="inline-flex items-center gap-1.5 rounded-md border border-kad-border bg-kad-surface px-2.5 py-1.5 kad-caption text-kad-text hover:bg-kad-surface-2"
+        >
+          Mở cuộc chat
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+      </div>
     </div>
   );
 }
