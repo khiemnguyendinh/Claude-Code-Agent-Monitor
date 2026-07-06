@@ -43,32 +43,54 @@ function updateRun(id, { status, output, tokens_used, engine_session_id }) {
   const sets = [];
   const p = { id };
   if (status !== undefined) (sets.push("status=@status"), (p.status = status));
-  if (engine_session_id !== undefined) (sets.push("engine_session_id=@esid"), (p.esid = engine_session_id));
-  if (output !== undefined) (sets.push("output=@output"), (p.output = output != null ? JSON.stringify(output) : null));
-  if (tokens_used !== undefined) (sets.push("tokens_used=@tokens"), (p.tokens = tokens_used != null ? JSON.stringify(tokens_used) : null));
+  if (engine_session_id !== undefined)
+    (sets.push("engine_session_id=@esid"), (p.esid = engine_session_id));
+  if (output !== undefined)
+    (sets.push("output=@output"), (p.output = output != null ? JSON.stringify(output) : null));
+  if (tokens_used !== undefined)
+    (sets.push("tokens_used=@tokens"),
+      (p.tokens = tokens_used != null ? JSON.stringify(tokens_used) : null));
   // waiting_approval is terminal for the TURN (the claude process has exited), so it
   // stamps completed_at too — the run's wall-clock ends at the approval boundary.
-  if (status && ["completed", "failed", "cancelled", "waiting_approval"].includes(status)) sets.push("completed_at=@now"), (p.now = nowIso());
+  if (status && ["completed", "failed", "cancelled", "waiting_approval"].includes(status))
+    (sets.push("completed_at=@now"), (p.now = nowIso()));
   if (!sets.length) return getRun(id);
   db.prepare(`UPDATE task_runs SET ${sets.join(", ")} WHERE id=@id`).run(p);
   return getRun(id);
 }
 
 function listByTask(task_id) {
-  return db.prepare("SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at ASC").all(task_id).map(hydrate);
+  return db
+    .prepare("SELECT * FROM task_runs WHERE task_id=? ORDER BY started_at ASC")
+    .all(task_id)
+    .map(hydrate);
 }
 
-/** Runs still marked running/pending — used by reconcile_runs after a crash. */
-function listUnfinished() {
+/** Runs still marked running/pending — used by reconcile_runs after a crash.
+ * With `beforeIso`, only returns runs started before that cutoff — excludes
+ * runs the boot-time sweep would otherwise race against a still-starting
+ * legitimate run (spec 04 §4 amendment, orchestrator race fix). */
+function listUnfinished(beforeIso) {
+  if (beforeIso) {
+    return db
+      .prepare(
+        "SELECT * FROM task_runs WHERE status IN ('pending','running') AND started_at < ? ORDER BY started_at ASC"
+      )
+      .all(beforeIso)
+      .map(hydrate);
+  }
   return db
-    .prepare("SELECT * FROM task_runs WHERE status IN ('pending','running') ORDER BY started_at ASC")
+    .prepare(
+      "SELECT * FROM task_runs WHERE status IN ('pending','running') ORDER BY started_at ASC"
+    )
     .all()
     .map(hydrate);
 }
 
 /** Count runs currently occupying a spawn slot (concurrency guardrail). */
 function countActive() {
-  return db.prepare("SELECT COUNT(*) n FROM task_runs WHERE status IN ('pending','running')").get().n;
+  return db.prepare("SELECT COUNT(*) n FROM task_runs WHERE status IN ('pending','running')").get()
+    .n;
 }
 
 /** Bulk map of engine_session_id -> {task_id, task_title} for every run that

@@ -18,6 +18,7 @@ require("./runner/claude-cli"); // self-registers the 'claude' adapter
 const { emitTask } = require("./events");
 const { getInternalToken } = require("./internal-auth");
 const { getDataDir } = require("../claude-home");
+const { resolveTaskDir } = require("./workspace-root");
 
 // API base the spawned MCP server calls back on. Set from index.js after listen.
 let API_BASE = process.env.KAD_API_BASE || "http://127.0.0.1:4820";
@@ -178,7 +179,11 @@ async function spawnAgentRun({
         mcpTools: mcpToolsFor(agent),
         mcpConfigPath,
         maxTurns: gate.maxTurns,
-        cwd: task.working_dir || undefined,
+        // task.working_dir is a short UI-facing string ("kstudy-rd/K3"), not a
+        // real path — must resolve through workspace-root.js (same as the
+        // attachments uploader) or spawn's cwd is nonsense relative to
+        // process.cwd() and every turn ENOENTs before the engine even starts.
+        cwd: task.working_dir ? resolveTaskDir(task.working_dir) : undefined,
       },
       (ev) => onRunEvent(run.id, task.id, ev)
     );
@@ -456,9 +461,13 @@ async function runDelegation(delegationId) {
 /** Startup crash recovery: orphan running/pending runs → failed (spec 04 §4).
  * Also un-sticks the owning task: a task left 'doing' by a dead run is parked at
  * 'waiting_human' so a human notices (never silently stuck 'doing'). Leftover
- * per-run MCP config dirs (plaintext token) from before the crash are swept. */
-function reconcileRuns() {
-  const orphans = repo.runs.listUnfinished();
+ * per-run MCP config dirs (plaintext token) from before the crash are swept.
+ *
+ * `cutoffIso`, when given, restricts reaping to runs started before that time —
+ * without it the boot sweep can race a run created within the same tick window
+ * and kill it while it's still legitimately starting (not a crash leftover). */
+function reconcileRuns(cutoffIso) {
+  const orphans = repo.runs.listUnfinished(cutoffIso);
   for (const r of orphans) {
     repo.tx(() => {
       repo.runs.updateRun(r.id, {

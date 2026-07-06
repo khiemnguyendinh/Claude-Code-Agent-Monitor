@@ -14,6 +14,7 @@
  * every tick alongside dependency release). unknown `kind` rows still fail loudly.
  */
 const repo = require("./repo");
+const { nowIso } = require("./repo/db");
 const orchestrator = require("./orchestrator");
 const dependencyWorker = require("./dependency-worker");
 const automation = require("./automation");
@@ -27,8 +28,8 @@ let sweeping = false;
 class PermanentJobError extends Error {}
 
 const handlers = {
-  async reconcile_runs() {
-    const n = orchestrator.reconcileRuns();
+  async reconcile_runs(payload) {
+    const n = orchestrator.reconcileRuns(payload && payload.cutoff);
     if (n) console.log(`[kad-worker] reconcile_runs: cleaned ${n} orphan run(s)`);
   },
   async resume_task(payload) {
@@ -47,13 +48,17 @@ const handlers = {
   async pattern_detect(payload) {
     const { department_id, category } = payload;
     if (!department_id || !category) throw new PermanentJobError("pattern_detect missing fields");
-    const notes = repo.db.prepare(`
+    const notes = repo.db
+      .prepare(
+        `
       SELECT * FROM learning_notes
       WHERE department_id=? AND correction_category=? AND created_at > datetime('now', '-30 days')
-    `).all(department_id, category);
+    `
+      )
+      .all(department_id, category);
 
     // Spec 01 §5: Pattern detection >= 3 notes in same category/30 days
-    const hasPattern = notes.some(n => n.trigger_type === 'pattern_detection');
+    const hasPattern = notes.some((n) => n.trigger_type === "pattern_detection");
     if (!hasPattern && notes.length >= 3) {
       repo.learning.createNote({
         department_id,
@@ -64,7 +69,7 @@ const handlers = {
         prevention: "Cần cập nhật system_prompt hoặc workflow để giải quyết triệt để",
         affected_areas: ["system"],
         proposed_change_target: "blueprint",
-        change_status: "noted" // MVP stops here, does not auto-propose
+        change_status: "noted", // MVP stops here, does not auto-propose
       });
     }
   },
@@ -129,10 +134,17 @@ async function sweep() {
   }
 }
 
-/** Start the worker. Enqueues a reconcile_runs job first (crash recovery). */
+/** Start the worker. Enqueues a reconcile_runs job first (crash recovery).
+ * The cutoff is stamped at boot, not at sweep time — a run created after boot
+ * but before this job is leased must survive the reap (it's not a crash leftover,
+ * just still starting). */
 function startWorker() {
   if (timer) return;
-  repo.jobs.enqueue({ kind: "reconcile_runs", payload: {}, dedupKey: "reconcile_runs:boot" });
+  repo.jobs.enqueue({
+    kind: "reconcile_runs",
+    payload: { cutoff: nowIso() },
+    dedupKey: "reconcile_runs:boot",
+  });
   timer = setInterval(() => {
     sweep().catch((e) => console.warn("[kad-worker] sweep error:", e && e.message));
   }, TICK_MS);
