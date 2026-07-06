@@ -27,6 +27,7 @@ import { KadShell } from "./kad/components/KadShell";
 import { TongQuan } from "./kad/pages/TongQuan";
 import { MucTieuChienLuoc } from "./kad/pages/MucTieuChienLuoc";
 import { CongViecMoi } from "./kad/pages/CongViecMoi";
+import { CongViecLayout } from "./kad/pages/CongViecLayout";
 import { TuDongHoa } from "./kad/pages/TuDongHoa";
 import { TraoDoiCongViec } from "./kad/pages/TraoDoiCongViec";
 import { DoiNgu } from "./kad/pages/DoiNgu";
@@ -73,10 +74,12 @@ export default function App() {
                 spec/ui/08-gop-cong-viec-kanban.md. "/cong-viec" giờ redirect
                 sang đó; luồng Giao việc giữ nguyên ở /cong-viec/moi (hero
                 composer) và /cong-viec/:id (trao đổi). */}
-            <Route path="cong-viec" element={<Navigate to="/he-thong/kanban" replace />} />
-            <Route path="cong-viec/moi" element={<CongViecMoi />} />
-            <Route path="cong-viec/tu-dong-hoa" element={<TuDongHoa />} />
-            <Route path="cong-viec/:id" element={<TraoDoiCongViec />} />
+            <Route path="cong-viec" element={<CongViecLayout />}>
+              <Route index element={<Navigate to="/cong-viec/moi" replace />} />
+              <Route path="moi" element={<CongViecMoi />} />
+              <Route path="tu-dong-hoa" element={<TuDongHoa />} />
+              <Route path=":id" element={<TraoDoiCongViec />} />
+            </Route>
             <Route path="doi-ngu" element={<DoiNgu />} />
             <Route path="hoc-lieu" element={<HocLieu />} />
             <Route path="bao-cao" element={<BaoCao />} />
