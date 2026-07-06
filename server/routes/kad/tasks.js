@@ -51,6 +51,9 @@ router.post("/", (req, res) => {
     channel_actor_ref: b.channel_actor_ref,
     working_dir: b.working_dir,
     workflow_id: b.workflow_id,
+    model: b.model,
+    thinking_level: b.thinking_level,
+    permission_mode: b.permission_mode,
   });
   // [spec/ui/07 §1] Names declared attached at Giao việc time (composer has no
   // real file picker yet — see repo/task-attachments.js). No message exists
@@ -91,7 +94,15 @@ router.patch("/:id", (req, res) => {
   if (b.priority !== undefined && !TASK_PRIORITIES.includes(b.priority))
     return err(res, "EBADPRIORITY", "invalid priority");
   const patch = {};
-  for (const k of ["status", "priority", "due_date"])
+  for (const k of [
+    "status",
+    "priority",
+    "due_date",
+    "working_dir",
+    "model",
+    "thinking_level",
+    "permission_mode",
+  ])
     if (req.body[k] !== undefined) patch[k] = req.body[k];
   const updated = repo.tasks.updateTask(req.params.id, patch);
   emitTask(req.params.id, "kad.task.status", { task_id: req.params.id, status: updated.status });

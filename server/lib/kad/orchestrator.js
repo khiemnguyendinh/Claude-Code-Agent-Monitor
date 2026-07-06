@@ -215,6 +215,12 @@ async function spawnAgentRun({
         mcpConfigPath,
         maxTurns: gate.maxTurns,
         cwd: resolveWorkingDir(task.working_dir),
+        // Per-task run config chosen in the Giao việc composer (kad-007). NULL →
+        // inherit: model unset lets the engine pick, effort unset uses the model
+        // default, permission_mode falls back to 'acceptEdits' in the adapter.
+        model: task.model || agent.default_model || null,
+        effort: task.thinking_level || null,
+        permissionMode: task.permission_mode || null,
       },
       (ev) => onRunEvent(run.id, task.id, ev)
     );

@@ -11,6 +11,10 @@ const { registerAdapter } = require("./adapter");
 const CLAUDE_BIN = process.env.KAD_CLAUDE_BIN || "claude";
 const RUN_TIMEOUT_MS = Number(process.env.KAD_RUN_TIMEOUT_MS || 15 * 60 * 1000);
 
+// Permission modes the composer may pick (mirrors run-spawner's ALLOWED set).
+// Anything else falls back to the historical default 'acceptEdits'.
+const ALLOWED_PERMISSION_MODES = new Set(["default", "acceptEdits", "bypassPermissions", "plan"]);
+
 /**
  * Strip host-managed auth vars so the child authenticates from filesystem/keychain
  * OAuth (`claude login`) or ANTHROPIC_API_KEY — same intent as run-spawner's
@@ -35,7 +39,11 @@ function spawnEnv(extra) {
     process.env.CLAUDE_CODE_ENTRYPOINT === "claude-desktop";
   if (hostBrokered && process.env.KAD_CLAUDE_KEEP_ENV !== "1" && !process.env.ANTHROPIC_API_KEY) {
     for (const k of Object.keys(env)) {
-      if (k.startsWith("CLAUDE_CODE") || k === "ANTHROPIC_BASE_URL" || k === "CLAUDE_AGENT_SDK_VERSION") {
+      if (
+        k.startsWith("CLAUDE_CODE") ||
+        k === "ANTHROPIC_BASE_URL" ||
+        k === "CLAUDE_AGENT_SDK_VERSION"
+      ) {
         delete env[k];
       }
     }
@@ -47,9 +55,17 @@ function buildArgv(req) {
   const argv = ["-p", req.userMessage, "--output-format", "stream-json", "--verbose"];
   if (req.systemPrompt) argv.push("--append-system-prompt", req.systemPrompt);
   if (req.mcpConfigPath) argv.push("--mcp-config", req.mcpConfigPath, "--strict-mcp-config");
-  if (Array.isArray(req.mcpTools) && req.mcpTools.length) argv.push("--allowedTools", req.mcpTools.join(","));
+  if (Array.isArray(req.mcpTools) && req.mcpTools.length)
+    argv.push("--allowedTools", req.mcpTools.join(","));
   argv.push("--max-turns", String(req.maxTurns || 30));
-  argv.push("--permission-mode", "acceptEdits");
+  // Per-task run config (kad-007). model/effort omitted when unset → engine picks
+  // its default. permission_mode keeps the historical 'acceptEdits' default.
+  if (req.model) argv.push("--model", req.model);
+  if (req.effort) argv.push("--effort", req.effort);
+  argv.push(
+    "--permission-mode",
+    ALLOWED_PERMISSION_MODES.has(req.permissionMode) ? req.permissionMode : "acceptEdits"
+  );
   if (req.resumeSessionId) argv.push("--resume", req.resumeSessionId);
   return argv;
 }
@@ -139,7 +155,8 @@ const adapter = {
         } else if (ev.type === "assistant" && ev.message && Array.isArray(ev.message.content)) {
           for (const c of ev.message.content) {
             if (c.type === "text" && c.text) onEvent({ type: "text.delta", text: c.text });
-            else if (c.type === "tool_use") onEvent({ type: "tool.called", name: c.name, input: c.input });
+            else if (c.type === "tool_use")
+              onEvent({ type: "tool.called", name: c.name, input: c.input });
           }
         } else if (ev.type === "result") {
           if (typeof ev.result === "string") output = ev.result;
@@ -156,8 +173,14 @@ const adapter = {
         settled = true;
         clearTimeout(timer);
         if (killTimer) clearTimeout(killTimer);
-        const authFail = /401|authenticate|credentials/i.test(output) || /401|authenticate|credentials/i.test(stderr);
-        const error = spawnErr || (exitCode !== 0 ? stderr.trim().slice(-500) || output.slice(-500) || `exit ${exitCode}` : undefined);
+        const authFail =
+          /401|authenticate|credentials/i.test(output) ||
+          /401|authenticate|credentials/i.test(stderr);
+        const error =
+          spawnErr ||
+          (exitCode !== 0
+            ? stderr.trim().slice(-500) || output.slice(-500) || `exit ${exitCode}`
+            : undefined);
         if (error) onEvent({ type: "run.failed", error });
         else onEvent({ type: "run.completed", output, tokens });
         resolve({ engineSessionId, output, tokens, exitCode, error, authFail });
@@ -167,7 +190,10 @@ const adapter = {
 };
 
 function normalizeUsage(usage) {
-  const input = Number(usage.input_tokens || 0) + Number(usage.cache_read_input_tokens || 0) + Number(usage.cache_creation_input_tokens || 0);
+  const input =
+    Number(usage.input_tokens || 0) +
+    Number(usage.cache_read_input_tokens || 0) +
+    Number(usage.cache_creation_input_tokens || 0);
   const output = Number(usage.output_tokens || 0);
   return { input, output, total: input + output, raw: usage };
 }

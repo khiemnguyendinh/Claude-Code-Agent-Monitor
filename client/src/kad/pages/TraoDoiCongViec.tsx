@@ -72,6 +72,10 @@ interface RouterFreshState {
   // fresh-flow create call below.
   workingDir?: string;
   workflowId?: string;
+  // [kad-007] run config chosen in the composer; null/undefined → inherit.
+  model?: string | null;
+  thinkingLevel?: string | null;
+  permissionMode?: string | null;
 }
 
 export function TraoDoiCongViec() {
@@ -87,6 +91,9 @@ export function TraoDoiCongViec() {
       freshDescription={state?.description}
       freshWorkingDir={state?.workingDir}
       freshWorkflowId={state?.workflowId}
+      freshModel={state?.model}
+      freshThinkingLevel={state?.thinkingLevel}
+      freshPermissionMode={state?.permissionMode}
     />
   );
 }
@@ -155,12 +162,18 @@ function TraoDoiCongViecInner({
   freshDescription,
   freshWorkingDir,
   freshWorkflowId,
+  freshModel,
+  freshThinkingLevel,
+  freshPermissionMode,
 }: {
   routeId: string;
   fresh: boolean;
   freshDescription?: string;
   freshWorkingDir?: string;
   freshWorkflowId?: string;
+  freshModel?: string | null;
+  freshThinkingLevel?: string | null;
+  freshPermissionMode?: string | null;
 }) {
   const navigate = useNavigate();
   const { openPeek } = usePeek();
@@ -245,6 +258,9 @@ function TraoDoiCongViecInner({
             title: description,
             working_dir: freshWorkingDir,
             workflow_id: freshWorkflowId,
+            model: freshModel ?? null,
+            thinking_level: freshThinkingLevel ?? null,
+            permission_mode: freshPermissionMode ?? null,
           });
           realId = created.id;
           realIdKnown = realId;

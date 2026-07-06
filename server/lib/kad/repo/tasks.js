@@ -52,14 +52,17 @@ function createTask({
   working_dir,
   workflow_id,
   activation,
+  model,
+  thinking_level,
+  permission_mode,
 }) {
   const id = newId("task");
   const now = nowIso();
   const snapshot = resolveVersionSnapshot(department_id);
   db.prepare(
     `INSERT INTO tasks
-     (id, department_id, workflow_id, title, description, status, working_dir, org_context_version_id, blueprint_version_id, activation, automation_depth, priority, created_at, updated_at)
-     VALUES (@id,@department_id,@workflow_id,@title,@description,'inbox',@working_dir,@org_context_version_id,@blueprint_version_id,@activation,0,@priority,@now,@now)`
+     (id, department_id, workflow_id, title, description, status, working_dir, model, thinking_level, permission_mode, org_context_version_id, blueprint_version_id, activation, automation_depth, priority, created_at, updated_at)
+     VALUES (@id,@department_id,@workflow_id,@title,@description,'inbox',@working_dir,@model,@thinking_level,@permission_mode,@org_context_version_id,@blueprint_version_id,@activation,0,@priority,@now,@now)`
   ).run({
     id,
     department_id: department_id ?? null,
@@ -67,6 +70,9 @@ function createTask({
     title,
     description: description ?? null,
     working_dir: working_dir ?? null,
+    model: model ?? null,
+    thinking_level: thinking_level ?? null,
+    permission_mode: permission_mode ?? null,
     org_context_version_id: snapshot.org_context_version_id,
     blueprint_version_id: snapshot.blueprint_version_id,
     activation: activation ?? "manual",
@@ -131,6 +137,10 @@ function updateTask(id, patch = {}) {
     "org_context_version_id",
     "blueprint_version_id",
     "activation",
+    "working_dir",
+    "model",
+    "thinking_level",
+    "permission_mode",
   ];
   const sets = [];
   const params = { id, now: nowIso() };

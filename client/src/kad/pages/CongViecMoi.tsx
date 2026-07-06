@@ -21,6 +21,14 @@ import { kadApi } from "../api-client";
 import type { KadWorkflowSummary } from "../api-client";
 import { stashPendingFiles } from "../pending-uploads";
 import { SCHEDULE_FREQS, WEEKDAYS, scheduleLabel } from "../schedule-helpers";
+import {
+  MODEL_OPTIONS,
+  THINKING_OPTIONS,
+  PERMISSION_OPTIONS,
+  DEFAULT_RUN_CONFIG,
+  runConfigToPayload,
+  type RunConfigState,
+} from "../run-config";
 import { useKadToast } from "../components/Toast";
 import {
   TaskComposer,
@@ -30,7 +38,11 @@ import {
 import type { ScheduleFrequency } from "../types";
 
 const HERO_STEPS = ["Mô tả việc", "Trợ lý làm rõ", "Chốt brief", "Thực thi & báo cáo"];
-const DIR_OPTIONS = ["kstudy-rd/K3", "kstudy-rd/content", "Chọn thư mục khác…"];
+// Seed suggestions for the working-dir combobox; the user can type any other
+// relative (under the KAD workspace root) or absolute path — the datalist is
+// augmented at runtime with recently-used cwds from GET /api/run/cwds.
+const DIR_SUGGESTIONS = ["kstudy-rd/K3", "kstudy-rd/content"];
+const DEFAULT_DIR = DIR_SUGGESTIONS[0]!;
 const FREEFORM_ID = "wf-freeform";
 
 // "Việc tự do" không phải một workflow_definitions thật — là lựa chọn
@@ -66,7 +78,10 @@ export function CongViecMoi() {
   const [value, setValue] = useState("");
   const [selectedWfId, setSelectedWfId] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<{ id: string; file: File }[]>([]);
-  const [workingDir, setWorkingDir] = useState(DIR_OPTIONS[0]!);
+  const [workingDir, setWorkingDir] = useState(DEFAULT_DIR);
+  const [recentDirs, setRecentDirs] = useState<string[]>([]);
+  const [runCfg, setRunCfg] = useState<RunConfigState>(DEFAULT_RUN_CONFIG);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const composerRef = useRef<TaskComposerHandle>(null);
 
@@ -87,7 +102,24 @@ export function CongViecMoi() {
       .list()
       .then((rules) => setActiveRuleCount(rules.filter((r) => r.enabled).length))
       .catch(() => setActiveRuleCount(0));
+    // Recently-used working directories (monitor sessions + dashboard) → datalist
+    // suggestions for the working-dir combobox. Best-effort; ignore failures.
+    fetch("/api/run/cwds")
+      .then((r) => (r.ok ? r.json() : { items: [] }))
+      .then((d: { items?: { path: string }[] }) =>
+        setRecentDirs((d.items ?? []).map((i) => i.path).filter(Boolean))
+      )
+      .catch(() => setRecentDirs([]));
   }, []);
+
+  const dirOptions = useMemo(() => {
+    const seen = new Set<string>();
+    return [...DIR_SUGGESTIONS, ...recentDirs].filter((d) => {
+      if (!d || seen.has(d)) return false;
+      seen.add(d);
+      return true;
+    });
+  }, [recentDirs]);
 
   const quickstarts = useMemo(() => [...workflows, FREEFORM_CARD], [workflows]);
 
@@ -135,7 +167,8 @@ export function CongViecMoi() {
   const handleSubmit = async () => {
     const text = value.trim();
     if (!text || submitting) return;
-    const resolvedDir = workingDir.startsWith("Chọn") ? DIR_OPTIONS[0]! : workingDir;
+    const resolvedDir = workingDir.trim() || DEFAULT_DIR;
+    const runPayload = runConfigToPayload(runCfg);
     const workflowIdForApi =
       selectedWfId && selectedWfId !== FREEFORM_ID ? selectedWfId : undefined;
 
@@ -156,6 +189,7 @@ export function CongViecMoi() {
           title: text,
           working_dir: resolvedDir,
           workflow_id: workflowIdForApi,
+          ...runPayload,
         });
         if (pendingFiles.length) {
           try {
@@ -219,6 +253,7 @@ export function CongViecMoi() {
             brief: text,
             working_dir: resolvedDir,
             workflow_id: workflowIdForApi ?? null,
+            ...runPayload,
           },
           approval_required: true,
         });
@@ -254,6 +289,9 @@ export function CongViecMoi() {
         description: text,
         workflowId: workflowIdForApi,
         workingDir: resolvedDir,
+        model: runPayload.model,
+        thinkingLevel: runPayload.thinking_level,
+        permissionMode: runPayload.permission_mode,
       },
     });
   };
@@ -304,23 +342,63 @@ export function CongViecMoi() {
         </div>
       )}
 
-      <div className="flex items-center gap-4 pt-2.5 kad-caption text-kad-text-muted">
-        <label className="flex items-center gap-1.5">
+      <div className="flex items-center gap-3 pt-2.5 kad-caption text-kad-text-muted flex-wrap">
+        <label className="flex items-center gap-1.5" title="Thư mục làm việc của agent (cwd)">
           <span aria-hidden>📁</span>
-          <select
+          <input
             value={workingDir}
             onChange={(e) => setWorkingDir(e.target.value)}
-            className="kad-caption text-kad-text-muted bg-transparent border-none outline-none cursor-pointer"
-          >
-            {DIR_OPTIONS.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
+            list="kad-dir-suggestions"
+            spellCheck={false}
+            placeholder="kstudy-rd/K3"
+            className="kad-caption h-7 min-w-[220px] rounded-md bg-kad-surface-2 border border-transparent px-2 text-kad-text focus:outline-none focus:border-kad-border-strong"
+          />
+          <datalist id="kad-dir-suggestions">
+            {dirOptions.map((d) => (
+              <option key={d} value={d} />
             ))}
-          </select>
+          </datalist>
         </label>
-        <span className="text-kad-text-faint">Chỉ cần mô tả — mọi thứ khác Trợ lý sẽ hỏi</span>
+
+        {/* kad-007 — model / thinking / permission (Claude-Desktop style) */}
+        <label className="flex items-center gap-1.5" title="Chọn AI model">
+          <span aria-hidden>🧠</span>
+          <SelectInline
+            value={runCfg.model}
+            onChange={(v) => setRunCfg((c) => ({ ...c, model: v }))}
+            options={MODEL_OPTIONS}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((s) => !s)}
+          className="kad-caption text-kad-accent hover:underline"
+        >
+          {showAdvanced ? "Ẩn tuỳ chọn" : "Tuỳ chọn nâng cao"}
+        </button>
       </div>
+
+      {showAdvanced && (
+        <div className="flex items-center gap-3 pt-2 kad-caption text-kad-text-muted flex-wrap pl-1">
+          <label className="flex items-center gap-1.5" title="Mức độ tư duy (effort)">
+            <span className="text-kad-text-faint">Tư duy</span>
+            <SelectInline
+              value={runCfg.thinking}
+              onChange={(v) => setRunCfg((c) => ({ ...c, thinking: v }))}
+              options={THINKING_OPTIONS}
+            />
+          </label>
+          <label className="flex items-center gap-1.5" title="Quyền thao tác của agent">
+            <span className="text-kad-text-faint">Quyền</span>
+            <SelectInline
+              value={runCfg.permission}
+              onChange={(v) => setRunCfg((c) => ({ ...c, permission: v }))}
+              options={PERMISSION_OPTIONS}
+            />
+          </label>
+        </div>
+      )}
 
       {/* spec/ui/09 §1 — Khi nào bắt đầu? */}
       <div className="pt-3">

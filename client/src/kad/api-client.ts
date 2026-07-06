@@ -87,6 +87,9 @@ export interface TaskRow {
   description: string | null;
   status: TaskStatus;
   working_dir: string | null;
+  model: string | null;
+  thinking_level: string | null;
+  permission_mode: string | null;
   priority: Priority;
   due_date: string | null;
   assigned_agent_id: string | null;
@@ -124,6 +127,9 @@ export interface KadTask {
   description: string | null;
   status: TaskStatus;
   workingDir: string | null;
+  model: string | null;
+  thinkingLevel: string | null;
+  permissionMode: string | null;
   priority: Priority;
   dueDate: string | null;
   assignedAgentId: string | null;
@@ -143,6 +149,9 @@ function toTask(row: TaskRow): KadTask {
     description: row.description,
     status: row.status,
     workingDir: row.working_dir,
+    model: row.model ?? null,
+    thinkingLevel: row.thinking_level ?? null,
+    permissionMode: row.permission_mode ?? null,
     priority: row.priority,
     dueDate: row.due_date,
     assignedAgentId: row.assigned_agent_id,
@@ -1041,7 +1050,25 @@ export const kadApi = {
       working_dir?: string | null;
       workflow_id?: string | null;
       attachment_names?: string[];
+      model?: string | null;
+      thinking_level?: string | null;
+      permission_mode?: string | null;
     }) => request<TaskRow>("/tasks", { method: "POST", body: JSON.stringify(input) }).then(toTask),
+    update: (
+      id: string,
+      patch: {
+        status?: string;
+        priority?: Priority;
+        working_dir?: string | null;
+        model?: string | null;
+        thinking_level?: string | null;
+        permission_mode?: string | null;
+      }
+    ) =>
+      request<TaskRow>(`/tasks/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }).then(toTask),
     get: (id: string) => request<TaskRow>(`/tasks/${encodeURIComponent(id)}`).then(toTask),
     list: (params?: { status?: string; department?: string; limit?: number }) => {
       const qs = new URLSearchParams();

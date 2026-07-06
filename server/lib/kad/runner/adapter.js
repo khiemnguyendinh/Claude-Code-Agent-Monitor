@@ -13,6 +13,9 @@
  * @property {string} mcpConfigPath       - path to the KAD MCP config JSON
  * @property {number} [maxTurns]
  * @property {string} [cwd]
+ * @property {string} [model]             - --model override (kad-007; unset → engine default)
+ * @property {string} [effort]            - --effort / thinking level (kad-007; unset → model default)
+ * @property {string} [permissionMode]    - --permission-mode (kad-007; unset → 'acceptEdits')
  * @property {object} [env]               - extra env (KAD_RUN_ID/TASK_ID/AGENT_ID/API_BASE/TOKEN)
  *
  * @typedef {Object} RunResult
