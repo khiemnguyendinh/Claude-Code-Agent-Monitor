@@ -1,13 +1,10 @@
 /**
  * Reactive overlay shared across KAD screens (Tổng quan, peek drawer, command
  * palette, ...) so an action in one place (e.g. "Duyệt" in the peek drawer)
- * is reflected everywhere on screen. `approvals`/`standup`/`agentsById`/`goals`/
- * `notifications` are wired to the real `/api/kad/*` backend + WS (the notification
- * bell refetches live on the `kad.notification` event). `tasks`/`automationRules`
- * remain in-memory mock overlays here — but nothing renders them anymore (the
- * real screens fetch via kadApi directly: TuDongHoa/CongViecMoi call
- * `kadApi.automationRules`, the Tổng quan project list calls `kadApi.tasks`), so
- * they're vestigial rather than a visible mock surface.
+ * is reflected everywhere on screen. All state — `approvals`/`standup`/
+ * `agentsById`/`goals`/`notifications`/`tasks` — is wired to the real `/api/kad/*`
+ * backend + WS (the notification bell + task list refetch live on the
+ * `kad.notification` / `kad.task.status` events). No mock overlays remain.
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";

@@ -172,7 +172,9 @@ export function ArtifactViewer({
         {artifact.status === "approved" && (
           <KadButton
             variant="secondary"
-            onClick={() => toast({ message: "Kết nối xuất bản chưa nằm trong phạm vi mockup." })}
+            onClick={() =>
+              toast({ message: "Xuất bản qua connector ngoài chưa được cấu hình." })
+            }
           >
             Xuất bản…
           </KadButton>
@@ -217,7 +219,21 @@ export function ArtifactViewer({
               );
               return;
             }
-            toast({ message: "Bản mockup — chưa xuất file thật." });
+            // Markdown artifact: export its real content as a .md file client-side.
+            const safeName = (artifact.fileName || artifact.title || "hoc-lieu")
+              .replace(/[^\p{L}\p{N}\-_. ]/gu, "")
+              .trim();
+            const blob = new Blob([artifact.content ?? ""], {
+              type: "text/markdown;charset=utf-8",
+            });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = safeName.toLowerCase().endsWith(".md") ? safeName : `${safeName}.md`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
           }}
           className="ml-auto"
         >
