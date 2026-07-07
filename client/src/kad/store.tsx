@@ -11,20 +11,17 @@
  */
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { kadApi } from "./api-client";
+import { kadApi, taskRowToCard } from "./api-client";
 import { departmentScope, subscribeKadScope } from "./ws-client";
-import { AUTOMATION_RULES, BLOCKED_TASKS, TASK_CARDS } from "./mockData";
 import type {
   AgentProfile,
   Approval,
   ApprovalStatus,
-  AutomationRule,
   Goal,
   KadNotification,
   StandupBrief,
   StrategyPlan,
   TaskCard,
-  TaskStatus,
 } from "./types";
 
 const EMPTY_STANDUP: StandupBrief = {
@@ -38,37 +35,22 @@ const EMPTY_STANDUP: StandupBrief = {
 
 const EMPTY_STRATEGY: StrategyPlan = { bodyMarkdown: "", updatedAt: null };
 
-let taskIdSeq = 0;
-
 interface KadStoreValue {
   approvals: Approval[];
   /** Rejects on request failure so callers can show an error / avoid an
    * optimistic success toast instead of assuming the decision landed. */
   decideApproval: (id: string, status: ApprovalStatus, reason: string | null) => Promise<void>;
-  /** Real agent_profiles by id (spec 03) — ids don't match mockData's, so screens
-   * rendering a real agentId must pass AgentAvatar's displayNameOverride/agentNameOverride
-   * from this map instead of relying on mockData's findAgent(). */
+  /** Real agent_profiles by id (spec 03) — used by AgentAvatar + any screen that
+   * needs to resolve a real agentId → display name. */
   agentsById: Map<string, AgentProfile>;
   notifications: KadNotification[];
   unreadCount: number;
   markAllNotificationsRead: () => void;
   standup: StandupBrief;
   regenerateStandup: () => void;
+  /** Real tasks (GET /api/kad/tasks, adapted to TaskCard), refetched on task WS
+   * events. Read by the peek drawer (TaskPeek / GoalPeek) and the ⌘K palette. */
   tasks: TaskCard[];
-  addTask: (input: {
-    title: string;
-    dueDate?: string | null;
-    workingDir?: string | null;
-    attachmentNames?: string[];
-    startCondition?: string | null;
-  }) => string;
-  assignTask: (id: string, agentId: string) => void;
-  releaseDependency: (taskId: string) => void;
-  automationRules: AutomationRule[];
-  allAutomationPaused: boolean;
-  toggleRule: (id: string) => void;
-  togglePauseAll: () => void;
-  addRule: (rule: AutomationRule) => void;
   goals: Goal[];
   strategy: StrategyPlan;
   /** Rejects on request failure — same contract as decideApproval (real
@@ -80,9 +62,7 @@ const KadStoreContext = createContext<KadStoreValue | null>(null);
 
 export function KadStoreProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<KadNotification[]>([]);
-  const [tasks, setTasks] = useState<TaskCard[]>([...BLOCKED_TASKS, ...TASK_CARDS]);
-  const [automationRules, setAutomationRules] = useState<AutomationRule[]>(AUTOMATION_RULES);
-  const [allAutomationPaused, setAllAutomationPaused] = useState(false);
+  const [tasks, setTasks] = useState<TaskCard[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [strategy, setStrategy] = useState<StrategyPlan>(EMPTY_STRATEGY);
 
@@ -111,6 +91,13 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
       .catch((e) => console.warn("[kad] failed to load notifications:", e && e.message));
   }, []);
 
+  const refetchTasks = useCallback((deptId: string | null) => {
+    kadApi.tasks
+      .list({ limit: 200, ...(deptId ? { department: deptId } : {}) })
+      .then((rows) => setTasks(rows.map(taskRowToCard)))
+      .catch((e) => console.warn("[kad] failed to load tasks:", e && e.message));
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     let unsubscribe: (() => void) | undefined;
@@ -129,6 +116,7 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
         departmentIdRef.current = deptId;
         refetchApprovals(deptId);
         refetchNotifications(deptId);
+        refetchTasks(deptId);
         kadApi.standup
           .today(deptId ?? undefined)
           .then(setStandup)
@@ -143,6 +131,11 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
           // the bell's unread dot lights up live, no page reload.
           if (ev.type === "kad.notification") {
             refetchNotifications(departmentIdRef.current);
+          }
+          // Task created/status-changed (manual, automation-rule, or dependency
+          // release) — keep the peek drawer + ⌘K palette task list live.
+          if (ev.type === "kad.task.status") {
+            refetchTasks(departmentIdRef.current);
           }
         });
       })
@@ -208,71 +201,6 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
-  const addTask = useCallback(
-    (input: {
-      title: string;
-      dueDate?: string | null;
-      workingDir?: string | null;
-      attachmentNames?: string[];
-      startCondition?: string | null;
-    }) => {
-      taskIdSeq += 1;
-      const id = `task-new-${taskIdSeq}`;
-      const blocked = Boolean(input.startCondition);
-      const newTask: TaskCard = {
-        id,
-        parentTaskId: null,
-        title: input.title,
-        status: (blocked ? "blocked" : "inbox") as TaskStatus,
-        projectTitle: "Chưa gắn dự án",
-        dueDate: input.dueDate ?? null,
-        assignedAgentId: null,
-        hasFailedRun: false,
-        retryCount: 0,
-        priority: "normal",
-        updatedAt: new Date().toISOString(),
-        workingDir: input.workingDir ?? null,
-        attachmentNames: input.attachmentNames ?? [],
-        startCondition: input.startCondition ?? null,
-      };
-      setTasks((prev) => [newTask, ...prev]);
-      return id;
-    },
-    []
-  );
-
-  const assignTask = useCallback((id: string, agentId: string) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === id ? { ...t, assignedAgentId: agentId, status: "doing" as TaskStatus } : t
-      )
-    );
-  }, []);
-
-  // spec/ui/09 — gỡ điều kiện: task blocked → inbox (worker thả khi điều kiện thoả;
-  // ở mockup người gỡ tay để demo).
-  const releaseDependency = useCallback((taskId: string) => {
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === taskId ? { ...t, status: "inbox" as TaskStatus, startCondition: null } : t
-      )
-    );
-  }, []);
-
-  const toggleRule = useCallback((id: string) => {
-    setAutomationRules((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, enabled: !r.enabled } : r))
-    );
-  }, []);
-
-  const togglePauseAll = useCallback(() => {
-    setAllAutomationPaused((p) => !p);
-  }, []);
-
-  const addRule = useCallback((rule: AutomationRule) => {
-    setAutomationRules((prev) => [rule, ...prev]);
-  }, []);
-
   // Trưởng phòng nhập trực tiếp mục tiêu + chiến lược (không phải đề xuất chờ
   // duyệt): ghi thẳng, không qua bước Gửi duyệt — persisted via PUT
   // /api/kad/goals (Phase 4) so Tổng quan (thẻ mục tiêu) và tab Mục tiêu phản
@@ -294,14 +222,6 @@ export function KadStoreProvider({ children }: { children: ReactNode }) {
     standup,
     regenerateStandup,
     tasks,
-    addTask,
-    assignTask,
-    releaseDependency,
-    automationRules,
-    allAutomationPaused,
-    toggleRule,
-    togglePauseAll,
-    addRule,
     goals,
     strategy,
     saveGoalsAndStrategy,

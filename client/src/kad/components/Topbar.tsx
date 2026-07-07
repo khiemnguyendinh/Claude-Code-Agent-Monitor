@@ -5,18 +5,18 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Bell, Search } from "lucide-react";
-import { TASK_CARDS } from "../mockData";
 import { useKadStore } from "../store";
+import type { TaskCard } from "../types";
 import { formatRelativeTime } from "../format";
 
-function useBreadcrumb(): string[] {
+function useBreadcrumb(tasks: TaskCard[]): string[] {
   const { pathname } = useLocation();
   if (pathname === "/") return ["Tổng quan"];
   if (pathname === "/cong-viec/moi") return ["Giao việc"];
   if (pathname === "/cong-viec") return ["Công việc"];
   if (pathname.startsWith("/cong-viec/")) {
     const id = pathname.split("/")[2];
-    const task = TASK_CARDS.find((t) => t.id === id);
+    const task = tasks.find((t) => t.id === id);
     return ["Công việc", task?.title ?? "Trao đổi công việc"];
   }
   if (pathname === "/doi-ngu") return ["Đội ngũ"];
@@ -26,9 +26,9 @@ function useBreadcrumb(): string[] {
 }
 
 export function Topbar({ onOpenPalette }: { onOpenPalette: () => void }) {
-  const crumbs = useBreadcrumb();
+  const { notifications, unreadCount, markAllNotificationsRead, tasks } = useKadStore();
+  const crumbs = useBreadcrumb(tasks);
   const [bellOpen, setBellOpen] = useState(false);
-  const { notifications, unreadCount, markAllNotificationsRead } = useKadStore();
   const navigate = useNavigate();
 
   return (

@@ -4,7 +4,7 @@
  * primary background) so they're never mistaken for an AI teammate.
  */
 import { agentHue, agentTintStyle, initialsFromName } from "../agentTheme";
-import { findAgent } from "../mockData";
+import { useKadStore } from "../store";
 
 export type DotStatus = "running" | "idle" | "waiting" | "error";
 
@@ -52,7 +52,10 @@ export function AgentAvatar({
   displayNameOverride?: string;
   agentNameOverride?: string;
 }) {
-  const agent = displayNameOverride ? null : findAgent(agentId);
+  // Resolve real agent identity from the store (GET /api/kad/agents). Explicit
+  // overrides still win for callers that already hold the fetched agent.
+  const { agentsById } = useKadStore();
+  const agent = displayNameOverride ? undefined : agentsById.get(agentId);
   const name = displayNameOverride ?? agent?.displayName ?? "?";
   const hue = agentHue(agentNameOverride ?? agent?.name ?? agentId);
   const px = SIZE_PX[size];
