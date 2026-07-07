@@ -6,7 +6,6 @@
  */
 import { useState } from "react";
 import { Download, Eye, File as FileIcon, FileQuestion } from "lucide-react";
-import { ARTIFACTS, findArtifact } from "../mockData";
 import { kadApi } from "../api-client";
 import type { Artifact } from "../types";
 import { useKadToast } from "./Toast";
@@ -32,7 +31,6 @@ interface ArtifactViewerProps {
 }
 
 export function ArtifactViewer({
-  artifactId,
   artifact: artifactOverride,
   versions: versionsOverride,
   lineage,
@@ -40,18 +38,13 @@ export function ArtifactViewer({
   onDeleted,
 }: ArtifactViewerProps) {
   const toast = useKadToast();
-  const artifact = artifactOverride ?? findArtifact(artifactId);
+  const artifact = artifactOverride;
   const [showDiff, setShowDiff] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   if (!artifact) return <KadEmptyState icon={FileQuestion} message="Không tìm thấy học liệu." />;
 
-  const versions = (
-    versionsOverride ??
-    ARTIFACTS.filter(
-      (a) => a.taskId === artifact.taskId && a.artifactType === artifact.artifactType
-    )
-  ).sort((a, b) => a.version - b.version);
+  const versions = (versionsOverride ?? [artifact]).sort((a, b) => a.version - b.version);
   const previous = versions.find((v) => v.version === artifact.version - 1);
   // Phase 6 — /hoc-lieu uploads (loose files or a folder) aren't markdown;
   // MarkdownLite would just render nothing useful for a binary file.

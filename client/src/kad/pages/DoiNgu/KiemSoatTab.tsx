@@ -5,11 +5,9 @@
  */
 import { useEffect, useState } from "react";
 import { ShieldCheck, Check, Minus } from "lucide-react";
-import { DEPARTMENT_POLICIES } from "../../mockData";
 import { kadApi } from "../../api-client";
 import type { KadBudgetStatus } from "../../api-client";
 import type { AgentProfile, AgentPermissions } from "../../types";
-import { ARTIFACT_TYPE_LABEL } from "../../labels";
 import { useKadToast } from "../../components/Toast";
 import { KadCard, KadCardHeader, KadButton, KadSkeleton } from "../../components/primitives";
 import { ProgressBar } from "../../components/Progress";
@@ -33,7 +31,6 @@ export function KiemSoatTab() {
   // luật đang được enforce), không phải hoạt động realtime — giữ nguyên. Khối
   // Ngân sách bên dưới đọc số THẬT từ GET /api/kad/reports/budget (hạn mức từ
   // blueprint phòng + token dùng hôm nay tính qua cost.js).
-  const [autoApprove, setAutoApprove] = useState(DEPARTMENT_POLICIES.autoApprove);
   const [budget, setBudget] = useState<KadBudgetStatus | null>(null);
   // Ma trận phê duyệt: hàng = agent THẬT (agents.list()), cột = quyền
   // approval-related THẬT (agent.permissions) — không còn bảng tĩnh.
@@ -67,8 +64,8 @@ export function KiemSoatTab() {
   // Hạn mức: dùng số thật khi tải xong; mặc định DEPT_SETTINGS (khớp) trong lúc
   // chờ để tránh nháy. Token đã dùng hôm nay: 0 tới khi có số thật (không hiện
   // số giả).
-  const dailyLimit = budget?.dailyTokenLimit ?? DEPARTMENT_POLICIES.dailyTokenLimit;
-  const perTaskLimit = budget?.perTaskTokenLimit ?? DEPARTMENT_POLICIES.perTaskTokenLimit;
+  const dailyLimit = budget?.dailyTokenLimit ?? 0;
+  const perTaskLimit = budget?.perTaskTokenLimit ?? 0;
   const tokensUsedToday = budget?.tokensUsedToday ?? 0;
   const usedPercent = dailyLimit > 0 ? (tokensUsedToday / dailyLimit) * 100 : 0;
 
@@ -146,33 +143,6 @@ export function KiemSoatTab() {
             auto-approve cho một loại học liệu, hệ thống tự duyệt khi đạt điểm QR tối thiểu và ghi audit với người
             duyệt = "system".
           </p>
-        </div>
-        <div className="space-y-2">
-          {autoApprove.map((rule) => (
-            <div
-              key={rule.artifactType}
-              className="flex items-center justify-between gap-3 border border-kad-border rounded-lg px-3 py-2.5"
-            >
-              <div className="min-w-0">
-                <p className="kad-body text-kad-text">{ARTIFACT_TYPE_LABEL[rule.artifactType]}</p>
-                <p className="kad-caption text-kad-text-muted">Điểm QR tối thiểu: {rule.minQualityScore.toFixed(1)}</p>
-              </div>
-              <label className="inline-flex items-center gap-2 flex-shrink-0 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={rule.enabled}
-                  onChange={() => {
-                    setAutoApprove((prev) =>
-                      prev.map((r) => (r.artifactType === rule.artifactType ? { ...r, enabled: !r.enabled } : r))
-                    );
-                    toast({ message: "Đã gửi duyệt thay đổi cấu hình auto-approve.", tone: "warning" });
-                  }}
-                  style={{ accentColor: "var(--kad-accent)" }}
-                />
-                <span className="kad-caption text-kad-text-muted">Auto-approve</span>
-              </label>
-            </div>
-          ))}
         </div>
       </KadCard>
 

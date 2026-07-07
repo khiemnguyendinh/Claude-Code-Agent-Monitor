@@ -286,7 +286,7 @@ export interface Artifact {
   artifactType: ArtifactType;
   title: string;
   content: string; // markdown — empty for uploaded (source: "uploaded") non-markdown files
-  /** Phase 6 — true when a real file backs this row (uploaded or agent-saved); use with fileName/source for the viewer's non-markdown fallback. Optional: absent on mockData.ts's still-mock ARTIFACTS (CommandPalette/DetailPanels/TongQuan), always present on real API rows (toArtifact() in api-client.ts). */
+  /** Phase 6 — true when a real file backs this row (uploaded or agent-saved); use with fileName/source for the viewer's non-markdown fallback. Always present on real API rows (toArtifact() in api-client.ts). */
   hasFile?: boolean;
   source?: "generated" | "uploaded";
   fileName?: string | null;

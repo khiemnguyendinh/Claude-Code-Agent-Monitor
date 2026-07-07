@@ -6,14 +6,7 @@ import type { ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowRight, MessageSquare } from "lucide-react";
 import type { PeekTarget, PeekType } from "./PeekDrawer";
-import {
-  AGENT_STATS,
-  findAgent,
-  findArtifact,
-  PROJECTS,
-  TASK_DETAIL_SYLLABUS_K3,
-} from "../mockData";
-import { kadApi, type KadTask } from "../api-client";
+import { kadApi, type KadTask, type KadAgentStats } from "../api-client";
 import type { Artifact, StepState, TaskStatus } from "../types";
 import { useKadStore } from "../store";
 import { useKadToast } from "./Toast";
@@ -22,16 +15,8 @@ import { SensitivityBadge, TaskStatusChip } from "./StatusChip";
 import { SegmentedProgress, ProgressBar } from "./Progress";
 import { KadButton, KadEmptyState, KadTextarea } from "./primitives";
 import { ArtifactViewer } from "./ArtifactViewer";
-import {
-  formatDueDate,
-  formatPercent,
-  formatRelativeTime,
-  formatSlaCountdown,
-  formatTokens,
-  formatVnd,
-} from "../format";
-import { Sparkline } from "./Sparkline";
-import { FilesPanel, artifactsForTask } from "./DetailPanels";
+import { formatDueDate, formatPercent, formatSlaCountdown, formatVnd } from "../format";
+import { FilesPanel } from "./DetailPanels";
 import { WorkflowRunPeek } from "./WorkflowRunPeek";
 
 export const PEEK_TITLES: Record<PeekType, string> = {
@@ -99,13 +84,23 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 
 function TaskPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
   const navigate = useNavigate();
-  const { tasks } = useKadStore();
+  const { tasks, agentsById } = useKadStore();
   const task = tasks.find((t) => t.id === id);
-  if (!task) return <KadEmptyState icon={MessageSquare} message="Không tìm thấy công việc." />;
+  const [taskFiles, setTaskFiles] = useState<Artifact[]>([]);
 
-  const detail = TASK_DETAIL_SYLLABUS_K3.id === id ? TASK_DETAIL_SYLLABUS_K3 : null;
-  const lastMessages = detail ? detail.messages.slice(-4) : [];
-  const taskFiles = artifactsForTask(id);
+  // Real học liệu for this task (GET /api/kad/artifacts?task=:id).
+  useEffect(() => {
+    let alive = true;
+    kadApi.artifacts
+      .list({ task_id: id })
+      .then((rows) => alive && setTaskFiles(rows))
+      .catch(() => alive && setTaskFiles([]));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  if (!task) return <KadEmptyState icon={MessageSquare} message="Không tìm thấy công việc." />;
 
   return (
     <div className="p-4 space-y-5">
@@ -123,7 +118,7 @@ function TaskPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) 
             <div className="flex items-center gap-1.5">
               <AgentAvatar agentId={task.assignedAgentId} size={20} />
               <span className="kad-body text-kad-text">
-                {findAgent(task.assignedAgentId)?.displayName}
+                {agentsById.get(task.assignedAgentId)?.displayName ?? task.assignedAgentId}
               </span>
             </div>
           ) : (
@@ -134,36 +129,6 @@ function TaskPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) 
           <span className="kad-body text-kad-text">{formatDueDate(task.dueDate) ?? "—"}</span>
         </Field>
       </div>
-
-      {detail && (
-        <Field label="Tiến độ">
-          <SegmentedProgress steps={detail.steps} height={6} showLabels />
-          <p className="kad-caption text-kad-text-muted mt-2">
-            {formatTokens(detail.costToDateTokens)} · ~{formatVnd(detail.costToDateVnd)}
-            {detail.activeDelegation ? ` · retry ${detail.activeDelegation.retryCount}` : ""}
-          </p>
-        </Field>
-      )}
-
-      <Field label="Trao đổi với Trợ lý vận hành">
-        {lastMessages.length === 0 ? (
-          <KadEmptyState icon={MessageSquare} message="Chưa có trao đổi." />
-        ) : (
-          <div className="space-y-2">
-            {lastMessages.map((m) => (
-              <div key={m.id} className="border border-kad-border rounded-lg px-3 py-2">
-                <p className="kad-caption text-kad-text-muted">
-                  {m.senderType === "human"
-                    ? "Anh Khiêm"
-                    : (findAgent(m.senderId)?.displayName ?? "Trợ lý vận hành")}{" "}
-                  · {formatRelativeTime(m.createdAt)}
-                </p>
-                <p className="kad-body text-kad-text line-clamp-3">{m.content}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </Field>
 
       <Field label="Files & học liệu">
         <FilesPanel
@@ -266,12 +231,8 @@ function ProjectPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarge
 
 // ── Artifact ───────────────────────────────────────────────────────────
 
-// Học liệu (real /api/kad/artifacts ids) vs. every other screen still on
-// mockData (TaskPeek's "Files & học liệu", ApprovalPeek's preview — see
-// DetailPanels.tsx header comment) share this ONE peek renderer. `findArtifact`
-// resolves synchronously and instantly for the mock ids those screens still
-// pass, so checking it first preserves their exact current behavior; only an
-// id it doesn't recognize (i.e. a real one) falls through to a live fetch.
+// All học liệu ids are real (/api/kad/artifacts) — fetch the artifact + its
+// lineage chain and render via ArtifactViewer.
 function ArtifactPeek({
   id,
   onOpenPeek,
@@ -281,12 +242,10 @@ function ArtifactPeek({
   onOpenPeek: (t: PeekTarget) => void;
   onClose: () => void;
 }) {
-  const mockArtifact = findArtifact(id);
   const [real, setReal] = useState<{ artifact: Artifact; lineage: Artifact[] } | null>(null);
-  const [loading, setLoading] = useState(!mockArtifact);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (mockArtifact) return;
     let cancelled = false;
     setLoading(true);
     setReal(null);
@@ -304,15 +263,8 @@ function ArtifactPeek({
     return () => {
       cancelled = true;
     };
-  }, [id, mockArtifact]);
+  }, [id]);
 
-  if (mockArtifact) {
-    return (
-      <div className="p-4">
-        <ArtifactViewer artifactId={id} />
-      </div>
-    );
-  }
   if (loading) {
     return (
       <div className="p-4">
@@ -358,10 +310,28 @@ function ApprovalPeek({
   const [mode, setMode] = useState<"idle" | "needs_changes" | "rejected">("idle");
   const [reason, setReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [artifact, setArtifact] = useState<Artifact | undefined>(undefined);
+
+  // Real artifact preview for this approval (GET /api/kad/artifacts/:id).
+  const artifactId = approval?.artifactId;
+  useEffect(() => {
+    if (!artifactId) {
+      setArtifact(undefined);
+      return;
+    }
+    let alive = true;
+    kadApi.artifacts
+      .get(artifactId)
+      .then((a) => alive && setArtifact(a))
+      .catch(() => alive && setArtifact(undefined));
+    return () => {
+      alive = false;
+    };
+  }, [artifactId]);
+
   if (!approval)
     return <KadEmptyState icon={MessageSquare} message="Không tìm thấy yêu cầu duyệt." />;
 
-  const artifact = approval.artifactId ? findArtifact(approval.artifactId) : undefined;
   const sla = approval.slaReminderHours
     ? formatSlaCountdown(
         new Date(
@@ -412,10 +382,7 @@ function ApprovalPeek({
         <Field label="Người xin duyệt">
           <div className="flex items-center gap-1.5">
             {(() => {
-              // Real approvals (Tổng quan track) carry agent_profiles ids that don't
-              // match mockData's — prefer the store's real map when it has the id.
               const real = agentsById.get(approval.requestedByAgentId);
-              const mock = real ? undefined : findAgent(approval.requestedByAgentId);
               return (
                 <>
                   <AgentAvatar
@@ -425,7 +392,7 @@ function ApprovalPeek({
                     agentNameOverride={real?.name}
                   />
                   <span className="kad-body text-kad-text">
-                    {real?.displayName ?? mock?.displayName}
+                    {real?.displayName ?? approval.requestedByAgentId}
                   </span>
                 </>
               );
@@ -515,10 +482,22 @@ function ApprovalPeek({
 function AgentPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
   const navigate = useNavigate();
   const { tasks, agentsById } = useKadStore();
-  const realAgent = agentsById.get(id);
-  const agent = realAgent ?? findAgent(id);
+  const agent = agentsById.get(id);
+  const [stats, setStats] = useState<KadAgentStats | undefined>(undefined);
+
+  // Real per-agent 7d stats (GET /api/kad/reports/agent-stats), matched by id.
+  useEffect(() => {
+    let alive = true;
+    kadApi.reports
+      .agentStats()
+      .then((rows) => alive && setStats(rows.find((r) => r.agentId === id)))
+      .catch(() => alive && setStats(undefined));
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
   if (!agent) return <KadEmptyState icon={MessageSquare} message="Không tìm thấy hồ sơ." />;
-  const stats = AGENT_STATS[id];
   const activeTasks = tasks.filter((t) => t.assignedAgentId === id && t.status !== "done");
 
   return (
@@ -527,8 +506,8 @@ function AgentPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget)
         <AgentAvatar
           agentId={id}
           size={40}
-          displayNameOverride={realAgent?.displayName}
-          agentNameOverride={realAgent?.name}
+          displayNameOverride={agent.displayName}
+          agentNameOverride={agent.name}
         />
         <div>
           <h2 className="kad-title text-kad-text-strong">{agent.displayName}</h2>
@@ -558,7 +537,6 @@ function AgentPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget)
               <p className="kad-caption text-kad-text-muted">chi phí 7 ngày</p>
             </div>
           </div>
-          <Sparkline values={stats.sparkline14d} variant="bar" height={28} />
         </Field>
       )}
 
@@ -591,22 +569,15 @@ function AgentPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget)
 
 // ── Goal ───────────────────────────────────────────────────────────────
 
-const GOAL_RELATED_PROJECTS: Record<string, string[]> = {
-  "goal-k3": ["proj-k3"],
-  "goal-quy-trinh": ["proj-k3", "proj-video-k2", "proj-public-speaking"],
-  "goal-template": [],
-};
-
-function GoalPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function GoalPeek({ id, onOpenPeek: _onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) => void }) {
   const { goals } = useKadStore();
   const goal = goals.find((g) => g.id === id);
   if (!goal) return <KadEmptyState icon={MessageSquare} message="Không tìm thấy mục tiêu." />;
   const percent = goal.target > 0 ? (goal.current / goal.target) * 100 : 0;
-  const relatedIds = GOAL_RELATED_PROJECTS[id] ?? [];
-  const related = relatedIds
-    .map((pid) => PROJECTS.find((p) => p.id === pid))
-    .filter((p): p is NonNullable<typeof p> => Boolean(p));
 
+  // No real goal→task foreign key in the schema, so we don't fabricate a
+  // "contributing tasks" list (the old mock did). Goal metric/progress are real.
   return (
     <div className="p-4 space-y-5">
       <div>
@@ -621,27 +592,6 @@ function GoalPeek({ id, onOpenPeek }: { id: string; onOpenPeek: (t: PeekTarget) 
         <div className="mt-2">
           <ProgressBar percent={percent} tone="primary" />
         </div>
-      </Field>
-      <Field label="Công việc đang đóng góp">
-        {related.length === 0 ? (
-          <p className="kad-body text-kad-text-faint">Chưa có việc nào gắn trực tiếp.</p>
-        ) : (
-          <div className="space-y-2">
-            {related.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onClick={() => onOpenPeek({ type: "project", id: p.id })}
-                className="w-full flex items-center justify-between gap-2 border border-kad-border rounded-lg px-3 py-2 hover:bg-kad-surface-2 text-left"
-              >
-                <span className="kad-body text-kad-text truncate">{p.title}</span>
-                <span className="kad-caption text-kad-text-muted flex-shrink-0">
-                  {p.itemsDone}/{p.itemsTotal}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
       </Field>
     </div>
   );

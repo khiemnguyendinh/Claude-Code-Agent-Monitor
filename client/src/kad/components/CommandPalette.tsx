@@ -1,13 +1,14 @@
 /**
  * ⌘K command palette — 01-app-shell.md §5. Client-side substring search over
- * mock tasks/agents/artifacts + a few quick commands. Real version reads
- * `/api/kad/search` [GAP — đề xuất endpoint search gộp].
+ * real tasks/agents (from the KAD store) + artifacts (fetched on open) + a few
+ * quick commands.
  */
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Bot, FileText, ListChecks, Search, Sunrise, UserPlus } from "lucide-react";
-import { AGENTS, ARTIFACTS, TASK_CARDS } from "../mockData";
+import { kadApi } from "../api-client";
+import type { Artifact } from "../types";
 import { useKadStore } from "../store";
 import { usePeek } from "./PeekDrawer";
 
@@ -37,10 +38,24 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
   const [query, setQuery] = useState("");
   const navigate = useNavigate();
   const { openPeek } = usePeek();
-  const { regenerateStandup } = useKadStore();
+  const { regenerateStandup, tasks, agentsById } = useKadStore();
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
 
   useEffect(() => {
-    if (!open) setQuery("");
+    if (!open) {
+      setQuery("");
+      return;
+    }
+    // Fetch real artifacts once each time the palette opens (kept lightweight; the
+    // list is capped in the search below anyway).
+    let alive = true;
+    kadApi.artifacts
+      .list({})
+      .then((rows) => alive && setArtifacts(rows))
+      .catch(() => alive && setArtifacts([]));
+    return () => {
+      alive = false;
+    };
   }, [open]);
 
   useEffect(() => {
@@ -82,7 +97,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
     ];
     const matches = (text: string) => q.length === 0 || text.toLowerCase().includes(q);
 
-    const taskResults: ResultItem[] = TASK_CARDS.filter((t) => matches(t.title))
+    const taskResults: ResultItem[] = tasks
+      .filter((t) => matches(t.title))
       .slice(0, 5)
       .map((t) => ({
         id: t.id,
@@ -93,7 +109,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         onSelectPeek: () => openPeek({ type: "task", id: t.id }),
       }));
 
-    const agentResults: ResultItem[] = AGENTS.filter((a) => matches(a.displayName))
+    const agentResults: ResultItem[] = [...agentsById.values()]
+      .filter((a) => matches(a.displayName))
       .slice(0, 5)
       .map((a) => ({
         id: a.id,
@@ -104,7 +121,8 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
         onSelectPeek: () => openPeek({ type: "agent", id: a.id }),
       }));
 
-    const artifactResults: ResultItem[] = ARTIFACTS.filter((a) => matches(a.title))
+    const artifactResults: ResultItem[] = artifacts
+      .filter((a) => matches(a.title))
       .slice(0, 5)
       .map((a) => ({
         id: a.id,
@@ -116,7 +134,7 @@ export function CommandPalette({ open, onClose }: { open: boolean; onClose: () =
 
     const cmdResults = quickCommands.filter((c) => matches(c.label));
     return [...cmdResults, ...taskResults, ...agentResults, ...artifactResults];
-  }, [query, navigate, openPeek, regenerateStandup]);
+  }, [query, navigate, openPeek, regenerateStandup, tasks, agentsById, artifacts]);
 
   const groups = useMemo(() => {
     const order: ResultItem["group"][] = ["Lệnh nhanh", "Công việc", "Thành viên AI", "Học liệu"];
