@@ -108,18 +108,31 @@ function eventDue(rule) {
   return new Date(rule.last_fired_at).getTime() < new Date(source.updated_at).getTime();
 }
 
-/** True when a metric_threshold rule's metric crosses its bound (best-effort). */
-function metricDue(rule) {
+/** True when a metric_threshold rule's metric crosses its bound. The form
+ * (AutomationRuleForm.tsx) stores {metric, op, value}; metrics carry a stable
+ * `key` (repo/reports.js). Values may be display strings ("85%", "1.234") —
+ * strip non-numeric chars before comparing. */
+// A metric condition can stay true across many ticks (unlike a schedule slot or a
+// one-shot event), so without a re-arm window it would fire every 2s. Re-fire at
+// most once per this window unless the rule sets its own (shorter/longer) cooldown.
+const METRIC_REARM_MS = 6 * 60 * 60 * 1000;
+
+function metricDue(rule, now) {
+  if (rule.last_fired_at) {
+    const elapsed = now.getTime() - new Date(rule.last_fired_at).getTime();
+    const floor = rule.cooldown_seconds ? rule.cooldown_seconds * 1000 : METRIC_REARM_MS;
+    if (elapsed < floor) return false;
+  }
   const cfg = rule.trigger_config || {};
   const metrics = repo.reports.listMetrics({ department_id: rule.department_id });
   const key = cfg.metric || cfg.metric_key;
-  const metric = metrics.find((mm) => mm.id === key || mm.key === key || mm.label === key);
+  const metric = metrics.find((mm) => mm.key === key || mm.id === key || mm.label === key);
   if (!metric) return false;
-  const value = Number(metric.value ?? metric.current ?? NaN);
+  const value = parseFloat(String(metric.value ?? metric.current ?? "").replace(/[^0-9.-]/g, ""));
   if (!Number.isFinite(value)) return false;
-  const threshold = Number(cfg.thresholdValue ?? cfg.threshold ?? NaN);
+  const threshold = Number(cfg.value ?? cfg.thresholdValue ?? cfg.threshold);
   if (!Number.isFinite(threshold)) return false;
-  const op = cfg.thresholdOp || cfg.op || "gt";
+  const op = cfg.op || cfg.thresholdOp || "gt";
   return op === "lt" ? value < threshold : value > threshold;
 }
 
@@ -130,7 +143,7 @@ function isDue(rule, now) {
     case "event":
       return eventDue(rule);
     case "metric_threshold":
-      return metricDue(rule);
+      return metricDue(rule, now);
     default:
       return false;
   }
@@ -138,17 +151,18 @@ function isDue(rule, now) {
 
 /** Execute a due rule's action and record the fire. */
 function fireRule(rule, now) {
+  const firedAt = now.toISOString();
   // Cooldown floor (applies to all trigger types).
   if (rule.cooldown_seconds && rule.last_fired_at) {
     const elapsed = (now.getTime() - new Date(rule.last_fired_at).getTime()) / 1000;
     if (elapsed < rule.cooldown_seconds) {
-      repo.automationRules.recordFire({ rule_id: rule.id, result: "skipped_cooldown" });
+      repo.automationRules.recordFire({ rule_id: rule.id, result: "skipped_cooldown", firedAt });
       return;
     }
   }
   // Exhausted fire budget.
   if (rule.max_fires != null && rule.fire_count >= rule.max_fires) {
-    repo.automationRules.recordFire({ rule_id: rule.id, result: "skipped_maxfires" });
+    repo.automationRules.recordFire({ rule_id: rule.id, result: "skipped_maxfires", firedAt });
     return;
   }
 
@@ -162,14 +176,24 @@ function fireRule(rule, now) {
       body: cfg.message || cfg.brief || "Luật tự động đã kích hoạt.",
       link_path: "/cong-viec/tu-dong-hoa",
     });
-    repo.automationRules.recordFire({ rule_id: rule.id, result: "notified", note: rule.name });
+    repo.automationRules.recordFire({
+      rule_id: rule.id,
+      result: "notified",
+      note: rule.name,
+      firedAt,
+    });
     void notif; // createNotification already broadcasts kad.notification
     return;
   }
 
   if (rule.action_type === "pause_department") {
     repo.catalog.setAutomationPaused(rule.department_id, true);
-    repo.automationRules.recordFire({ rule_id: rule.id, result: "notified", note: "paused" });
+    repo.automationRules.recordFire({
+      rule_id: rule.id,
+      result: "notified",
+      note: "paused",
+      firedAt,
+    });
     emitDept(rule.department_id, "kad.department.updated", {
       department_id: rule.department_id,
       automation_paused: true,
@@ -195,6 +219,7 @@ function fireRule(rule, now) {
     result: "created",
     action_task_id: task.id,
     note: rule.name,
+    firedAt,
   });
   const notif = repo.notifications.createNotification({
     department_id: rule.department_id,

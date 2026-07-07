@@ -99,8 +99,11 @@ function setEnabled(id, enabled) {
  * audit trail, not a consumed fire.
  * @param {{rule_id:string, result:string, trigger_ref?:string, action_task_id?:string, note?:string}} p
  */
-function recordFire({ rule_id, result, trigger_ref, action_task_id, note }) {
-  const now = nowIso();
+function recordFire({ rule_id, result, trigger_ref, action_task_id, note, firedAt }) {
+  // firedAt = the evaluator's own clock (worker passes its `now`); defaults to
+  // wall-clock. Keeping fired_at and last_fired_at on the SAME clock the due-check
+  // uses is what makes schedule slot de-dup correct (and tests deterministic).
+  const now = firedAt || nowIso();
   const id = newId("fire");
   db.prepare(
     `INSERT INTO automation_rule_fires (id, rule_id, fired_at, trigger_ref, action_task_id, result, note)

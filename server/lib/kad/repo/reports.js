@@ -258,6 +258,7 @@ function completedTasksMetric(department_id, days, nowMs) {
       ? "Không đổi so với 7 ngày trước"
       : `${last - prior >= 0 ? "+" : ""}${last - prior} so với 7 ngày trước`;
   return {
+    key: "completed_tasks_7d",
     label: "Việc hoàn thành",
     value: String(last),
     delta_label: deltaLabel,
@@ -305,6 +306,7 @@ function costMetric(department_id, days, nowMs) {
       ? "Không đổi so với 7 ngày trước"
       : `${roundedDelta >= 0 ? "+" : ""}${roundedDelta.toLocaleString("vi-VN")} đ so với 7 ngày trước`;
   return {
+    key: "cost_7d",
     label: "Chi phí 7 ngày",
     value: roundedLast.toLocaleString("vi-VN"),
     delta_label: deltaLabel,
@@ -362,6 +364,7 @@ function qcApprovalRateMetric(department_id, days, nowMs) {
       ? "Không đổi so với 7 ngày trước"
       : `${last - prior >= 0 ? "+" : ""}${last - prior}% so với 7 ngày trước`;
   return {
+    key: "quality_pass_rate_7d",
     label: "Đạt QC",
     value: `${last}%`,
     delta_label: deltaLabel,

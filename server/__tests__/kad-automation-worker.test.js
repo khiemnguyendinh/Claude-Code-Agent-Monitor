@@ -148,3 +148,46 @@ describe("automation-worker firing", () => {
     repo.catalog.setAutomationPaused(deptId, false);
   });
 });
+
+describe("automation-worker metric_threshold", () => {
+  it("fires when a real metric crosses the bound, then re-arms (no per-tick spam)", () => {
+    // Seed one completed task so the completed_tasks_7d metric has value >= 1.
+    const now = new Date();
+    const t = repo.tasks.createTask({ department_id: deptId, title: "done task" });
+    repo.tasks.updateTask(t.id, { status: "done" }); // sets completed_at = now
+
+    const rule = repo.automationRules.createRule({
+      department_id: deptId,
+      name: "Việc hoàn thành > 0 → cảnh báo",
+      trigger_type: "metric_threshold",
+      // Matches AutomationRuleForm's {metric, op, value} shape + a real metric key.
+      trigger_config: { metric: "completed_tasks_7d", op: "gt", value: 0 },
+      action_type: "notify",
+      action_config: { message: "milestone" },
+      approval_required: true,
+    });
+
+    worker.checkRules(now);
+    const first = repo.automationRules.getRule(rule.id);
+    assert.equal(first.fire_count, 1, "fires once when metric crosses");
+    assert.equal(first.fires[0].result, "notified");
+
+    // Same tick again → re-arm window blocks a second fire.
+    worker.checkRules(now);
+    assert.equal(repo.automationRules.getRule(rule.id).fire_count, 1, "does not spam per tick");
+  });
+
+  it("does not fire when the metric key is unknown", () => {
+    const rule = repo.automationRules.createRule({
+      department_id: deptId,
+      name: "Metric lạ",
+      trigger_type: "metric_threshold",
+      trigger_config: { metric: "no_such_metric", op: "gt", value: 0 },
+      action_type: "notify",
+      action_config: { message: "x" },
+      approval_required: true,
+    });
+    worker.checkRules(new Date());
+    assert.equal(repo.automationRules.getRule(rule.id).fire_count, 0);
+  });
+});
